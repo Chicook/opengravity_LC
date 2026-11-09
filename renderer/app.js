@@ -113,6 +113,8 @@ const ui = {
   streamingText: '',
   /** Grupo colapsable "Worked for" de la ejecución en curso. */
   toolGroup: null,
+  /** Resumen del turno que envuelve pensamiento y herramientas. */
+  workWrapper: null,
   /** Archivos que el agente ha tocado en esta conversación. */
   touchedFiles: new Map(),
   /** Panel de overview visible. */
@@ -529,6 +531,7 @@ function clearThread() {
   els.threadInner.replaceChildren();
   ui.streamingEl = null;
   ui.toolGroup = null;
+  ui.workWrapper = null;
   ui.subagentGroups = new Map();
   ui.plannerGroup = null;
   ui.reasoningEl = null;
@@ -1779,6 +1782,9 @@ async function addTurnReviewCard() {
   card.type = 'button';
   card.className = 'turn-review';
 
+  const izquierda = document.createElement('span');
+  izquierda.className = 'turn-review__left';
+
   const etiqueta = document.createElement('span');
   etiqueta.className = 'turn-review__files';
   etiqueta.textContent = `${cambios.files} file${cambios.files === 1 ? '' : 's'} changed`;
@@ -1791,11 +1797,18 @@ async function addTurnReviewCard() {
   menos.className = 'turn-review__del';
   menos.textContent = `-${cambios.removals}`;
 
-  const chevron = document.createElement('span');
-  chevron.className = 'turn-review__chevron';
-  chevron.innerHTML = window.Icon('chevron', 14);
+  izquierda.append(etiqueta, mas, menos);
 
-  card.append(etiqueta, mas, menos, chevron);
+  const accion = document.createElement('span');
+  accion.className = 'turn-review__action';
+  const icono = document.createElement('span');
+  icono.className = 'turn-review__action-icon';
+  icono.innerHTML = window.Icon('review', 14);
+  const textoAccion = document.createElement('span');
+  textoAccion.textContent = 'Review';
+  accion.append(icono, textoAccion);
+
+  card.append(izquierda, accion);
   card.addEventListener('click', () => {
     if (typeof selectOverviewView === 'function') {
       toggleOverview(true, 'auto');
@@ -2647,23 +2660,22 @@ function insertarAntesDeLaRespuesta(nodo) {
   }
 }
 
-/** Crea el colapsable «Thought for Ns» del turno en curso. */
-function ensureReasoningBlock() {
-  if (ui.reasoningEl) return ui.reasoningEl;
-
-  const wrap = document.createElement('div');
-  wrap.className = 'work-group';
-
+/**
+ * Crea un colapsable con la forma exacta de los suyos.
+ *
+ * Medido en su DOM: el resumen del turno (`worked-for`) nace ABIERTO y los
+ * bloques internos (`tool-group`, `thinking`) nacen CERRADOS.
+ */
+function crearColapsable(texto, testid, abiertoPorDefecto = false) {
   const header = document.createElement('button');
   header.type = 'button';
   header.className = 'work-group__header';
-  // Su bloque de pensamiento nace cerrado (`aria-expanded="false"`).
-  header.setAttribute('aria-expanded', 'false');
-  header.dataset.testid = 'thinking-collapsible-trigger';
+  header.setAttribute('aria-expanded', String(abiertoPorDefecto));
+  if (testid) header.dataset.testid = testid;
 
   const label = document.createElement('span');
   label.className = 'work-group__label';
-  label.textContent = 'Thinking';
+  label.textContent = texto;
 
   const chevron = document.createElement('span');
   chevron.className = 'work-group__chevron';
@@ -2673,11 +2685,7 @@ function ensureReasoningBlock() {
 
   const body = document.createElement('div');
   body.className = 'work-group__body';
-  body.hidden = true;
-
-  const text = document.createElement('div');
-  text.className = 'reasoning__text';
-  body.append(text);
+  body.hidden = !abiertoPorDefecto;
 
   header.addEventListener('click', () => {
     const open = header.getAttribute('aria-expanded') === 'true';
@@ -2685,10 +2693,52 @@ function ensureReasoningBlock() {
     body.hidden = open;
   });
 
-  wrap.append(header, body);
+  return { header, label, body };
+}
+
+/**
+ * Crea el resumen del turno («Working…» → «Worked for Ns»).
+ *
+ * En Antigravity este bloque envuelve el pensamiento y los grupos de
+ * herramientas: el pensamiento no es una fila de primer nivel. Se crea con el
+ * primer paso (razonamiento o herramienta) y se finaliza al cerrar el turno.
+ */
+function ensureWorkWrapper() {
+  if (ui.workWrapper) return ui.workWrapper;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'work-group';
+  const outer = crearColapsable('Working…', 'worked-for-collapsible', true);
+  wrap.append(outer.header, outer.body);
   insertarAntesDeLaRespuesta(wrap);
 
-  ui.reasoningEl = { wrap, header, label, body, text };
+  ui.workWrapper = {
+    wrap,
+    header: outer.header,
+    label: outer.label,
+    body: outer.body,
+    startedAt: Date.now(),
+  };
+  return ui.workWrapper;
+}
+
+/** Crea el colapsable «Thought for Ns» dentro del resumen del turno. */
+function ensureReasoningBlock() {
+  if (ui.reasoningEl) return ui.reasoningEl;
+
+  const wrapper = ensureWorkWrapper();
+  const block = crearColapsable('Thinking', 'thinking-collapsible-trigger');
+
+  const text = document.createElement('div');
+  text.className = 'reasoning__text';
+  block.body.append(text);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'work-group work-group--nested';
+  wrap.append(block.header, block.body);
+  wrapper.body.append(wrap);
+
+  ui.reasoningEl = { wrap, header: block.header, label: block.label, body: block.body, text };
   ui.reasoningText = '';
   ui.reasoningStartedAt = Date.now();
 
@@ -2729,65 +2779,24 @@ function finishReasoningBlock() {
 function ensureToolGroup() {
   if (ui.toolGroup) return ui.toolGroup;
 
-  /** Crea un colapsable con la forma exacta de los suyos. */
-  /*
-   * Medido en su DOM: el resumen del turno (`worked-for`) nace ABIERTO y los
-   * bloques internos (`tool-group`, `thinking`) nacen CERRADOS. Nosotros los
-   * abríamos todos y el hilo se volvía una pared de texto.
-   */
-  const collapsible = (texto, testid, abiertoPorDefecto = false) => {
-    const header = document.createElement('button');
-    header.type = 'button';
-    header.className = 'work-group__header';
-    header.setAttribute('aria-expanded', String(abiertoPorDefecto));
-    if (testid) header.dataset.testid = testid;
+  const wrapper = ensureWorkWrapper();
 
-    const label = document.createElement('span');
-    label.className = 'work-group__label';
-    label.textContent = texto;
-
-    const chevron = document.createElement('span');
-    chevron.className = 'work-group__chevron';
-    chevron.innerHTML = window.Icon('chevron', 14);
-
-    header.append(label, chevron);
-
-    const body = document.createElement('div');
-    body.className = 'work-group__body';
-    body.hidden = !abiertoPorDefecto;
-
-    header.addEventListener('click', () => {
-      const open = header.getAttribute('aria-expanded') === 'true';
-      header.setAttribute('aria-expanded', String(!open));
-      body.hidden = open;
-    });
-
-    return { header, label, body };
-  };
-
-  // Nivel 1: "Worked for Ns"
-  const wrap = document.createElement('div');
-  wrap.className = 'work-group';
-  const outer = collapsible('Working…', 'worked-for-collapsible', true);
-
-  // Nivel 2: "Ran commands", dentro del anterior
+  // Nivel 2: «Ran commands», dentro del resumen del turno.
   const sub = document.createElement('div');
   sub.className = 'work-group work-group--nested';
-  const inner = collapsible('Ran commands', 'tool-group-collapsible');
+  const inner = crearColapsable('Ran commands', 'tool-group-collapsible');
 
   sub.append(inner.header, inner.body);
-  outer.body.append(sub);
-  wrap.append(outer.header, outer.body);
-  insertarAntesDeLaRespuesta(wrap);
+  wrapper.body.append(sub);
 
   ui.toolGroup = {
-    wrap,
-    header: outer.header,
-    label: outer.label,
+    wrap: wrapper.wrap,
+    header: wrapper.header,
+    label: wrapper.label,
     body: inner.body,
     // El grupo interno es la línea de resumen («Explored files, ran commands…»).
     inner: { header: inner.header, label: inner.label, body: inner.body },
-    startedAt: Date.now(),
+    startedAt: wrapper.startedAt,
     rows: new Map(),
   };
 
@@ -3201,26 +3210,34 @@ function setBusy(busy) {
  */
 function resumirHerramientas(nombres) {
   const VERBOS = [
-    { texto: 'explored files', tools: ['read_file', 'view_code_item', 'list_directory', 'search_files', 'search_code'] },
-    { texto: 'ran commands', tools: ['run_command', 'run_tests', 'command_status', 'manage_task'] },
-    { texto: 'edited files', tools: ['edit_file', 'write_file'] },
-    { texto: 'searched the web', tools: ['search_web', 'fetch_url', 'open_url'] },
-    { texto: 'used the browser', tools: ['browser_open', 'browser_read', 'browser_click', 'browser_eval'] },
-    { texto: 'delegated tasks', tools: ['invoke_subagent', 'browser_task', 'define_subagent', 'manage_subagent'] },
-    { texto: 'presented a plan', tools: ['present_plan', 'exit_plan_mode'] },
-    { texto: 'reviewed the plan', tools: ['enter_plan_mode'] },
-    { texto: 'asked a question', tools: ['ask_user_question'] },
-    { texto: 'used memory', tools: ['memory'] },
-    { texto: 'read a skill', tools: ['skill'] },
-    { texto: 'ran a workflow', tools: ['run_workflow'] },
-    { texto: 'scheduled a reminder', tools: ['notify_user'] },
+    { plural: 'explored files', singular: 'explored file', tools: ['read_file', 'view_code_item', 'list_directory', 'search_files', 'search_code'] },
+    { plural: 'ran commands', singular: 'ran command', tools: ['run_command', 'run_tests', 'command_status', 'manage_task'] },
+    { plural: 'edited files', singular: 'edited file', tools: ['edit_file', 'write_file'] },
+    { plural: 'generated images', singular: 'generated image', tools: ['generate_image'] },
+    { plural: 'searched the web', singular: 'searched the web', tools: ['search_web', 'fetch_url', 'open_url'] },
+    { plural: 'used the browser', singular: 'used the browser', tools: ['browser_open', 'browser_read', 'browser_click', 'browser_eval'] },
+    { plural: 'delegated tasks', singular: 'delegated a task', tools: ['invoke_subagent', 'browser_task', 'define_subagent', 'manage_subagent'] },
+    { plural: 'presented a plan', singular: 'presented a plan', tools: ['present_plan', 'exit_plan_mode'] },
+    { plural: 'reviewed the plan', singular: 'reviewed the plan', tools: ['enter_plan_mode'] },
+    { plural: 'asked a question', singular: 'asked a question', tools: ['ask_user_question'] },
+    { plural: 'used memory', singular: 'used memory', tools: ['memory'] },
+    { plural: 'read a skill', singular: 'read a skill', tools: ['skill'] },
+    { plural: 'ran a workflow', singular: 'ran a workflow', tools: ['run_workflow'] },
+    { plural: 'scheduled a reminder', singular: 'scheduled a reminder', tools: ['notify_user'] },
   ];
 
-  const vistos = [];
+  // Cuenta por tipo: Antigravity dice «Explored file» con una lectura y
+  // «Explored files» con varias.
+  const cuenta = new Map();
   for (const nombre of nombres) {
     const verbo = VERBOS.find((v) => v.tools.includes(nombre));
     if (!verbo) continue;
-    if (!vistos.includes(verbo.texto)) vistos.push(verbo.texto);
+    cuenta.set(verbo, (cuenta.get(verbo) ?? 0) + 1);
+  }
+
+  const vistos = [];
+  for (const [verbo, veces] of cuenta) {
+    vistos.push(veces === 1 ? verbo.singular : verbo.plural);
   }
 
   if (vistos.length === 0) return 'Ran commands';
@@ -3233,24 +3250,30 @@ function resumirHerramientas(nombres) {
 
 /** Cierra el grupo de trabajo con el tiempo total, como Antigravity. */
 function finishToolGroup() {
+  finishReasoningBlock();
+
+  const wrapper = ui.workWrapper;
   const group = ui.toolGroup;
-  if (!group) return;
+  if (!wrapper && !group) return;
 
-  const seconds = Math.max(1, Math.round((Date.now() - group.startedAt) / 1000));
-  group.label.textContent = `Worked for ${seconds}s`;
+  const started = wrapper?.startedAt ?? group.startedAt;
+  const seconds = Math.max(1, Math.round((Date.now() - started) / 1000));
+  const label = wrapper?.label ?? group.label;
+  label.textContent = `Worked for ${seconds}s`;
 
-  // El grupo externo queda desplegado; el interno se resume y se pliega, como en
-  // Antigravity: primero lees la respuesta, el detalle está a un clic.
-  group.header.setAttribute('aria-expanded', 'true');
-  group.wrap.classList.remove('is-collapsed');
+  // El resumen queda desplegado; los bloques internos ya nacen cerrados.
+  const header = wrapper?.header ?? group.header;
+  header.setAttribute('aria-expanded', 'true');
+  (wrapper?.wrap ?? group.wrap).classList.remove('is-collapsed');
 
-  if (group.inner) {
+  if (group?.inner) {
     const nombres = [...group.rows.values()].map((fila) => fila.name);
     group.inner.label.textContent = resumirHerramientas(nombres);
     group.inner.header.setAttribute('aria-expanded', 'false');
     group.inner.body.hidden = true;
   }
 
+  ui.workWrapper = null;
   ui.toolGroup = null;
   ui.subagentGroups = new Map();
   ui.plannerGroup = null;

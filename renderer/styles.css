@@ -1678,7 +1678,10 @@ button {
 .msg--assistant .msg__bubble {
   background-color: transparent;
   color: var(--foreground);
-  padding-left: 0;
+  /* Mismo sangrado de 8px que la etiqueta de los pasos: en Antigravity la
+     respuesta y «Worked for» empiezan en la misma x. */
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 .msg__tool {
@@ -3564,6 +3567,13 @@ button {
 
 .work-group__body[hidden] {
   display: none;
+}
+
+/* Solo el cuerpo del resumen sangra 12 px. Los grupos internos no acumulan
+   otro sangrado: en Antigravity las filas quedan en la misma x que su
+   cabecera («Explored file» y sus acciones comparten borde). */
+.work-group--nested > .work-group__body {
+  padding-left: 0;
 }
 
 /* El grupo interior ("Ran commands") no añade margen propio */
@@ -5775,27 +5785,41 @@ span.thread__empty-mark {
 /* --- Tarjeta de revisión del turno -------------------------------------- */
 
 .turn-review {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  align-self: flex-start;
-  height: 28px;
-  margin: 4px 0 8px;
-  padding: 0 6px 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 4px 0 6px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
   background-color: transparent;
   color: var(--secondary-foreground);
   font-family: inherit;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 14px;
+  line-height: 20px;
   cursor: pointer;
   transition: background-color 150ms ease-out, color 150ms ease-out;
 }
 
 .turn-review:hover {
-  background-color: var(--secondary);
-  color: var(--foreground);
+  background-color: var(--muted);
+}
+
+.turn-review__left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.turn-review__files {
+  color: var(--secondary-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .turn-review__add {
@@ -5806,12 +5830,27 @@ span.thread__empty-mark {
   color: var(--danger);
 }
 
-.turn-review__chevron {
+/* Botón «Review» de la cabecera, como el suyo (26 px de alto). */
+.turn-review__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  height: 26px;
+  padding: 2px 6px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.turn-review__action-icon {
   display: grid;
   place-items: center;
   width: 14px;
   height: 14px;
-  color: var(--muted-foreground);
 }
 
 /* --- Buscar y reemplazar ------------------------------------------------ */

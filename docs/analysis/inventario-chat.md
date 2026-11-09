@@ -43,6 +43,18 @@ detalle fácil de pasar por alto.
 El único punto abierto es el **gap de 6 px** entre tarjetas de turno, que en
 nuestra implementación no tiene un contenedor equivalente.
 
+## Actualización (2026-11-10)
+
+Medido de nuevo en vivo con la app a 1440 px:
+
+- El **pensamiento** ahora se anida dentro del `worked-for` (x+12), como sus
+  pasos; antes era una fila de primer nivel.
+- La **respuesta** lleva el mismo sangrado de 8 px que la etiqueta de los pasos.
+- La **tarjeta de archivos modificados** pasa a ser la cabecera de 44 px con
+  «N file(s) changed +X -Y» y el botón «Review», en vez de una pastilla de 28 px.
+- El resumen de herramientas **singulariza**: «Explored file» con una lectura,
+  «Explored files» con varias.
+
 ## Cómo se midió
 
 - Su lado: turno lanzado desde su compositor con un prompt que obliga a usar
