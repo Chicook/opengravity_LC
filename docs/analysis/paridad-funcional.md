@@ -100,3 +100,24 @@ Documentados en `docs/analysis/agente-cascade.md`; todos implementados:
 están replicados y con pruebas. Lo que falta es **inventario de herramientas**,
 no arquitectura: quedan `edit_notebook` y `generate_image`.
 `multi_replace`, `send_message` y `codebase_search` (como `search_code`) ya están.
+
+## Actualización (2026-11-10)
+
+Auditoría del orquestador y las herramientas, verificada con pruebas y en vivo:
+
+- `send_message` estaba **solo en el catálogo de Ajustes**: el agente real no lo
+  recibía. Ahora se registra en `guardedTools` y llega a los subagentes vivos.
+- El bucle serializa todas las mutaciones (`multi_replace`, `edit_notebook`,
+  `run_workflow`, `generate_image`) y toda la familia `browser_`; el timeout se
+  calcula por herramienta, no por el nombre de la primera del lote.
+- La familia de navegador pasa de 4 a 14 herramientas, con el Chromium
+  integrado: `navigate`, `snapshot`, `fill`, `type`, `press`, `select`, `scroll`,
+  `hover`, `wait` y `batch`, además de `open`, `read`, `click` y `eval`.
+- Permisos: `edit_notebook` solo pide permiso en sus acciones de escritura y
+  guarda checkpoint; `run_workflow` se trata como comando; `multi_replace`
+  muestra el diff real (antes usaba `content`, que no existe, y pintaba el
+  fichero entero como borrado).
+- Fuera a propósito: `run_extension_code` (API propietaria; se cubre con
+  `run_workflow` y MCP) y `search_marketplace` (el marketplace está excluido).
+- Simplificación consciente: subagentes de un solo nivel con permisos
+  `allowWrites`/`allowMcp`, sin delegación recursiva ni grants por herramienta.

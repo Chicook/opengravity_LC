@@ -262,10 +262,12 @@ export async function runAgent(
      * `generate_image` necesita más margen que el resto: conduce un navegador y
      * espera a que Flow termine de generar. Con el tope genérico de 120 s, el
      * timeout saltaba justo antes de que la espera de imagen pudiera informar.
+     *
+     * El tope se calcula POR LLAMADA: antes se usaba el nombre de la primera
+     * llamada del lote, así que una imagen que no fuese la primera se cortaba a
+     * los 120 s.
      */
     const TIMEOUTS_LARGOS: Record<string, number> = { generate_image: 240_000 };
-    const toolTimeout =
-      TIMEOUTS_LARGOS[toolCalls[0]?.name ?? ''] ?? options.toolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS;
 
     const runOne = async (call: ToolCall) => {
       // Compuerta: si la política la rechaza, no llega a ejecutarse.
@@ -273,6 +275,9 @@ export async function runAgent(
       if (rechazo) {
         return { call, content: rechazo, isError: true };
       }
+
+      const toolTimeout =
+        TIMEOUTS_LARGOS[call.name] ?? options.toolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS;
 
       // Una herramienta colgada no puede bloquear el turno: se corta por tiempo.
       const timeout = new Promise<never>((_, reject) => {
@@ -327,7 +332,8 @@ export async function runAgent(
     };
 
     for (const call of toolCalls) {
-      if (SERIAL_TOOLS.has(call.name)) {
+      // La familia browser_ comparte una única pestaña: también va en serie.
+      if (SERIAL_TOOLS[call.name] === true || call.name.startsWith('browser_')) {
         await volcarLote();
         results.push(await runOne(call));
         continue;
@@ -446,13 +452,25 @@ export async function runAgent(
   return { text: finalText, messages, steps, reason: 'max_steps' };
 }
 
-/** Herramientas que no se pueden lanzar en paralelo con seguridad. */
-const SERIAL_TOOLS = new Set([
-  'run_command',
-  'write_file',
-  'edit_file',
-  'present_plan',
-]);
+/**
+ * Herramientas que no se pueden lanzar en paralelo con seguridad.
+ *
+ * Todo lo que escribe en el workspace (incluidos los cuadernos y los workflows)
+ * o comparte un recurso global (el navegador integrado y su generación de
+ * imágenes) corta el lote y corre solo. Antes solo se serializaban write/edit:
+ * dos `multi_replace` o un `edit_notebook` podían pisarse.
+ */
+const SERIAL_TOOLS: Record<string, true> = {
+  run_command: true,
+  run_workflow: true,
+  write_file: true,
+  edit_file: true,
+  multi_replace: true,
+  edit_notebook: true,
+  present_plan: true,
+  generate_image: true,
+  browser_task: true,
+};
 
 /** Hash barato y estable, suficiente para comparar resultados. */
 function hashTexto(texto: string): string {

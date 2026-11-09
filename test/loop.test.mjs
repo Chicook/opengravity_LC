@@ -447,6 +447,68 @@ describe('ejecución en paralelo', () => {
     assert.ok(registro.indexOf('fin:a') < registro.indexOf('inicio:b'), 'el serial espera al lote anterior');
     assert.ok(registro.indexOf('fin:b') < registro.indexOf('inicio:c'), 'y el siguiente lote espera al serial');
   });
+
+  test('multi_replace también corta el lote', async () => {
+    const registro = [];
+    await runAgent(
+      {
+        provider: proveedorFalso((n) =>
+          n === 1
+            ? [
+                { type: 'tool_call', call: { id: 'a', name: 'leer', arguments: { id: 'a' } } },
+                { type: 'tool_call', call: { id: 'b', name: 'multi_replace', arguments: { id: 'b' } } },
+                { type: 'tool_call', call: { id: 'c', name: 'leer', arguments: { id: 'c' } } },
+                { type: 'done', finishReason: 'tool_calls' },
+              ]
+            : responde('fin'),
+        ),
+        model: 'x',
+        tools: new ToolRegistry().registerAll([
+          conRegistro('leer', registro),
+          conRegistro('multi_replace', registro),
+        ]),
+        maxSteps: 3,
+      },
+      'haz algo',
+      {},
+    );
+
+    assert.ok(
+      registro.indexOf('fin:a') < registro.indexOf('inicio:b') &&
+        registro.indexOf('fin:b') < registro.indexOf('inicio:c'),
+      'multi_replace debe serializarse como el resto de escrituras',
+    );
+  });
+
+  test('la familia browser_ comparte pestaña y va en serie', async () => {
+    const registro = [];
+    await runAgent(
+      {
+        provider: proveedorFalso((n) =>
+          n === 1
+            ? [
+                { type: 'tool_call', call: { id: 'a', name: 'leer', arguments: { id: 'a' } } },
+                { type: 'tool_call', call: { id: 'b', name: 'browser_fill', arguments: { id: 'b' } } },
+                { type: 'tool_call', call: { id: 'c', name: 'leer', arguments: { id: 'c' } } },
+                { type: 'done', finishReason: 'tool_calls' },
+              ]
+            : responde('fin'),
+        ),
+        model: 'x',
+        tools: new ToolRegistry().registerAll([
+          conRegistro('leer', registro),
+          conRegistro('browser_fill', registro),
+        ]),
+        maxSteps: 3,
+      },
+      'haz algo',
+      {},
+    );
+
+    assert.equal(registro[0], 'inicio:a');
+    assert.ok(registro.indexOf('fin:a') < registro.indexOf('inicio:b'), 'el navegador espera al lote anterior');
+    assert.ok(registro.indexOf('fin:b') < registro.indexOf('inicio:c'), 'y el siguiente lote espera al navegador');
+  });
 });
 
 describe('límites', () => {

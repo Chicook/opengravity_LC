@@ -46,9 +46,11 @@ Deja dos ficheros en `release/`:
 
 - **22 proveedores** de modelo con autodetección de modelos y claves pegables
   desde Ajustes (ver `docs/proveedores.md`)
-- 12 herramientas: `read_file`, `list_directory`, `write_file`, `edit_file`,
-  `search_files`, `run_command`, `fetch_url`, `open_url` y cuatro de navegador
-  (`browser_open`, `browser_read`, `browser_click`, `browser_eval`)
+- Catálogo de herramientas abierto: lectura/escritura de código y cuadernos,
+  búsqueda, terminal en segundo plano, MCP, memoria, skills, subagentes, planes,
+  generación de imágenes y **14 acciones de navegador** (`open`, `read`,
+  `snapshot`, `click`, `fill`, `type`, `press`, `select`, `scroll`, `hover`,
+  `wait`, `batch`, `navigate`, `eval`) sobre el Chromium integrado
 - Permisos: preset global, permisos por herramienta y reglas de red
 - **Diffs con aprobación** antes de escribir
 - **Checkpoints**: deshacer restaura los ficheros en disco

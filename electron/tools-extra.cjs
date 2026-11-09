@@ -244,7 +244,7 @@ function makeBrowserTools(getPrefs, askUser) {
     return null;
   };
 
-  return [
+  const tools = [
     {
       name: 'browser_open',
       description:
@@ -358,7 +358,473 @@ ${clipped || '(sin texto visible)'}` };
         };
       },
     },
+
+    {
+      name: 'browser_navigate',
+      description:
+        'Navega la pestaña del navegador integrado a otra URL y espera a que cargue. ' +
+        'Usa browser_open para abrir el navegador la primera vez.',
+      parameters: {
+        type: 'object',
+        properties: { url: { type: 'string', description: 'URL http(s) de destino.' } },
+        required: ['url'],
+      },
+      async execute(args) {
+        const url = String(args.url ?? '');
+        const verdict = isUrlAllowed(url, getPrefs().networkRules);
+        if (!verdict.allowed) {
+          return { content: `Acceso denegado: ${verdict.reason}`, isError: true };
+        }
+
+        if (!builtInBrowser || builtInBrowser.isDestroyed()) {
+          const abierto = await openBuiltInBrowser(url);
+          return {
+            content: abierto
+              ? `Abierta ${url}.`
+              : `Abierta ${url}, pero no terminó de cargar en 20 s.`,
+          };
+        }
+
+        try {
+          await builtInBrowser.loadURL(url);
+          const cargada = await waitForLoad(builtInBrowser);
+          return {
+            content: cargada
+              ? `Navegada a ${url}.`
+              : `Navegada a ${url}, pero no terminó de cargar en 20 s.`,
+          };
+        } catch (error) {
+          return { content: `No se pudo navegar: ${error.message}`, isError: true };
+        }
+      },
+    },
+
+    {
+      name: 'browser_snapshot',
+      description:
+        'Lista los elementos interactivos visibles de la página con un selector CSS, su texto y ' +
+        'posición. Úsala antes de hacer clic o rellenar algo, en vez de adivinar selectores.',
+      parameters: {
+        type: 'object',
+        properties: {
+          maxItems: { type: 'number', description: 'Máximo de elementos (40 por defecto, tope 120).' },
+        },
+        required: [],
+      },
+      async execute(args) {
+        const missing = requirePage();
+        if (missing) return { content: missing, isError: true };
+
+        const limite = Math.min(120, Math.max(1, Number(args.maxItems ?? 40)));
+        const result = await evalInBrowser(`(() => {
+          const ruta = (el) => {
+            if (el.id) return '#' + CSS.escape(el.id);
+            const partes = [];
+            let n = el;
+            while (n && n.nodeType === 1 && n !== document.body) {
+              let parte = n.tagName.toLowerCase();
+              if (n.parentElement) {
+                const hermanos = [...n.parentElement.children].filter((x) => x.tagName === n.tagName);
+                if (hermanos.length > 1) parte += ':nth-of-type(' + (hermanos.indexOf(n) + 1) + ')';
+              }
+              partes.unshift(parte);
+              n = n.parentElement;
+            }
+            return partes.join(' > ');
+          };
+          const visibles = [...document.querySelectorAll(
+            'a,button,input,textarea,select,[role="button"],[role="textbox"],[contenteditable="true"]',
+          )]
+            .filter((el) => el.offsetParent !== null && !el.disabled)
+            .filter((el) => {
+              const r = el.getBoundingClientRect();
+              return r.width > 0 && r.height > 0;
+            })
+            .slice(0, ${limite});
+          return visibles.map((el) => {
+            const r = el.getBoundingClientRect();
+            return {
+              selector: ruta(el),
+              tag: el.tagName.toLowerCase(),
+              type: el.getAttribute('type') || null,
+              text: (el.innerText || el.value || '').replace(/\\s+/g, ' ').trim().slice(0, 80),
+              placeholder: el.getAttribute('placeholder'),
+              aria: el.getAttribute('aria-label'),
+              href: el.getAttribute('href'),
+              x: Math.round(r.x), y: Math.round(r.y),
+              w: Math.round(r.width), h: Math.round(r.height),
+            };
+          });
+        })()`);
+
+        if (!result.ok) return { content: result.error, isError: true };
+        const items = Array.isArray(result.value) ? result.value : [];
+        if (items.length === 0) return { content: 'No hay elementos interactivos visibles.' };
+
+        const lineas = items.map((e, i) => {
+          const extra = [
+            e.type ? `type=${e.type}` : '',
+            e.text ? `«${e.text}»` : '',
+            e.placeholder ? `placeholder="${e.placeholder}"` : '',
+            e.aria ? `aria="${e.aria}"` : '',
+            e.href ? `href="${e.href}"` : '',
+          ].filter(Boolean).join(' · ');
+          return `${i + 1}. ${e.selector} · <${e.tag}> · ${extra || '(sin texto)'} · @(${e.x},${e.y}) ${e.w}x${e.h}`;
+        });
+        return { content: lineas.join('\n') };
+      },
+    },
+
+    {
+      name: 'browser_fill',
+      description:
+        'Escribe texto en un campo (input, textarea, select o contenteditable) y avisa a la ' +
+        'página con los eventos input/change, como si el usuario lo hubiera escrito.',
+      parameters: {
+        type: 'object',
+        properties: {
+          selector: { type: 'string', description: 'Selector CSS del campo.' },
+          text: { type: 'string', description: 'Texto a escribir.' },
+        },
+        required: ['selector', 'text'],
+      },
+      async execute(args) {
+        const missing = requirePage();
+        if (missing) return { content: missing, isError: true };
+
+        const selector = String(args.selector ?? '');
+        const texto = String(args.text ?? '');
+        if (selector.length === 0) return { content: 'Falta el selector.', isError: true };
+
+        const result = await evalInBrowser(`(() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return { found: false };
+          el.focus();
+          if (el.tagName === 'SELECT') {
+            el.value = ${JSON.stringify(texto)};
+          } else if (el.isContentEditable) {
+            el.textContent = ${JSON.stringify(texto)};
+          } else {
+            const proto = el instanceof HTMLTextAreaElement
+              ? HTMLTextAreaElement.prototype
+              : HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+            setter.call(el, ${JSON.stringify(texto)});
+          }
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          return { found: true, tag: el.tagName.toLowerCase(), valor: String(el.value ?? el.textContent ?? '') };
+        })()`);
+
+        if (!result.ok) return { content: result.error, isError: true };
+        if (!result.value?.found) {
+          return { content: `No se encontró ningún campo con ${selector}.`, isError: true };
+        }
+        return {
+          content: `Campo ${selector} rellenado con «${texto}» (${result.value.tag}).`,
+        };
+      },
+    },
+
+    {
+      name: 'browser_type',
+      description:
+        'Escribe texto con entrada real del navegador en el elemento indicado (o en el que ya ' +
+        'tiene el foco). Úsala cuando la página ignore el relleno programático (editores enriquecidos).',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: 'Texto a escribir.' },
+          selector: { type: 'string', description: 'Selector CSS del campo. Opcional.' },
+        },
+        required: ['text'],
+      },
+      async execute(args) {
+        const missing = requirePage();
+        if (missing) return { content: missing, isError: true };
+
+        const texto = String(args.text ?? '');
+        const selector = String(args.selector ?? '');
+        if (texto.length === 0) return { content: 'Falta el texto.', isError: true };
+
+        if (selector.length > 0) {
+          const foco = await evalInBrowser(
+            `(() => { const el = document.querySelector(${JSON.stringify(selector)}); ` +
+              'if (!el) return false; el.focus(); return true; })()',
+          );
+          if (!foco.ok) return { content: foco.error, isError: true };
+          if (!foco.value) {
+            return { content: `No se encontró ningún campo con ${selector}.`, isError: true };
+          }
+        }
+
+        const wc = builtInBrowser.webContents;
+        if (!wc || typeof wc.insertText !== 'function') {
+          return { content: 'El navegador no puede escribir texto en la página.', isError: true };
+        }
+        wc.insertText(texto);
+        return { content: `Texto escrito con entrada real (${texto.length} caracteres).` };
+      },
+    },
+
+    {
+      name: 'browser_press',
+      description:
+        'Pulsa una tecla real en la página: Enter, Tab, Escape, Backspace, Delete, flechas, ' +
+        'Home, End, PageUp, PageDown, Space o una letra/dígito.',
+      parameters: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'Tecla a pulsar.' },
+          selector: { type: 'string', description: 'Selector CSS del elemento que recibe el foco. Opcional.' },
+        },
+        required: ['key'],
+      },
+      async execute(args) {
+        const missing = requirePage();
+        if (missing) return { content: missing, isError: true };
+
+        const tecla = String(args.key ?? '');
+        const permitidas = [
+          'Enter', 'Tab', 'Escape', 'Backspace', 'Delete',
+          'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+          'Home', 'End', 'PageUp', 'PageDown', 'Space',
+        ];
+        if (!permitidas.includes(tecla) && !/^[A-Za-z0-9]$/.test(tecla)) {
+          return { content: `Tecla no válida: «${tecla}».`, isError: true };
+        }
+
+        const selector = String(args.selector ?? '');
+        if (selector.length > 0) {
+          const foco = await evalInBrowser(
+            `(() => { const el = document.querySelector(${JSON.stringify(selector)}); ` +
+              'if (!el) return false; el.focus(); return true; })()',
+          );
+          if (!foco.ok) return { content: foco.error, isError: true };
+          if (!foco.value) {
+            return { content: `No se encontró ningún elemento con ${selector}.`, isError: true };
+          }
+        }
+
+        const wc = builtInBrowser.webContents;
+        const keyCode = tecla === 'Space' ? ' ' : tecla;
+        wc.sendInputEvent({ type: 'keyDown', keyCode });
+        wc.sendInputEvent({ type: 'keyUp', keyCode });
+        return { content: `Tecla ${tecla} pulsada.` };
+      },
+    },
+
+    {
+      name: 'browser_select',
+      description: 'Selecciona una opción de un <select> por su valor.',
+      parameters: {
+        type: 'object',
+        properties: {
+          selector: { type: 'string', description: 'Selector CSS del select.' },
+          value: { type: 'string', description: 'Value de la opción.' },
+        },
+        required: ['selector', 'value'],
+      },
+      async execute(args) {
+        const missing = requirePage();
+        if (missing) return { content: missing, isError: true };
+
+        const selector = String(args.selector ?? '');
+        const value = String(args.value ?? '');
+        const result = await evalInBrowser(`(() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el || el.tagName !== 'SELECT') return { found: false };
+          el.value = ${JSON.stringify(value)};
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          return { found: true, valor: el.value };
+        })()`);
+
+        if (!result.ok) return { content: result.error, isError: true };
+        if (!result.value?.found) {
+          return { content: `No se encontró un <select> con ${selector}.`, isError: true };
+        }
+        return { content: `Seleccionado «${result.value.valor}» en ${selector}.` };
+      },
+    },
+
+    {
+      name: 'browser_scroll',
+      description: 'Desplaza la página o un elemento concreto: dy positivo baja, negativo sube.',
+      parameters: {
+        type: 'object',
+        properties: {
+          dy: { type: 'number', description: 'Píxeles a desplazar. Por defecto 600.' },
+          selector: { type: 'string', description: 'Selector CSS del contenedor. Opcional.' },
+        },
+        required: [],
+      },
+      async execute(args) {
+        const missing = requirePage();
+        if (missing) return { content: missing, isError: true };
+
+        const dy = Number(args.dy ?? 600);
+        const selector = String(args.selector ?? '');
+        const result = await evalInBrowser(`(() => {
+          const dy = ${Number.isFinite(dy) ? dy : 600};
+          ${selector.length > 0
+            ? `const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return { found: false }; el.scrollBy(0, dy); return { found: true, y: el.scrollTop };`
+            : 'window.scrollBy(0, dy); return { found: true, y: window.scrollY };'}
+        })()`);
+
+        if (!result.ok) return { content: result.error, isError: true };
+        if (!result.value?.found) {
+          return { content: `No se encontró ningún contenedor con ${selector}.`, isError: true };
+        }
+        return { content: `Desplazado a y=${result.value.y}.` };
+      },
+    },
+
+    {
+      name: 'browser_hover',
+      description: 'Mueve el ratón real sobre un elemento (para abrir menús o tooltips).',
+      parameters: {
+        type: 'object',
+        properties: { selector: { type: 'string', description: 'Selector CSS del elemento.' } },
+        required: ['selector'],
+      },
+      async execute(args) {
+        const missing = requirePage();
+        if (missing) return { content: missing, isError: true };
+
+        const selector = String(args.selector ?? '');
+        const result = await evalInBrowser(`(() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return { found: false };
+          const r = el.getBoundingClientRect();
+          return { found: true, x: r.x + r.width / 2, y: r.y + r.height / 2 };
+        })()`);
+
+        if (!result.ok) return { content: result.error, isError: true };
+        if (!result.value?.found) {
+          return { content: `No se encontró ningún elemento con ${selector}.`, isError: true };
+        }
+        builtInBrowser.webContents.sendInputEvent({
+          type: 'mouseMove',
+          x: Math.round(result.value.x),
+          y: Math.round(result.value.y),
+        });
+        return { content: `Ratón sobre ${selector}.` };
+      },
+    },
+
+    {
+      name: 'browser_wait',
+      description:
+        'Espera hasta que aparezca un selector, un texto o una URL. Se para en cuanto se cumple.',
+      parameters: {
+        type: 'object',
+        properties: {
+          selector: { type: 'string', description: 'Selector CSS que debe existir.' },
+          text: { type: 'string', description: 'Texto que debe aparecer en la página.' },
+          url: { type: 'string', description: 'Fragmento que debe contener la URL.' },
+          timeoutMs: { type: 'number', description: 'Tiempo máximo en ms. Por defecto 10000.' },
+        },
+        required: [],
+      },
+      async execute(args) {
+        const missing = requirePage();
+        if (missing) return { content: missing, isError: true };
+
+        const selector = String(args.selector ?? '');
+        const texto = String(args.text ?? '');
+        const url = String(args.url ?? '');
+        const condiciones = [];
+        if (selector.length > 0) {
+          condiciones.push(`document.querySelector(${JSON.stringify(selector)}) !== null`);
+        }
+        if (texto.length > 0) {
+          condiciones.push(`(document.body && document.body.innerText || '').includes(${JSON.stringify(texto)})`);
+        }
+        if (url.length > 0) {
+          condiciones.push(`location.href.includes(${JSON.stringify(url)})`);
+        }
+        if (condiciones.length === 0) {
+          return { content: 'Indica al menos selector, text o url.', isError: true };
+        }
+
+        const limite = Math.min(30_000, Math.max(100, Number(args.timeoutMs ?? 10_000)));
+        const inicio = Date.now();
+        const script = `(() => Boolean(${condiciones.join(' && ')}))()`;
+
+        while (Date.now() - inicio < limite) {
+          const result = await evalInBrowser(script);
+          if (result.ok && result.value === true) {
+            return { content: `Condición cumplida en ${Math.round((Date.now() - inicio) / 1000)}s.` };
+          }
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+
+        return { content: `La espera se agotó tras ${limite} ms.`, isError: true };
+      },
+    },
+
+    {
+      name: 'browser_batch',
+      description:
+        'Ejecuta una secuencia de acciones del navegador (open, navigate, click, fill, type, ' +
+        'press, hover, scroll, select, wait, read) y se detiene en el primer error.',
+      parameters: {
+        type: 'object',
+        properties: {
+          steps: {
+            type: 'array',
+            description: 'Pasos en orden. Cada uno con action y sus parámetros.',
+            items: {
+              type: 'object',
+              properties: {
+                action: {
+                  type: 'string',
+                  enum: ['open', 'navigate', 'click', 'fill', 'type', 'press', 'hover', 'scroll', 'select', 'wait', 'read'],
+                },
+                url: { type: 'string' },
+                selector: { type: 'string' },
+                text: { type: 'string' },
+                key: { type: 'string' },
+                value: { type: 'string' },
+                dy: { type: 'number' },
+                timeoutMs: { type: 'number' },
+              },
+              required: ['action'],
+            },
+          },
+        },
+        required: ['steps'],
+      },
+      async execute(args) {
+        const missing = requirePage();
+        if (missing) return { content: missing, isError: true };
+
+        const pasos = Array.isArray(args.steps) ? args.steps.slice(0, 30) : [];
+        if (pasos.length === 0) return { content: 'Faltan pasos.', isError: true };
+
+        const resultados = [];
+        for (let i = 0; i < pasos.length; i += 1) {
+          const paso = pasos[i];
+          const accion = String(paso?.action ?? '');
+          const herramienta = tools.find((t) => t.name === `browser_${accion}`);
+          if (!herramienta) {
+            resultados.push(`Paso ${i + 1} (${accion}): acción desconocida.`);
+            return { content: resultados.join('\n'), isError: true };
+          }
+
+          const resultado = await herramienta.execute(paso);
+          resultados.push(`Paso ${i + 1} (${accion}): ${resultado.content}`);
+          if (resultado.isError) {
+            return { content: resultados.join('\n'), isError: true };
+          }
+        }
+        return { content: resultados.join('\n') };
+      },
+    },
   ];
+
+  return tools;
 }
 
 /**

@@ -198,3 +198,44 @@ describe('registro de ejecución', () => {
     }
   });
 });
+
+describe('bandeja de mensajes', () => {
+  test('entrega a un id y se vacía al recogerlo', () => {
+    const { sub, limpiar } = montar();
+    try {
+      const id = sub.registrar({ nombre: 'a', rol: 'Researcher', controller: new AbortController() });
+
+      assert.equal(sub.enviarMensaje(id, 'cambia el enfoque'), 1);
+      const recibido = sub.recogerMensajes(id);
+      assert.match(recibido, /cambia el enfoque/);
+      assert.equal(sub.recogerMensajes(id), undefined, 'la bandeja queda vacía');
+    } finally {
+      limpiar();
+    }
+  });
+
+  test('@children difunde a todos los vivos', () => {
+    const { sub, limpiar } = montar();
+    try {
+      const a = sub.registrar({ nombre: 'a', rol: '', controller: new AbortController() });
+      const b = sub.registrar({ nombre: 'b', rol: '', controller: new AbortController() });
+
+      assert.equal(sub.enviarMensaje('@children', 'aviso general'), 2);
+      assert.match(sub.recogerMensajes(a), /aviso general/);
+      assert.match(sub.recogerMensajes(b), /aviso general/);
+    } finally {
+      limpiar();
+    }
+  });
+
+  test('un destinatario inexistente o un mensaje vacío no entrega nada', () => {
+    const { sub, limpiar } = montar();
+    try {
+      sub.registrar({ nombre: 'a', rol: '', controller: new AbortController() });
+      assert.equal(sub.enviarMensaje('sub-999', 'hola'), 0);
+      assert.equal(sub.enviarMensaje('@children', '   '), 0);
+    } finally {
+      limpiar();
+    }
+  });
+});

@@ -259,8 +259,18 @@ Herramientas de código:
 Navegador:
 - browser_open abre una URL en el navegador integrado y espera a que cargue.
 - browser_read devuelve el texto visible y el título de la página.
-- browser_click hace clic en un selector CSS; browser_eval ejecuta JavaScript.
-- Respeta las reglas de red: los dominios denegados no se abren.`;
+- browser_snapshot lista los elementos interactivos con su selector CSS, texto y posición.
+- browser_click hace clic en un selector; browser_fill rellena un campo y browser_type escribe
+  con entrada real (para editores enriquecidos). browser_press pulsa teclas reales.
+- browser_select elige una opción de un <select>; browser_scroll y browser_hover mueven la página
+  o el ratón; browser_wait espera a que aparezca un selector, un texto o una URL.
+- browser_batch ejecuta varios de esos pasos en orden y se detiene en el primer error.
+- browser_eval ejecuta JavaScript arbitrario (sujeto a la política de Ajustes).
+- Respeta las reglas de red: los dominios denegados no se abren.
+
+Subagentes:
+- invoke_subagent lanza uno o varios en paralelo; send_message les corrige el rumbo mientras
+  trabajan (@children difunde a todos); manage_subagent los lista o los cancela.`;
 
 /**
  * Instrucción extra según la política de revisión de planes.
@@ -440,17 +450,35 @@ function guardTool(tool, preset, prefs, getWindow) {
 
   if (explicit === 'allow') return tool;
 
-  const writes = tool.name === 'write_file' || tool.name === 'edit_file' || tool.name === 'multi_replace';
-  const isCommand = tool.name === 'run_command';
-  const presetAsks =
-    preset === 'Request Review' || (preset === 'Default' && (writes || isCommand));
-  const needsAsk = explicit === 'ask' || (explicit === 'inherit' && presetAsks);
-
-  if (!needsAsk && !writes) return tool;
+  /*
+   * `edit_notebook` solo escribe en add/update/delete/create: list y get son
+   * lecturas. Antes la herramienta entera se colaba sin permiso ni checkpoint.
+   * `run_workflow` ejecuta código y se trata como comando, igual que run_command.
+   */
+  const esMutacion = (args) => {
+    if (tool.name === 'edit_notebook') {
+      return ['add', 'update', 'delete', 'create'].includes(
+        String(args?.action ?? '').toLowerCase(),
+      );
+    }
+    return (
+      tool.name === 'write_file' ||
+      tool.name === 'edit_file' ||
+      tool.name === 'multi_replace'
+    );
+  };
+  const esComando = () => tool.name === 'run_command' || tool.name === 'run_workflow';
 
   return {
     ...tool,
     async execute(args, ctx) {
+      const writes = esMutacion(args);
+      const presetAsks =
+        preset === 'Request Review' || (preset === 'Default' && (writes || esComando()));
+      const needsAsk = explicit === 'ask' || (explicit === 'inherit' && presetAsks);
+
+      if (!needsAsk && !writes) return tool.execute(args, ctx);
+
       // Las escrituras pasan por una tarjeta de diff, no por un diálogo nativo.
       if (writes) {
         if (!needsAsk) {
@@ -458,6 +486,21 @@ function guardTool(tool, preset, prefs, getWindow) {
           await registrarSnapshotDeEscritura(args, ctx);
           return tool.execute(args, ctx);
         }
+
+        // El diff JSON de un cuaderno no aporta; se pide permiso y se guarda snapshot.
+        if (tool.name === 'edit_notebook') {
+          await registrarSnapshotDeEscritura(args, ctx);
+          const aprobado = await askPermission(
+            getWindow(),
+            'El agente quiere editar un cuaderno de Jupyter',
+            JSON.stringify(args, null, 2).slice(0, 400),
+          );
+          if (!aprobado) {
+            return { content: 'El usuario denegó la edición del cuaderno.', isError: true };
+          }
+          return tool.execute(args, ctx);
+        }
+
         return executeWriteWithDiff(tool, args, ctx, getWindow(), needsAsk);
       }
 
@@ -522,6 +565,18 @@ async function executeWriteWithDiff(tool, args, ctx, win, needsAsk) {
       return { content: `oldText no aparece en ${relative}.`, isError: true };
     }
     proposed = before.replace(oldText, newText);
+  } else if (tool.name === 'multi_replace') {
+    /*
+     * Antes se usaba `args.content`, que multi_replace no tiene: la tarjeta
+     * mostraba el fichero entero como borrado. Se calcula el resultado real con
+     * las mismas reglas que ejecutará la herramienta.
+     */
+    const { aplicarReemplazos } = require('./multi-replace.cjs');
+    const resultado = aplicarReemplazos(before, args.edits);
+    if (resultado.error) {
+      return { content: `${resultado.error} No se cambió nada.`, isError: true };
+    }
+    proposed = resultado.texto;
   } else {
     proposed = String(args.content ?? '');
   }
@@ -2684,49 +2739,10 @@ ipcMain.handle('google:disconnect', async () => {
   }
 });
 
-/** Herramientas disponibles con su permiso efectivo. */
-ipcMain.handle('tools:list', async () => {
-  const { fileSystemTools } = await getEngine();
-  const all = [
-    ...fileSystemTools,
-    makeSearchFilesTool(() => state.cwd),
-    makeCodeSearchTool(),
-    makeEditFileTool(() => state.cwd),
-    makeMultiReplaceTool(() => state.cwd),
-    makeEditNotebookTool(() => state.cwd),
-    makeGenerateImageTool(() => state.cwd),
-    makeRunCommandTool(() => state.cwd),
-    makeCommandStatusTool(),
-    makeManageTaskTool(),
-    makeSearchWebTool(() => state.prefs),
-    makeViewCodeItemTool(() => state.cwd),
-    makeEditNotebookTool(() => state.cwd),
-    makeMemoryTool(getMemoria(), () => state.cwd),
-    makeSkillTool(() => descubrirSkills(state.cwd)),
-    makeRunWorkflowTool(() => state.cwd, (a) => makeRunCommandTool(() => state.cwd).execute(a)),
-    ...makeBrowserTools(() => state.prefs, (message, detail) =>
-      askPermission(mainWindow, message, detail),
-    ),
-    makeFetchUrlTool(() => state.prefs),
-    makeOpenUrlTool(() => state.prefs),
-  ];
-
-  // Las dos que tienen flujo propio también aparecen en Ajustes.
-  all.push(
-    {
-      name: 'present_plan',
-      description: 'Presenta un plan de pasos y espera la aprobación del usuario.',
-    },
-    {
-      name: 'ask_user_question',
-      description: 'Hace preguntas al usuario con opciones y espera su respuesta.',
-    },
-    {
-      name: 'browser_task',
-      description: 'Delega una tarea de navegación a un subagente con su propio contexto.',
-    },
-    {
-      name: 'send_message',
+/** Herramienta: enviar un mensaje a un subagente vivo. */
+function makeSendMessageTool() {
+  return {
+    name: 'send_message',
     description:
       'Envía un mensaje a un subagente que está trabajando, para corregirle el rumbo sin ' +
       'matarlo ni relanzarlo. Llega a su conversación entre pasos. Usa `@children` para ' +
@@ -2761,7 +2777,50 @@ ipcMain.handle('tools:list', async () => {
 
       return { content: `Mensaje entregado a ${entregados} subagente(s).` };
     },
-  },
+  };
+}
+
+/** Herramientas disponibles con su permiso efectivo. */
+ipcMain.handle('tools:list', async () => {
+  const { fileSystemTools } = await getEngine();
+  const all = [
+    ...fileSystemTools,
+    makeSearchFilesTool(() => state.cwd),
+    makeCodeSearchTool(),
+    makeEditFileTool(() => state.cwd),
+    makeMultiReplaceTool(() => state.cwd),
+    makeEditNotebookTool(() => state.cwd),
+    makeGenerateImageTool(() => state.cwd),
+    makeRunCommandTool(() => state.cwd),
+    makeCommandStatusTool(),
+    makeManageTaskTool(),
+    makeSearchWebTool(() => state.prefs),
+    makeViewCodeItemTool(() => state.cwd),
+    makeMemoryTool(getMemoria(), () => state.cwd),
+    makeSkillTool(() => descubrirSkills(state.cwd)),
+    makeRunWorkflowTool(() => state.cwd, (a) => makeRunCommandTool(() => state.cwd).execute(a)),
+    ...makeBrowserTools(() => state.prefs, (message, detail) =>
+      askPermission(mainWindow, message, detail),
+    ),
+    makeFetchUrlTool(() => state.prefs),
+    makeOpenUrlTool(() => state.prefs),
+  ];
+
+  // Las dos que tienen flujo propio también aparecen en Ajustes.
+  all.push(
+    {
+      name: 'present_plan',
+      description: 'Presenta un plan de pasos y espera la aprobación del usuario.',
+    },
+    {
+      name: 'ask_user_question',
+      description: 'Hace preguntas al usuario con opciones y espera su respuesta.',
+    },
+    {
+      name: 'browser_task',
+      description: 'Delega una tarea de navegación a un subagente con su propio contexto.',
+    },
+    makeSendMessageTool(),
   {
     name: 'invoke_subagent',
       description: 'Lanza varios subagentes en paralelo, cada uno con su propio contexto.',
@@ -4545,7 +4604,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
     },
   };
 
-  const guardedTools = [planTool, askUserTool, enterPlanTool, invokeSubagentTool, defineSubagentTool, manageSubagentTool, notifyUserTool, runTestsTool, browserSubagent, ...baseTools].map((tool) =>
+  const guardedTools = [planTool, askUserTool, enterPlanTool, invokeSubagentTool, defineSubagentTool, manageSubagentTool, makeSendMessageTool(), notifyUserTool, runTestsTool, browserSubagent, ...baseTools].map((tool) =>
     conHooks(conMonitorDeSeguridad(guardTool(tool, preset, prefs, () => mainWindow), {
       modo: modoMonitor,
       ...(clasificarConModelo ? { clasificar: clasificarConModelo } : {}),
