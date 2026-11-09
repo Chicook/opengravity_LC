@@ -69,6 +69,17 @@ async function definir(datos) {
     systemPrompt: String(datos?.systemPrompt ?? '').slice(0, MAX_PROMPT),
     allowWrites: datos?.allowWrites === true,
     allowMcp: datos?.allowMcp === true,
+    /*
+     * Grant opcional por herramienta. Solo puede quitar: el subagente nunca
+     * recibe escritura, comandos o MCP que su nivel de permiso no incluya.
+     */
+    tools: Array.isArray(datos?.tools)
+      ? [...new Set(
+          datos.tools
+            .map((t) => String(t ?? '').trim())
+            .filter((t) => t.length > 0 && t.length <= 80),
+        )].slice(0, 40)
+      : [],
     actualizadoEn: new Date().toISOString(),
   };
 
@@ -217,6 +228,18 @@ function matar(ids) {
   return muertos;
 }
 
+/**
+ * Aplica un grant de herramientas a un catálogo ya permitido.
+ *
+ * Un grant nunca amplía permisos: solo puede quitar herramientas de las que el
+ * subagente ya tendría por su nivel (lectura, allowWrites o allowMcp).
+ */
+function filtrarPorGrant(herramientas, permitidas) {
+  if (!Array.isArray(permitidas) || permitidas.length === 0) return herramientas;
+  const permitido = new Set(permitidas);
+  return herramientas.filter((tool) => permitido.has(tool.name));
+}
+
 module.exports = {
   configurar,
   definir,
@@ -230,4 +253,5 @@ module.exports = {
   liberar,
   listarEnEjecucion,
   matar,
+  filtrarPorGrant,
 };

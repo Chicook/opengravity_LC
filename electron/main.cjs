@@ -3874,6 +3874,14 @@ ipcMain.handle('chat:send', async (event, payload) => {
             'Darle acceso a las herramientas de los servidores MCP conectados. ' +
             'Por defecto no las tiene.',
         },
+        tools: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Opcional. Lista de nombres de herramientas que puede usar. Solo puede quitar: ' +
+            'no da escritura ni MCP si allowWrites/allowMcp están apagados. Vacío = todas ' +
+            'las de su nivel de permiso.',
+        },
       },
       required: ['name', 'role', 'description'],
     },
@@ -4299,6 +4307,8 @@ ipcMain.handle('chat:send', async (event, payload) => {
 
         let disponibles = permiteEscritura ? [...deLectura, ...deEscritura] : deLectura;
         if (permiteMcp) disponibles = [...disponibles, ...mcpToolDefs];
+        // El grant solo puede quitar herramientas de las ya permitidas por nivel.
+        disponibles = subagentes.filtrarPorGrant(disponibles, definicion?.tools);
         const herramientas = new ToolRegistry().registerAll(
           disponibles.map((tool) =>
             // En un subagente el monitor bloquea sin preguntar: no debe abrir diálogos.

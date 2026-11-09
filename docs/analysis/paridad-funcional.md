@@ -119,5 +119,6 @@ Auditoría del orquestador y las herramientas, verificada con pruebas y en vivo:
   fichero entero como borrado).
 - Fuera a propósito: `run_extension_code` (API propietaria; se cubre con
   `run_workflow` y MCP) y `search_marketplace` (el marketplace está excluido).
-- Simplificación consciente: subagentes de un solo nivel con permisos
-  `allowWrites`/`allowMcp`, sin delegación recursiva ni grants por herramienta.
+- Subagentes de un solo nivel, sin delegación recursiva. Los grants por
+  herramienta ya están: `define_subagent.tools` solo puede quitar herramientas
+  del nivel permitido; nunca da escritura ni MCP por sí solo.

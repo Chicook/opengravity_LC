@@ -239,3 +239,35 @@ describe('bandeja de mensajes', () => {
     }
   });
 });
+
+describe('grant de herramientas', () => {
+  test('se guarda sin duplicados y sin vacíos', async () => {
+    const { sub, limpiar } = montar();
+    try {
+      const entrada = await sub.definir({
+        name: 'lector',
+        role: 'Reader',
+        description: 'solo lee',
+        tools: ['read_file', ' read_file ', 'search_files', ''],
+      });
+      assert.deepEqual(entrada.tools, ['read_file', 'search_files']);
+    } finally {
+      limpiar();
+    }
+  });
+
+  test('vacío deja todas; una lista filtra; no puede añadir herramientas', () => {
+    const { sub, limpiar } = montar();
+    try {
+      const catalogo = [{ name: 'read_file' }, { name: 'run_command' }, { name: 'write_file' }];
+      assert.equal(sub.filtrarPorGrant(catalogo, []).length, 3);
+      assert.deepEqual(
+        sub.filtrarPorGrant(catalogo, ['read_file', 'write_file']).map((t) => t.name),
+        ['read_file', 'write_file'],
+      );
+      assert.equal(sub.filtrarPorGrant(catalogo, ['mcp_inexistente']).length, 0);
+    } finally {
+      limpiar();
+    }
+  });
+});
