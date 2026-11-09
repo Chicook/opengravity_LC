@@ -909,11 +909,24 @@ async function openAutomations() {
   const main = document.querySelector('.content__main');
   if (!vista || !main) return;
 
+  /*
+   * Si ya está abierta, no se vuelve a ocultar el hilo: la segunda pasada
+   * guardaba como estado original `hidden` (ya oculto) y al cerrar dejaba el
+   * área de contenido en blanco, sin hilo ni composer.
+   */
+  if (!vista.hidden) {
+    await renderAutomations();
+    return;
+  }
+
   // La vista sustituye al hilo y al composer mientras está abierta.
   vista.hidden = false;
   for (const hijo of main.children) {
     if (hijo === vista) continue;
-    hijo.dataset.ocultoPorAutomations = hijo.hidden ? '1' : '0';
+    // Solo se guarda el estado original una vez.
+    if (hijo.dataset.ocultoPorAutomations === undefined) {
+      hijo.dataset.ocultoPorAutomations = hijo.hidden ? '1' : '0';
+    }
     hijo.hidden = true;
   }
 
