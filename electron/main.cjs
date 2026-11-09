@@ -3874,6 +3874,12 @@ ipcMain.handle('chat:send', async (event, payload) => {
             'Darle acceso a las herramientas de los servidores MCP conectados. ' +
             'Por defecto no las tiene.',
         },
+        allowSubagents: {
+          type: 'boolean',
+          description:
+            'Permitirle lanzar subagentes anidados de SOLO LECTURA (un nivel, con el ' +
+            'presupuesto del turno). Por defecto no puede delegar.',
+        },
         tools: {
           type: 'array',
           items: { type: 'string' },
@@ -3929,15 +3935,19 @@ ipcMain.handle('chat:send', async (event, payload) => {
 
       if (accion === 'list' || accion === 'list_peers') {
         const vivos = subagentes.listarEnEjecucion();
-        if (vivos.length === 0) {
+        // El agente principal no tiene padre: sus «hermanos» son los de primer nivel.
+        const lista = accion === 'list_peers' ? vivos.filter((s) => !s.padre) : vivos;
+        if (lista.length === 0) {
           return { content: 'No hay subagentes en ejecución.' };
         }
-        const lineas = vivos.map(
-          (s) => `- ${s.id} · ${s.nombre} (${s.rol}) · ${s.estado} · ${s.segundos}s`,
+        const lineas = lista.map(
+          (s) =>
+            `- ${s.id} · ${s.nombre} (${s.rol}) · ${s.estado} · ${s.segundos}s` +
+            (s.padre ? ` · hijo de ${s.padre}` : ''),
         );
         return {
           content:
-            `${vivos.length} subagente(s)${accion === 'list_peers' ? ' hermanos' : ''}:\n` +
+            `${lista.length} subagente(s)${accion === 'list_peers' ? ' hermanos' : ''}:\n` +
             lineas.join('\n'),
         };
       }
@@ -4210,6 +4220,12 @@ ipcMain.handle('chat:send', async (event, payload) => {
    * Por defecto solo llevan herramientas de lectura. Escribir en el proyecto desde
    * un subagente es algo que se pide explícitamente, no lo que pasa por defecto.
    */
+  /** Presupuesto compartido por el turno, incluidos los subagentes anidados. */
+  const presupuestoSubagentes = {
+    usados: 0,
+    max: Math.max(1, Number(prefs.maxSubagentsPerTurn ?? 8)),
+  };
+
   const invokeSubagentTool = {
     name: 'invoke_subagent',
     description:
@@ -4272,6 +4288,19 @@ ipcMain.handle('chat:send', async (event, payload) => {
         return { content: 'No hay subagentes que lanzar.', isError: true };
       }
 
+      const padreSolicitado = typeof args?.__padre === 'string' ? args.__padre : null;
+      const profundidad = Number(args?.__profundidad ?? 0);
+      const soloLectura = args?.__soloLectura === true;
+      if (presupuestoSubagentes.usados + pedidos.length > presupuestoSubagentes.max) {
+        return {
+          content:
+            `El turno ya lanzó ${presupuestoSubagentes.usados} subagente(s) y el máximo es ` +
+            `${presupuestoSubagentes.max}. Resume lo que tengas en vez de delegar más.`,
+          isError: true,
+        };
+      }
+      presupuestoSubagentes.usados += pedidos.length;
+
       // Herramientas de solo lectura, envueltas con el guard de permisos.
       const deLectura = baseTools.filter((tool) => HERRAMIENTAS_DE_LECTURA.has(tool.name));
       const deEscritura = baseTools.filter((tool) => !HERRAMIENTAS_DE_LECTURA.has(tool.name));
@@ -4297,27 +4326,24 @@ ipcMain.handle('chat:send', async (event, payload) => {
         const nombre = String(definicion?.name ?? sub?.name ?? `subagente-${indice + 1}`);
         const rol = String(definicion?.role ?? sub?.role ?? 'investigador');
         const tarea = String(sub?.prompt ?? definicion?.description ?? '').trim();
-        const permiteEscritura = sub?.allowWrites === true || definicion?.allowWrites === true;
+        const permiteEscritura = !soloLectura && (sub?.allowWrites === true || definicion?.allowWrites === true);
 
         if (tarea.length === 0) {
           return { nombre, rol, resumen: '', error: 'sin tarea' };
         }
 
-        const permiteMcp = sub?.allowMcp === true || definicion?.allowMcp === true;
+        const permiteMcp = !soloLectura && (sub?.allowMcp === true || definicion?.allowMcp === true);
 
         let disponibles = permiteEscritura ? [...deLectura, ...deEscritura] : deLectura;
         if (permiteMcp) disponibles = [...disponibles, ...mcpToolDefs];
         // El grant solo puede quitar herramientas de las ya permitidas por nivel.
         disponibles = subagentes.filtrarPorGrant(disponibles, definicion?.tools);
-        const herramientas = new ToolRegistry().registerAll(
-          disponibles.map((tool) =>
-            // En un subagente el monitor bloquea sin preguntar: no debe abrir diálogos.
-            conMonitorDeSeguridad(guardTool(tool, preset, prefs, () => mainWindow), {
-              modo: modoMonitor === 'off' ? 'off' : 'block',
-              confirmar: async () => false,
-            }),
-          ),
-        );
+
+        const grant = definicion?.tools ?? [];
+        const permiteSubagentes =
+          !soloLectura &&
+          (sub?.allowSubagents === true || definicion?.allowSubagents === true) &&
+          (grant.length === 0 || grant.includes('invoke_subagent'));
 
         /*
          * Aislamiento de workspace.
@@ -4344,7 +4370,57 @@ ipcMain.handle('chat:send', async (event, payload) => {
         }
 
         const controlador = new AbortController();
-        const identificador = subagentes.registrar({ nombre, rol, controller: controlador });
+        const identificador = subagentes.registrar({
+          nombre,
+          rol,
+          controller: controlador,
+          padre: padreSolicitado,
+          profundidad,
+        });
+
+        /*
+         * Delegación anidada: un solo nivel, solo en el workspace compartido y
+         * con hijos de solo lectura. Los nietos no reciben invoke_subagent, así
+         * que la profundidad está acotada por construcción; el presupuesto se
+         * comparte con el turno.
+         */
+        if (permiteSubagentes && !worktree) {
+          disponibles.push({
+            name: 'invoke_subagent',
+            description:
+              'Lanza subagentes de SOLO LECTURA desde este subagente. No pueden escribir, ' +
+              'usar MCP ni delegar a su vez; el presupuesto del turno es compartido.',
+            parameters: invokeSubagentTool.parameters,
+            async execute(nietos) {
+              const lista = (Array.isArray(nietos?.subagents) ? nietos.subagents : []).map(
+                (nieto) => ({
+                  ...nieto,
+                  definition: undefined,
+                  allowWrites: false,
+                  allowMcp: false,
+                  allowSubagents: false,
+                  workspace: 'inherit',
+                }),
+              );
+              return invokeSubagentTool.execute({
+                subagents: lista,
+                __padre: identificador,
+                __profundidad: profundidad + 1,
+                __soloLectura: true,
+              });
+            },
+          });
+        }
+
+        const herramientas = new ToolRegistry().registerAll(
+          disponibles.map((tool) =>
+            // En un subagente el monitor bloquea sin preguntar: no debe abrir diálogos.
+            conMonitorDeSeguridad(guardTool(tool, preset, prefs, () => mainWindow), {
+              modo: modoMonitor === 'off' ? 'off' : 'block',
+              confirmar: async () => false,
+            }),
+          ),
+        );
         const emitir = (payload) => {
           if (payload.type === 'text' || payload.type === 'reasoning') return;
           send({
@@ -4374,7 +4450,10 @@ ipcMain.handle('chat:send', async (event, payload) => {
                     'cambiarlo, dilo en el resumen y no lo intentes.') +
                 (permiteMcp || mcpToolDefs.length === 0
                   ? ''
-                  : ' Tampoco tienes acceso a las herramientas de los servidores MCP.'),
+                  : ' Tampoco tienes acceso a las herramientas de los servidores MCP.') +
+                (permiteSubagentes && !worktree
+                  ? ' Puedes delegar en subagentes de solo lectura con invoke_subagent.'
+                  : ''),
               maxSteps: Number(prefs.subagentMaxSteps ?? 10),
               /*
                * Un subagente que agota los pasos sin concluir deja al padre sin

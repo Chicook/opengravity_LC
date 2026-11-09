@@ -122,6 +122,11 @@ Auditoría del orquestador y las herramientas, verificada con pruebas y en vivo:
 - Subagentes de un solo nivel, sin delegación recursiva. Los grants por
   herramienta ya están: `define_subagent.tools` solo puede quitar herramientas
   del nivel permitido; nunca da escritura ni MCP por sí solo.
+- **Delegación anidada acotada**: `define_subagent.allowSubagents` permite que un
+  subagente lance hijos de SOLO LECTURA. Hay un nivel (los nietos no reciben
+  `invoke_subagent`), no se permite dentro de un worktree, y el presupuesto es de
+  8 subagentes por turno, compartido entre el padre y los anidados. `list_peers`
+  filtra los de primer nivel y `manage_subagent list` muestra el padre.
 - **Sandbox de workspace, fase 1** (opt-in en Ajustes): las herramientas de
   fichero no pueden resolver rutas fuera del proyecto, `run_command` fija su cwd
   dentro del workspace y arranca con las variables de entorno que parecen

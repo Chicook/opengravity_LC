@@ -271,3 +271,40 @@ describe('grant de herramientas', () => {
     }
   });
 });
+
+describe('jerarquía y delegación', () => {
+  test('guarda allowSubagents y lo devuelve al buscar', async () => {
+    const { sub, limpiar } = montar();
+    try {
+      const entrada = await sub.definir({
+        name: 'jefe',
+        role: 'Lead',
+        description: 'coordina',
+        allowSubagents: true,
+      });
+      assert.equal(entrada.allowSubagents, true);
+      assert.equal((await sub.buscar('jefe')).allowSubagents, true);
+    } finally {
+      limpiar();
+    }
+  });
+
+  test('el registro guarda padre y profundidad', () => {
+    const { sub, limpiar } = montar();
+    try {
+      const id = sub.registrar({
+        nombre: 'hijo',
+        rol: '',
+        controller: new AbortController(),
+        padre: 'sub-1',
+        profundidad: 1,
+      });
+      const [vivo] = sub.listarEnEjecucion();
+      assert.equal(vivo.id, id);
+      assert.equal(vivo.padre, 'sub-1');
+      assert.equal(vivo.profundidad, 1);
+    } finally {
+      limpiar();
+    }
+  });
+});

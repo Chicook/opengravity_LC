@@ -47,7 +47,8 @@ Deja dos ficheros en `release/`:
 - **22 proveedores** de modelo con autodetección de modelos y claves pegables
   desde Ajustes (ver `docs/proveedores.md`)
 - Catálogo de herramientas abierto: lectura/escritura de código y cuadernos,
-  búsqueda, terminal en segundo plano, MCP, memoria, skills, subagentes, planes,
+  búsqueda, terminal en segundo plano, MCP, memoria, skills, subagentes (en
+  paralelo y anidados de solo lectura con presupuesto), planes,
   generación de imágenes y **14 acciones de navegador** (`open`, `read`,
   `snapshot`, `click`, `fill`, `type`, `press`, `select`, `scroll`, `hover`,
   `wait`, `batch`, `navigate`, `eval`) sobre el Chromium integrado

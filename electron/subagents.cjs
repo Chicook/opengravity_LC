@@ -69,6 +69,7 @@ async function definir(datos) {
     systemPrompt: String(datos?.systemPrompt ?? '').slice(0, MAX_PROMPT),
     allowWrites: datos?.allowWrites === true,
     allowMcp: datos?.allowMcp === true,
+    allowSubagents: datos?.allowSubagents === true,
     /*
      * Grant opcional por herramienta. Solo puede quitar: el subagente nunca
      * recibe escritura, comandos o MCP que su nivel de permiso no incluya.
@@ -126,7 +127,7 @@ async function borrarDefinicion(nombre) {
  *
  * El `controller` permite matarlo desde `manage_subagent`.
  */
-function registrar({ nombre, rol, controller, padre }) {
+function registrar({ nombre, rol, controller, padre, profundidad }) {
   contador += 1;
   const id = `sub-${contador}`;
   enEjecucion.set(id, {
@@ -134,6 +135,7 @@ function registrar({ nombre, rol, controller, padre }) {
     nombre: String(nombre ?? id),
     rol: String(rol ?? ''),
     padre: padre ?? null,
+    profundidad: Number.isFinite(Number(profundidad)) ? Number(profundidad) : 0,
     inicio: Date.now(),
     estado: 'corriendo',
     controller,
@@ -204,6 +206,8 @@ function listarEnEjecucion() {
     nombre: entrada.nombre,
     rol: entrada.rol,
     estado: entrada.estado,
+    padre: entrada.padre,
+    profundidad: entrada.profundidad,
     segundos: Math.round(((entrada.fin ?? Date.now()) - entrada.inicio) / 1000),
   }));
 }
