@@ -5419,6 +5419,18 @@ strong .md-code,
 }
 
 /*
+ * En Automations el panel Overview no se muestra.
+ *
+ * Es una tarjeta flotante fuera del content__main, así que la vista de
+ * Automations (que oculta el hilo y el composer) no la ocultaba: tapaba las
+ * acciones «Create with Prompt» y «New». Al volver al chat reaparece con el
+ * mismo estado que tenía.
+ */
+.content:has(#automations-view:not([hidden])) #overview-host {
+  display: none;
+}
+
+/*
  * Medido: su host se posiciona contra un contenedor que empieza DEBAJO de la
  * barra de título del panel (y=75), así que queda en y=83. El nuestro se
  * posiciona contra uno que incluye la barra (y=35) y quedaba en y=43.
