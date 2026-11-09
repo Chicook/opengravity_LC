@@ -1,0 +1,7354 @@
+/* ==========================================================================
+   Fuentes — los mismos ficheros que carga Antigravity
+   ==========================================================================
+   Medido: su hoja es una petición a Google Fonts
+   (css2?family=Google+Sans:ital,wght@0,400..700;1,400..700
+    &family=Google+Sans+Code:ital,wght@0,300..800;1,300..800
+    &family=Google+Sans+Flex:ROND,opsz,slnt,wdth,wght@...
+    &family=Inter:ital,opsz,wght@...&display=swap)
+   con 100 caras, de las que 7 son latinas. Esas 7 van servidas desde el propio
+   proyecto para que la app funcione sin red y sin depender de fuentes instaladas.
+   ========================================================================== */
+
+@font-face {
+  font-family: 'Google Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/assets/fonts/GoogleSans-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Google Sans';
+  font-style: italic;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/assets/fonts/GoogleSans-Italic.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Google Sans Code';
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url('/assets/fonts/GoogleSansCode-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Google Sans Code';
+  font-style: italic;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url('/assets/fonts/GoogleSansCode-Italic.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Google Sans Flex';
+  font-style: oblique 0deg 10deg;
+  font-weight: 100 1000;
+  font-stretch: 92% 100%;
+  font-display: swap;
+  src: url('/assets/fonts/GoogleSansFlex.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/assets/fonts/Inter-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/assets/fonts/Inter-Italic.woff2') format('woff2');
+}
+
+/* ==========================================================================
+   Tokens de diseño — extraídos de la UI analizada (tema oscuro)
+   ========================================================================== */
+
+/* ==========================================================================
+   Contraste fuerte — medido en su UI con «Contrast: Strong»
+   ========================================================================== */
+
+/* ==========================================================================
+   Paleta de color — 97 tokens copiados literalmente de su DOM
+   (getComputedStyle sobre :root, tema oscuro). No se inventa ninguno.
+   ========================================================================== */
+:root {
+  /*
+   * Su fórmula, copiada de `.agy-layout-vars` en docs/antigravity/estilos.css:
+   * el panel lateral es la mitad del espacio que queda tras la barra lateral,
+   * no un ancho fijo. A 1437 px da 590, que es lo que yo había medido.
+   */
+  --aux-width: calc((100vw - var(--sidebar-width)) * 0.5);
+  /* amber */
+  --color-amber-300: oklch(87.9% 0.169 91.605);
+  --color-amber-400: oklch(82.8% 0.189 84.429);
+  --color-amber-500: oklch(76.9% 0.188 70.08);
+  --color-amber-600: oklch(66.6% 0.179 58.318);
+  --color-amber-900: oklch(41.4% 0.112 45.904);
+  --color-amber-950: oklch(27.9% 0.077 45.635);
+  /* background */
+  --color-background: #070709;
+  /* black */
+  --color-black: #000;
+  /* blue */
+  --color-blue-300: #9cbedd;
+  --color-blue-400: #6a9fcb;
+  --color-blue-500: #4380b4;
+  --color-blue-600: #316698;
+  --color-blue-700: #29527b;
+  --color-blue-800: #254667;
+  /* border */
+  --color-border: rgb(255 255 255 / 0.06);
+  /* card */
+  --color-card: #131317;
+  --color-card-border: rgb(255 255 255 / 0.08);
+  /* code */
+  --color-code: color-mix(in oklab, #BCBDC6 65%, #2F71E3);
+  /* cyan */
+  --color-cyan-400: oklch(78.9% 0.154 211.53);
+  --color-cyan-500: oklch(71.5% 0.143 215.221);
+  --color-cyan-600: oklch(60.9% 0.126 221.723);
+  /* diffEditor */
+  --color-diffEditor-insertedLineBackground: #9bb95533;
+  --color-diffEditor-insertedTextBackground: #3fb95066;
+  --color-diffEditor-removedLineBackground: #ff000033;
+  --color-diffEditor-removedTextBackground: #ff000066;
+  /* editorLineNumber */
+  --color-editorLineNumber-foreground: #87888F;
+  /* emerald */
+  --color-emerald-400: oklch(76.5% 0.177 163.223);
+  --color-emerald-500: oklch(69.6% 0.17 162.48);
+  --color-emerald-600: oklch(59.6% 0.145 163.225);
+  /* error */
+  --color-error: #de5555;
+  /* foreground */
+  --color-foreground: #FFFFFF;
+  /* gold */
+  --color-gold: #cab43e;
+  /* gray */
+  --color-gray-200: oklch(92.8% 0.006 264.531);
+  --color-gray-300: oklch(87.2% 0.01 258.338);
+  --color-gray-400: oklch(70.7% 0.022 261.325);
+  --color-gray-500: oklch(55.1% 0.027 264.364);
+  --color-gray-600: oklch(44.6% 0.03 256.802);
+  --color-gray-700: oklch(37.3% 0.034 259.733);
+  --color-gray-800: oklch(27.8% 0.033 256.848);
+  /* green */
+  --color-green: #7aae66;
+  --color-green-300: #b0d2a3;
+  --color-green-400: #7aae66;
+  --color-green-500: #63984f;
+  --color-green-600: #4e7c3d;
+  /* indigo */
+  --color-indigo-400: oklch(67.3% 0.182 276.935);
+  --color-indigo-500: oklch(58.5% 0.233 277.117);
+  /* link */
+  --color-link: #6a9fcb;
+  /* muted */
+  --color-muted: rgb(255 255 255 / 0.042);
+  --color-muted-foreground: #87888F;
+  /* neutral */
+  --color-neutral-400: oklch(70.8% 0 0);
+  --color-neutral-500: oklch(55.6% 0 0);
+  /* orange */
+  --color-orange: #e8975f;
+  --color-orange-500: #e0712f;
+  /* overlay */
+  --color-overlay-default: color-mix(in srgb, #000000 50%, transparent);
+  /* pink */
+  --color-pink-400: oklch(71.8% 0.202 349.761);
+  --color-pink-500: oklch(65.6% 0.241 354.308);
+  /* placeholder */
+  --color-placeholder: #636470;
+  /* primary */
+  --color-primary: #2F71E3;
+  --color-primary-foreground: #FFFFFF;
+  /* purple */
+  --color-purple-400: oklch(71.4% 0.203 305.504);
+  --color-purple-500: oklch(62.7% 0.265 303.9);
+  --color-purple-600: oklch(55.8% 0.288 302.321);
+  /* red */
+  --color-red-100: #fbe5e5;
+  --color-red-200: #f9cfcf;
+  --color-red-300: #f3aeae;
+  --color-red-400: #ea7f7f;
+  --color-red-50: #fdf3f3;
+  --color-red-500: #de5555;
+  --color-red-600: #cb3d3d;
+  --color-red-900: #752727;
+  --color-red-950: oklch(25.8% 0.092 26.042);
+  /* rose */
+  --color-rose-400: oklch(71.2% 0.194 13.428);
+  /* secondary */
+  --color-secondary: rgb(255 255 255 / 0.075);
+  --color-secondary-foreground: #BCBDC6;
+  /* selection */
+  --color-selection-background: rgba(128 128 128 / 0.15);
+  /* sidebar */
+  --color-sidebar: #111114;
+  --color-sidebar-muted: rgb(255 255 255 / 0.048);
+  --color-sidebar-secondary: rgb(255 255 255 / 0.09);
+  /* slate */
+  --color-slate-400: oklch(70.4% 0.04 256.788);
+  --color-slate-500: oklch(55.4% 0.046 257.417);
+  /* success */
+  --color-success: #7aae66;
+  /* teal */
+  --color-teal-400: oklch(77.7% 0.152 181.912);
+  --color-teal-500: oklch(70.4% 0.14 182.503);
+  --color-teal-600: oklch(60% 0.118 184.704);
+  /* violet */
+  --color-violet-500: #bb84cc;
+  --color-violet-600: #a665b8;
+  /* warning */
+  --color-warning: #f3c949;
+  /* white */
+  --color-white: #fff;
+  /* yellow */
+  --color-yellow-200: oklch(94.5% 0.129 101.54);
+  --color-yellow-400: oklch(85.2% 0.199 91.936);
+  --color-yellow-500: oklch(79.5% 0.184 86.047);
+  --color-yellow-600: oklch(68.1% 0.162 75.834);
+  --color-yellow-800: oklch(47.6% 0.114 61.907);
+  /* zinc */
+  --color-zinc-300: oklch(87.1% 0.006 286.286);
+  --color-zinc-400: oklch(70.5% 0.015 286.067);
+  --color-zinc-500: oklch(55.2% 0.016 285.938);
+  --color-zinc-700: oklch(37% 0.013 285.805);
+}
+
+:root[data-contrast='strong'] {
+  --background: #050507;
+  --foreground: var(--color-foreground);
+  --card: #17171c;
+  --card-border: rgba(255, 255, 255, 0.13);
+
+  --border: rgba(255, 255, 255, 0.11);
+
+  --muted: rgba(255, 255, 255, 0.068);
+  --muted-foreground: #a8a9b2;
+
+  --secondary: rgba(255, 255, 255, 0.115);
+  --secondary-foreground: #eaebf1;
+
+  --sidebar: #121216;
+  --sidebar-muted: rgba(255, 255, 255, 0.08);
+  --sidebar-secondary: rgba(255, 255, 255, 0.135);
+
+  --bubble-bg: #16161a;
+}
+
+/* ==========================================================================
+   Tema claro
+   Derivado de sus fórmulas: donde el oscuro mezcla blanco sobre #101010,
+   el claro mezcla negro sobre var(--foreground). Mismos porcentajes.
+   ========================================================================== */
+
+:root[data-theme='light'] {
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+  --ring: #0066cc;
+  --accent: rgba(0, 0, 0, 0.09);
+  --accent-foreground: #1a1a1a;
+
+  --card: #f3f3f3;
+  --card-border: #e0e0e0;
+
+  --border: rgba(0, 0, 0, 0.08);
+
+  --muted: #f5f5f5;
+  --muted-foreground: #8c8c8c;
+
+  --secondary: #ebebeb;
+  --secondary-foreground: #5c5c5c;
+
+  --primary: #0066cc;
+  --primary-foreground: #ffffff;
+
+  --sidebar: #f9f9f9;
+  --sidebar-muted: #f3f3f3;
+  --sidebar-secondary: #e6e6e6;
+
+  --danger: #dc2626;
+  --success: #16a34a;
+  --warning: #b45309;
+  --code-foreground: #8b5a00;
+
+  --syntax-default-fg: #24292e;
+  --syntax-comment: #6a737d;
+  --syntax-punctuation: #24292e;
+  --syntax-property: #d73a49;
+}
+
+/* Los elementos que fijaban colores oscuros a mano */
+:root[data-theme='light'] .msg--user .msg__bubble,
+:root[data-theme='light'] .msg__hover-bar {
+  background-color: #f0f0f0;
+}
+
+:root[data-theme='light'] .editor__tab.is-active {
+  background-color: #e8e8e8;
+}
+
+:root[data-theme='light'] .pane-titlebar__title,
+:root[data-theme='light'] .sidebar__section-title,
+:root[data-theme='light'] .overview-panel__title {
+  color: #1a1a1a;
+}
+
+/*
+ * `display: flex` en un elemento con `hidden` gana al `display: none` del
+ * navegador, y el elemento se sigue viendo. Esta regla lo evita en todo el CSS.
+ */
+[hidden] {
+  display: none !important;
+}
+
+/*
+ * Anillo de foco: su UI usa `focus-visible:ring-1 focus-visible:ring-ring`.
+ * Solo aparece al navegar con teclado, no al hacer clic.
+ */
+:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--foreground) 45%, transparent);
+  outline-offset: 1px;
+  border-radius: inherit;
+}
+
+/* Los campos de texto ya tienen su propio borde al enfocar. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+/* Tokens medidos en su DOM (v2.28.2, tema actual). */
+:root {
+  --background: var(--color-background);
+  --foreground: var(--color-foreground);
+  --card: var(--color-card);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.06);
+  --muted: rgba(255, 255, 255, 0.042);
+  --muted-foreground: var(--color-muted-foreground);
+  --secondary: rgba(255, 255, 255, 0.075);
+  --secondary-foreground: var(--color-secondary-foreground);
+  --primary: var(--color-primary);
+  --primary-foreground: var(--foreground);
+
+  --sidebar: var(--color-sidebar);
+  --sidebar-muted: rgba(255, 255, 255, 0.048);
+  --sidebar-secondary: rgba(255, 255, 255, 0.09);
+  --bubble-bg: var(--card);
+
+  --danger: #f87171;
+  --success: var(--color-green);
+  --warning: var(--color-warning);
+  /* Color del código en línea: valor exacto de Antigravity */
+  --code-foreground: color-mix(in oklab, var(--secondary-foreground) 65%, var(--primary));
+
+  /* Colores de sintaxis: valores exactos de --syntax-* de la interfaz analizada */
+  --syntax-default-fg: #f8f8f2;
+  --syntax-comment: #8292a2;
+  --syntax-punctuation: #f8f8f2;
+  --syntax-property: #f92672;
+  --syntax-tag: #f92672;
+  --syntax-constant: #f92672;
+  --syntax-number: #ae81ff;
+  --syntax-string: #a6e22e;
+  --syntax-attr-name: #a6e22e;
+  --syntax-builtin: #a6e22e;
+  --syntax-operator: #f8f8f2;
+  --syntax-variable: #f8f8f2;
+  --syntax-attr-value: #e6db74;
+  --syntax-keyword: #66d9ef;
+  --syntax-function: #e6db74;
+  --syntax-class-name: #e6db74;
+  --syntax-regex: #fd971f;
+
+  --radius-xs: 0.125rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+
+  --sidebar-width: 256px;
+  --titlebar-height: 35px;
+
+  --ease-expo-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Escala de Tailwind, resuelta desde su compiled_tailwind.css */
+  --spacing: 0.25rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-sm--leading: 1.4286; /* calc(1.25 / 0.875) */
+  --leading-relaxed: 1.625;
+  --font-weight-normal: 350;
+  --font-weight-medium: 450;
+  --font-weight-semibold: 500;
+  --default-transition-duration: 150ms;
+
+  /* Pila tipográfica exacta de su tema (--font-sans) */
+  --font-sans:
+    'Google Sans Flex', 'Google Sans', var(--vscode-font-family, system-ui, -apple-system,
+      BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
+  --font-mono:
+    'Google Sans Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+      'Courier New', monospace;
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+  scrollbar-width: none;
+}
+
+/*
+ * 2.29.0 oculta la scrollbar por CSS y deja que el sistema dibuje su overlay
+ * mientras se desplaza:
+ *   .overlay-scrollbars :not(.md-table-scroll)::-webkit-scrollbar { display: none }
+ * Se replica igual, incluidas las tablas de markdown, que sí la muestran fina.
+ */
+::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Las tablas de markdown conservan una barra fina y visible. */
+.md-table-scroll::-webkit-scrollbar,
+pre::-webkit-scrollbar {
+  display: block;
+  width: 8px;
+  height: 8px;
+}
+
+.md-table-scroll::-webkit-scrollbar-thumb,
+pre::-webkit-scrollbar-thumb {
+  background-color: rgba(128, 128, 128, 0.38);
+  border-radius: 9999px;
+}
+
+.md-table-scroll::-webkit-scrollbar-thumb:hover,
+pre::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(128, 128, 128, 0.62);
+}
+
+.md-table-scroll,
+pre {
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+html {
+  /* La raíz queda en 16px para que 1rem = 16px y text-sm = 14px exactos. */
+  font-size: 16px;
+  line-height: 24px;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  overscroll-behavior: none;
+}
+
+body {
+  font-size: 16px;
+  font-weight: var(--font-weight-normal);
+  line-height: 24px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   Estructura raíz
+   ========================================================================== */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   Barra de título
+   ========================================================================== */
+
+/* Medido: 35px de alto, gap 4px, padding 0 8px */
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--titlebar-height);
+  padding: 0 0 0 8px;
+  flex-shrink: 0;
+  background-color: var(--sidebar);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.titlebar__cluster {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 8px;
+  padding-right: 6px;
+  margin-right: 4px;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar__appicon {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--foreground);
+}
+
+.titlebar__newconvo {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--muted-foreground);
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.titlebar__newconvo:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.titlebar__menu {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+/* Medido: 28px, padding 0 10px, radio píldora, 14px/450, color var(--muted-foreground) */
+.titlebar__menuitem {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  font-size: 14px;
+  font-weight: 450;
+  /* Medido en su DOM: 14px/450/20px dentro de una píldora de 28px */
+  line-height: 20px;
+  color: var(--muted-foreground);
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.titlebar__menuitem:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.titlebar__spacer {
+  flex: 1;
+}
+
+/* Controles de ventana: 46x35, como los nativos de Windows */
+.window-controls {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+.window-control {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 35px;
+  color: var(--secondary-foreground);
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.window-control:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.window-control--close:hover {
+  background-color: #c42b1c;
+  color: var(--foreground);
+}
+
+.titlebar__announce {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  margin-right: 8px;
+  border-radius: 9999px;
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  max-width: 520px;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar__announce[hidden] {
+  display: none;
+}
+
+.announce__icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--primary);
+}
+
+.announce__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.announce__action {
+  flex-shrink: 0;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: 9999px;
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.announce__close {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  color: var(--muted-foreground);
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.announce__close:hover {
+  background-color: var(--card);
+  color: var(--foreground);
+}
+
+/* ==========================================================================
+   Cuerpo: sidebar + contenido
+   ========================================================================== */
+
+/*
+ * Rejilla en lugar de flex: `grid-template-columns` sí se puede animar, así el
+ * chat se expande suavemente al colapsar la barra. El sidebar conserva su
+ * ancho interno y desborda, de modo que los iconos no se mueven.
+ */
+.body {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1px 1fr;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  transition: grid-template-columns 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/*
+ * La terminal es una columna a la derecha, no un panel inferior: en Antigravity
+ * ocupa el alto completo y empuja el contenido en vez de taparlo.
+ */
+.body.is-terminal-open {
+  grid-template-columns: var(--sidebar-width) 1px 1fr var(--aux-width);
+}
+
+.body.is-sidebar-collapsed.is-terminal-open {
+  grid-template-columns: 0 1px 1fr var(--aux-width);
+}
+
+.body.is-sidebar-collapsed {
+  grid-template-columns: 0px 0px 1fr;
+}
+
+/* --- Sidebar ------------------------------------------------------------- */
+
+.sidebar {
+  width: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  background-color: var(--sidebar);
+  min-height: 0;
+  overflow: visible;
+  transition: background-color 200ms ease-out;
+  /*
+   * `relative` + `z-index` SIEMPRE, no solo plegado. Al expandir se perdían y
+   * la barra pasaba a `static`, así que el chat —que va después en el DOM— se
+   * pintaba encima mientras la columna del grid aún crecía. El hit-test no lo
+   * detectaba (el chat no cubre el punto), pero el pintado sí barría los iconos
+   * durante los 260 ms.
+   */
+  position: relative;
+  z-index: 30;
+}
+
+.sidebar__header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px 0;
+  flex-shrink: 0;
+}
+
+/* Botón del logo: 38x24, sin radio, como el suyo */
+.sidebar__logo {
+  width: 38px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--foreground);
+  flex-shrink: 0;
+  transition: opacity 150ms ease-out;
+}
+
+.sidebar__logo:hover {
+  opacity: 0.8;
+}
+
+.sidebar__logo-img {
+  display: block;
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
+}
+
+.sidebar__iconbtn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  color: var(--secondary-foreground);
+  flex-shrink: 0;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.sidebar__iconbtn:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.sidebar__spacer {
+  flex: 1;
+}
+
+.sidebar__primary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 8px 25px;
+  flex-shrink: 0;
+}
+
+.sidebar__action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  height: 32px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 350;
+  color: var(--secondary-foreground);
+  min-width: 0;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.sidebar__action:hover {
+  background-color: var(--sidebar-muted);
+  color: var(--foreground);
+}
+
+/* Medido: fondo rgba(255,255,255,0.048), texto var(--color-white) */
+.sidebar__action--accent {
+  background-color: var(--sidebar-muted);
+  color: var(--foreground);
+}
+
+.sidebar__action--accent:hover {
+  background-color: var(--secondary);
+}
+
+.sidebar__section {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+
+/* Medido: la etiqueta es un H2 con text-xs opacity-50 font-medium → 12px/500 al 50% */
+.sidebar__section-title {
+  font-size: 12px;
+  font-weight: 450;
+  line-height: 16px;
+  /* Medido en su DOM: los títulos de sección van con -0.18px de tracking */
+  letter-spacing: -0.18px;
+  text-transform: none;
+  color: var(--foreground);
+  opacity: 0.5;
+}
+
+.sidebar__section-add {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+/* Solo el título empuja; así los iconos quedan pegados a la derecha. */
+.sidebar__section-title {
+  margin-right: auto;
+}
+
+/* Medido: el último icono acaba en x=240, no en el borde del contenido. */
+.sidebar__section-add:last-child {
+  margin-right: 8px;
+}
+
+.sidebar__section-add:hover {
+  background-color: var(--sidebar-secondary);
+  color: var(--foreground);
+}
+
+.sidebar__list {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  padding: 0 8px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* 16px entre el bloque de proyectos y la cabecera de conversaciones */
+.sidebar__list + .sidebar__section {
+  margin-top: 16px;
+}
+
+.conversation {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 5px 8px 6px;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  user-select: none;
+  color: var(--secondary-foreground);
+  transition: background-color 150ms ease-out;
+}
+
+.conversation:hover {
+  background-color: var(--sidebar-muted);
+  color: var(--foreground);
+}
+
+.conversation.is-active {
+  /* Token, no el literal oscuro: en claro necesita su equivalente. */
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+/* Medido: 14px, color srgb 0.6157 ≈ #9d9d9d */
+.conversation__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--secondary-foreground);
+}
+
+/* Medido: 12px, #cccccc al 60%, ancho mínimo 16px, a la derecha */
+.conversation__time {
+  flex-shrink: 0;
+  min-width: 16px;
+  text-align: right;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--foreground);
+  opacity: 0.6;
+}
+
+/* Fuera del flujo: la hora se queda pegada al borde derecho. */
+.conversation__kebab {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  transition: opacity 150ms ease-out, background-color 150ms ease-out;
+}
+
+.conversation:hover .conversation__kebab {
+  opacity: 1;
+}
+
+.conversation:hover .conversation__time {
+  opacity: 0;
+}
+
+.conversation:hover .conversation__kebab {
+  opacity: 1;
+}
+
+.sidebar__footer {
+  padding: 8px;
+  flex-shrink: 0;
+}
+
+/* Placeholder de lista vacía: alineado arriba, no centrado como el del hilo. */
+.sidebar__empty {
+  display: block;
+  padding: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+  text-align: left;
+}
+
+/* --- Separador ----------------------------------------------------------- */
+
+.divider {
+  width: 1px;
+  height: 100%;
+  flex-shrink: 0;
+  background-color: var(--border);
+  position: relative;
+}
+
+.divider__sash {
+  position: absolute;
+  top: 0;
+  left: calc(50% - 4px);
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+/* --- Contenido ----------------------------------------------------------- */
+
+.content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  background-color: var(--background);
+  min-height: 0;
+}
+
+.content__main {
+  flex: 1;
+  /* Sin este mínimo, con el panel auxiliar y el overview abiertos
+     la columna del chat se queda en 260px y el composer se rompe. */
+  min-width: 420px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.thread-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* Estado vacío: el composer se centra en vertical, como en su interfaz. */
+.content__main.is-empty .thread-wrap {
+  flex: 0 1 auto;
+}
+
+/* Medido: en el estado vacío el composer va abajo, con 40px hasta el borde */
+.content__main.is-empty .composer {
+  margin-top: auto;
+  margin-bottom: 0;
+  padding-bottom: 40px;
+}
+
+/* Con el hilo vacío solo se ocultan los mensajes, no el contenedor:
+   la marca de agua y el saludo viven dentro de .thread. */
+.content__main.is-empty .thread__inner > .msg {
+  display: none;
+}
+
+/* --- Navegador de turnos (rail de puntos) ----------------------------- */
+
+.nav-rail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 28px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0.55;
+  transition: opacity 300ms ease;
+}
+
+.nav-rail[hidden] {
+  display: none;
+}
+
+.thread-wrap:hover .nav-rail {
+  opacity: 1;
+}
+
+.nav-dots {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.nav-dots__item {
+  display: flex;
+  align-items: center;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+.nav-dots__dot {
+  width: 28px;
+  height: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.nav-dots__dot::before {
+  content: '';
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+  transition: transform 200ms var(--ease-expo-out), background-color 200ms;
+}
+
+.nav-dots__dot:hover::before {
+  transform: scale(1.25);
+  background-color: color-mix(in srgb, var(--foreground) 70%, transparent);
+}
+
+/* --- Panel de overview ------------------------------------------------- */
+
+/* Medido: 318px, columna, sin padding propio (lo pone la cabecera y la lista) */
+.overview-panel {
+  /* Su panel es `w-full` dentro de una columna de 318px. En nuestra estructura el
+     panel ES esa columna, así que el ancho va aquí y el `w-full` en los hijos. */
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+/* Su código: `flex shrink-0 flex-col gap-px p-1 border-b border-border` */
+.overview-panel__head {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 1px;
+  padding: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Su código: `h-6 pl-2 pr-1.5 gap-1.5 rounded-lg` = 24px / 8px / 6px / 6px / 8px */
+.overview-panel__title-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding-left: 8px;
+  padding-right: 6px;
+  border-radius: 8px;
+  background-color: transparent;
+}
+
+/* Su código: `text-xs opacity-50 font-medium` = 12px / 0.5 / 500 */
+.overview-panel__title {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  opacity: 0.5;
+  color: var(--foreground);
+  user-select: none;
+}
+
+/* Su código: `h-5 w-5 rounded-md text-muted-foreground hover:bg-secondary` */
+.overview-panel__customize {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  background-color: transparent;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.overview-panel__customize:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+/* Su código: `h-8 text-sm px-2 gap-1.5 rounded-lg text-secondary-foreground
+   hover:bg-secondary hover:text-foreground cursor-pointer relative` */
+.overview-row {
+  position: relative;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background-color: transparent;
+  color: var(--secondary-foreground);
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.overview-row:hover,
+.overview-row:focus-visible,
+.overview-row.is-active {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.overview-row__icon {
+  display: block;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+/* Su código: `min-w-0 truncate`, y `flex-1` solo en Files y Terminal */
+.overview-row__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-row__label--grow {
+  flex: 1;
+}
+
+/* Su código: `ml-auto shrink-0 flex items-center gap-1` */
+.overview-row__trailing {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.overview-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.overview-panel__body > [hidden] {
+  display: none;
+}
+
+.overview-panel[hidden] {
+  display: none;
+}
+
+.overview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+}
+
+/* Medido: 12px, weight 500, al 50%, sin transformar */
+.overview-section__title {
+  margin: 0 0 2px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 450;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--foreground);
+  opacity: 0.5;
+}
+
+.overview-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  color: var(--secondary-foreground);
+}
+
+.overview-item:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.overview-item__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-item__badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background-color: var(--secondary);
+  color: var(--muted-foreground);
+}
+
+.overview-item__badge.is-write {
+  background-color: color-mix(in srgb, var(--primary) 25%, transparent);
+  color: var(--foreground);
+}
+
+.overview-empty {
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+}
+
+.icon-toggle {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-lg);
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.icon-toggle:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.icon-toggle[aria-pressed='true'] {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+/* --- Barra de acciones del mensaje ------------------------------------ */
+
+/* Medido: fila con pl-2 pr-1, gap-x 4px, gap-y 2px, alto 24px */
+.msg__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 24px;
+  padding: 0 4px 0 8px;
+}
+
+/* Medido: 12px, #6e6e6e, padding 0 4px */
+.msg__time {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+  padding: 0 4px;
+  user-select: none;
+}
+
+/* Medido: los botones van pegados, 24px de paso */
+.msg__actions {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-left: auto;
+}
+
+/* Medido: 24x24, radio 6px, color #9d9d9d, hover fondo --secondary */
+.msg__action {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  font-size: 13px;
+  color: var(--secondary-foreground);
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.msg__action:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+/* Medido: 40px de alto, acciones a la derecha con padding 8px */
+.pane-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 0 0 8px;
+  flex-shrink: 0;
+  user-select: none;
+  /* Misma curva que la rejilla: sin esto el título salta de golpe */
+  transition: padding-left 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/*
+ * Con el sidebar colapsado los iconos flotan sobre el contenido. La barra del
+ * panel se desplaza para que el título no quede debajo, como en 2.29.0.
+ */
+.body.is-sidebar-collapsed .pane-titlebar {
+  padding-left: 182px;
+}
+
+.pane-titlebar__left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.pane-titlebar__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--secondary-foreground);
+  padding: 2px 0;
+}
+
+/* En el estado vacío su barra queda sin contenido, pero mantiene los 40px */
+.content__main.is-empty .pane-titlebar > * {
+  visibility: hidden;
+}
+
+.pane-titlebar__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
+  padding-right: 8px;
+  flex-shrink: 0;
+}
+
+/* Medido: 28x28, radio 8px, color #9d9d9d */
+.pane-titlebar__btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  color: var(--secondary-foreground);
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.pane-titlebar__btn:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.pane-titlebar__btn[aria-pressed='true'] {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+/* Medido en sus selectores: 28px de alto, padding 0 4px 0 8px, gap 4px, 12px */
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 4px 0 8px;
+  border-radius: 9999px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--secondary-foreground);
+  white-space: nowrap;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+/* Nivel de esfuerzo dentro del selector de modelo, como en su interfaz. */
+.pill__effort {
+  color: var(--secondary-foreground);
+}
+
+/* Medido: la píldora de permisos usa padding derecho de 6px */
+#btn-turbo {
+  padding: 0 4px 0 6px;
+}
+
+/* Medido 2.29.0: píldora de proyecto a 14px con padding 0 6px 0 8px */
+#btn-project-selector-inline {
+  padding: 0 6px 0 8px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.pill:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+
+.pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: var(--success);
+  flex-shrink: 0;
+}
+
+/* --- Conversación -------------------------------------------------------- */
+
+.thread {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  padding: 24px 16px;
+  min-height: 0;
+}
+
+/* Columna de 768px centrada, como su hilo de conversación */
+.thread__inner {
+  /* Medido en su DOM: la columna de 768px va alineada a la izquierda con 38px
+     de margen, no centrada. Centrada se metía debajo de la tarjeta del panel. */
+  width: 100%;
+  max-width: 768px;
+  /*
+   * Medido en su DOM: la columna arranca en x=295, el mismo borde que el
+   * composer. El padre aporta 16px, así que el resto va como margen y el
+   * contenido empieza en el borde de la caja, no con padding.
+   */
+  margin: 0 0 0 22px;
+  padding-left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.thread__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 24px;
+  height: 100%;
+  min-height: 240px;
+  /* Medido: la marca arranca 112px bajo el inicio del panel (24 del hilo + 88) */
+  padding-top: 88px;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+
+/* Medido 2.29.0: marca de agua de 112px al 12% */
+.thread__empty-mark {
+  width: 112px;
+  height: 112px;
+  opacity: 0.12;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Medido 2.29.0: 24px, weight 350, lh 32px */
+.thread__empty-title {
+  font-size: 24px;
+  font-weight: 350;
+  line-height: 32px;
+  color: var(--foreground);
+}
+
+.thread__empty-sub {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.msg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/*
+ * Medido en su DOM: el paso de usuario es flex con align-items: flex-end, y la
+ * burbuja se ajusta a su contenido. Antes la estirábamos al ancho completo, que es
+ * lo que hacía que no se pareciera.
+ */
+.msg--user {
+  align-items: flex-end;
+  padding-top: 16px;
+}
+
+.msg__bubble {
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: var(--radius-lg);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Valores medidos en su UI: fondo #1c1c1c, radio 11px, padding 6px, 16/24 */
+/*
+ * Medido en su DOM:
+ *   p-1.5 · rounded-[calc(xl-1px)] · bg-card · flex-row items-center gap-2
+ */
+.msg--user .msg__bubble {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 20px;
+  background-color: var(--bubble-bg);
+  color: var(--foreground);
+  overflow: hidden;
+}
+
+/* flex-1 p-0.5 max-h-[10vh] · text-sm */
+.msg__bubble-inner {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  max-height: 10vh;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+/*
+ * Barra flotante de acciones: absolute bottom-0.5 right-0.5,
+ * p-1, rounded-full, bg-card, oculta hasta el hover.
+ */
+.msg__hover-bar {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 9999px;
+  background-color: var(--bubble-bg);
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 150ms ease-out;
+}
+
+.msg--user:hover .msg__hover-bar,
+.msg__hover-bar:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* text-xs text-muted-foreground mr-2 */
+.msg__hover-time {
+  align-self: center;
+  margin-right: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+}
+
+/* p-1, text-muted-foreground → hover:text-secondary-foreground */
+.msg__hover-btn {
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  color: var(--muted-foreground);
+  transition: color 150ms ease-out;
+}
+
+.msg__hover-btn:hover {
+  color: var(--secondary-foreground);
+}
+
+.msg--assistant .msg__bubble {
+  background-color: transparent;
+  color: var(--foreground);
+  padding-left: 0;
+}
+
+.msg__tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  padding: 2px 0;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+
+.msg__tool-icon {
+  width: 12px;
+  display: inline-block;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.msg__tool.is-running .msg__tool-icon {
+  animation: tool-pulse 1s ease-in-out infinite;
+}
+
+.msg__tool.is-done .msg__tool-icon {
+  color: var(--success);
+}
+
+.msg__tool.is-error {
+  color: var(--danger);
+  opacity: 1;
+}
+
+@keyframes tool-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+.msg__tool-name {
+  font-family: var(--font-mono);
+  color: var(--secondary-foreground);
+}
+
+/* --- Diálogo de entrada ------------------------------------------------ */
+
+.prompt {
+  position: relative;
+  width: min(420px, calc(100vw - 64px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background-color: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65);
+}
+
+.prompt__title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 450;
+  color: var(--foreground);
+}
+
+.prompt__input {
+  width: 100%;
+}
+
+.prompt__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* --- Autocompletado LSP ------------------------------------------------ */
+
+.completions {
+  position: absolute;
+  left: 60px;
+  bottom: 8px;
+  width: min(340px, 60%);
+  max-height: 190px;
+  overflow-y: auto;
+  background-color: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  padding: 2px;
+}
+
+.completions[hidden] {
+  display: none;
+}
+
+.completion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--secondary-foreground);
+  text-align: left;
+}
+
+.completion:hover,
+.completion.is-selected {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.completion__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.completion__detail {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 45%;
+}
+
+.editor__status .has-errors {
+  color: var(--danger);
+}
+
+/* --- Contenedor de xterm ----------------------------------------------- */
+
+.terminal__xterm {
+  /* Las instancias de cada terminal son `position: absolute; inset: 0`:
+     sin un ancestro posicionado se escapaban a toda la ventana. */
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 4px 8px 8px;
+  overflow: hidden;
+}
+
+.terminal__xterm[hidden] {
+  display: none;
+}
+
+.terminal__legacy {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal__legacy[hidden] {
+  display: none;
+}
+
+.terminal__xterm .xterm {
+  height: 100%;
+}
+
+/* --- Git: ramas, historial y hunks -------------------------------------- */
+
+.git-branch-select {
+  width: 100%;
+  height: 26px;
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 16px;
+  background-color: var(--secondary);
+  border-color: transparent;
+}
+
+.git-log {
+  display: flex;
+  flex-direction: column;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.git-commit-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--secondary-foreground);
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.git-commit-row:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.git-commit-row__hash {
+  font-family: var(--font-mono);
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.git-commit-row__subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hunk {
+  margin-bottom: 10px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.hunk__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  background-color: var(--card);
+  border-bottom: 1px solid var(--card-border);
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.hunk__label {
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hunk__action {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background-color: var(--secondary);
+  color: var(--foreground);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.hunk__action:hover {
+  filter: brightness(1.2);
+}
+
+.hunk__action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.hunk__lines {
+  padding: 4px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* --- Árbol de ficheros -------------------------------------------------- */
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
+.tree__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  min-height: 22px;
+  flex-shrink: 0;
+  padding-right: 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--secondary-foreground);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.tree__row:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.tree__chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  transition: transform 150ms var(--ease-expo-out);
+}
+
+.tree__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree__row--dir .tree__label {
+  color: var(--foreground);
+}
+
+/* --- Git --------------------------------------------------------------- */
+
+.git-branch {
+  padding: 0 8px 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px 0 4px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--secondary-foreground);
+  cursor: pointer;
+}
+
+.git-file:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.git-file__badge {
+  width: 14px;
+  flex-shrink: 0;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.git-file__badge.is-modified { color: var(--warning); }
+.git-file__badge.is-added { color: var(--success); }
+.git-file__badge.is-deleted { color: var(--danger); }
+.git-file__badge.is-untracked { color: var(--muted-foreground); }
+
+.git-file__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.git-file__action {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.git-file__action:hover {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.git-commit {
+  display: flex;
+  gap: 4px;
+  padding: 6px 4px 0;
+}
+
+.git-commit__input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  height: 26px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.git-commit__btn {
+  height: 26px;
+  padding: 0 8px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+/* --- Terminal integrada ------------------------------------------------ */
+
+.terminal {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background-color: var(--background);
+}
+
+.terminal[hidden] {
+  display: none;
+}
+
+.terminal__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px 0 12px;
+  flex-shrink: 0;
+  background-color: var(--sidebar);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.terminal__title {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.terminal__cwd {
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+.terminal__spacer {
+  flex: 1;
+}
+
+.terminal__header .icon-toggle {
+  width: 22px;
+  height: 22px;
+}
+
+.terminal__output {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 12px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--secondary-foreground);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.terminal__input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 8px;
+  flex-shrink: 0;
+}
+
+.terminal__prompt {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+.terminal__input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.terminal__input::placeholder {
+  color: var(--muted-foreground);
+}
+
+/* --- Editor de código -------------------------------------------------- */
+
+/* Panel auxiliar a la derecha, como su pane lateral (572px) */
+.editor {
+  display: flex;
+  flex-direction: column;
+  width: 572px;
+  min-width: 280px;
+  min-height: 0;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background-color: var(--background);
+}
+
+.editor[hidden] {
+  display: none;
+}
+
+/* Bloque del plan dentro del hilo */
+.plan-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plan-block.is-rejected .work-group__label {
+  color: var(--warning);
+}
+
+.plan-block__title {
+  padding: 2px 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.plan-block__steps {
+  margin: 0;
+  padding: 0 8px 4px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--secondary-foreground);
+}
+
+.plan-block__feedback {
+  padding: 4px 8px 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--warning);
+}
+
+/* --- Widget de usos del símbolo ----------------------------------------- */
+
+.usage-widget {
+  position: relative;
+  z-index: 50;
+  min-width: 320px;
+  max-width: 560px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  background-color: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+.usage-widget__title {
+  padding: 4px 8px 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+
+.usage-widget__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: left;
+  color: var(--secondary-foreground);
+}
+
+.usage-widget__row:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.usage-widget__file {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.usage-widget__count {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Tarjeta de plan ---------------------------------------------------- *//* --- Tarjeta de plan ---------------------------------------------------- *//* --- Tarjeta de plan ---------------------------------------------------- */
+
+.plan {
+  position: relative;
+  z-index: 1;
+  width: min(560px, calc(100vw - 64px));
+  max-height: 72vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background-color: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+}
+
+.plan__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan__icon {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--primary);
+}
+
+.plan__title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 450;
+  color: var(--foreground);
+}
+
+.plan__steps {
+  margin: 0;
+  padding: 8px 8px 8px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+  border-radius: 8px;
+  background-color: var(--background);
+}
+
+.plan__step {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+.plan__step-detail {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+}
+
+.plan__feedback {
+  width: 100%;
+  resize: vertical;
+  min-height: 48px;
+  font-family: inherit;
+}
+
+.plan__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* --- Tarjeta de preguntas del agente ------------------------------------ */
+
+.question {
+  width: min(560px, calc(100vw - 48px));
+}
+
+.question__body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+.question__block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.question__title {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: var(--font-weight-medium);
+  color: var(--foreground);
+}
+
+.question__options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.question__option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--secondary);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 150ms ease-out, border-color 150ms ease-out;
+}
+
+.question__option:hover {
+  background: var(--border);
+}
+
+.question__option.is-selected {
+  border-color: var(--primary);
+  background: rgba(47, 113, 227, 0.16);
+}
+
+.question__label {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: var(--font-weight-medium);
+  color: var(--foreground);
+}
+
+.question__desc {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+}
+
+.question__reason {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--primary);
+  opacity: 0.9;
+}
+
+.question__input {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--secondary);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.question__input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.question__input:focus-visible {
+  outline: 1px solid var(--primary);
+  outline-offset: 1px;
+}
+
+/* --- Servidores MCP ----------------------------------------------------- */
+
+.plugin-status {
+  flex-shrink: 0;
+  min-width: 84px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.plugin-status.is-ok {
+  color: var(--success);
+}
+
+.plugin-status.is-error {
+  color: var(--danger);
+}
+
+/* --- Tareas programadas ------------------------------------------------- */
+
+.scheduled {
+  position: relative;
+  z-index: 1;
+  width: min(560px, calc(100vw - 64px));
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background-color: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+}
+
+.scheduled__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scheduled__title {
+  margin: 0;
+  flex: 1;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 450;
+  color: var(--foreground);
+}
+
+.scheduled__form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  background-color: var(--background);
+}
+
+.scheduled__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scheduled__label {
+  font-size: 13px;
+  color: var(--secondary-foreground);
+}
+
+.scheduled__every {
+  width: 72px;
+}
+
+.scheduled__unit {
+  width: 110px;
+}
+
+.scheduled__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.scheduled__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--secondary-foreground);
+}
+
+.scheduled__item:hover {
+  background-color: var(--secondary);
+}
+
+.scheduled__item.is-off {
+  opacity: 0.5;
+}
+
+.scheduled__prompt-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--foreground);
+}
+
+.scheduled__meta {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.scheduled__item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.scheduled__item-actions .btn {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.scheduled__empty {
+  padding: 16px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+/* --- Vista previa de reversión ----------------------------------------- *//* --- Vista previa de reversión ----------------------------------------- */
+
+.revert {
+  position: relative;
+  z-index: 1;
+  width: min(520px, calc(100vw - 64px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background-color: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+}
+
+.revert__title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 450;
+  color: var(--foreground);
+}
+
+.revert__desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--secondary-foreground);
+}
+
+.revert__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  border-radius: 8px;
+  background-color: var(--background);
+}
+
+.revert__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--secondary-foreground);
+}
+
+.revert__row:hover {
+  background-color: var(--secondary);
+}
+
+.revert__tag {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background-color: var(--secondary);
+  color: var(--muted-foreground);
+}
+
+.revert__tag.is-delete {
+  background-color: color-mix(in srgb, var(--danger) 22%, transparent);
+  color: var(--danger);
+}
+
+.revert__path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.revert__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* --- Paleta de comandos ------------------------------------------------ *//* --- Paleta de comandos ------------------------------------------------ */
+
+.palette {
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+
+.palette__panel {
+  position: relative;
+  z-index: 1;
+  width: min(560px, calc(100vw - 48px));
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+}
+
+.palette__input {
+  height: 40px;
+  padding: 0 14px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background-color: transparent;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.palette__input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.palette__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.palette__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  color: var(--secondary-foreground);
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.palette__item.is-active {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.palette__hint {
+  margin-left: auto;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.palette__empty {
+  padding: 12px 10px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+/* --- Git remoto y conflictos ------------------------------------------- */
+
+/* Filas de fichero del Source Control: 26px, texto 12px, acciones al hover */
+.git-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.git-file:hover {
+  background-color: var(--secondary);
+}
+
+.git-file__badge {
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+.git-file__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--secondary-foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.git-file__action {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition: opacity 150ms ease-out, background-color 150ms ease-out;
+}
+
+.git-file:hover .git-file__action {
+  opacity: 1;
+}
+
+.git-file__action:hover {
+  background-color: var(--card);
+  color: var(--foreground);
+}
+
+.git-remote {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 2px;
+  flex-wrap: wrap;
+}
+
+.btn--sm {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.git-remote__status {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.git-conflict {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 8px 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background-color: color-mix(in srgb, var(--warning) 14%, transparent);
+}
+
+.git-conflict__text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--warning);
+}
+
+.git-file__resolve {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.git-file__resolve .btn {
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+/* --- Vista de nueva pestaña -------------------------------------------- *//* --- Vista de nueva pestaña -------------------------------------------- *//* --- Vista de nueva pestaña -------------------------------------------- */
+
+/* Medido: padding 40px 24px 32px */
+.newtab {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 40px 14px 32px;
+  background-color: var(--background);
+  overflow-y: auto;
+}
+
+.newtab[hidden] {
+  display: none;
+}
+
+/* Medido: 448x32, radio 8px, padding 0 12px 0 36px, 14px */
+/* Medido 2.29.0: 543x32, píldora, padding 0 12px 0 36px */
+.newtab__search {
+  width: 100%;
+  height: 32px;
+  padding: 0 12px 0 36px;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background-color: transparent;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  outline: none;
+  flex-shrink: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%236e6e6e'%3E%3Cpath d='M7 1a6 6 0 104.24 10.24l3.26 3.26 1.06-1.06-3.26-3.26A6 6 0 007 1zm0 1.5a4.5 4.5 0 110 9 4.5 4.5 0 010-9z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 12px center;
+  background-size: 14px 14px;
+}
+
+.newtab__search::placeholder {
+  color: var(--muted-foreground);
+}
+
+.newtab__search:focus {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.newtab__search::-webkit-search-cancel-button {
+  display: none;
+}
+
+/* Medido: tarjetas de 448x32, radio 8px, padding 0 12px, 14px */
+.newtab__list {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.newtab__card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  color: var(--secondary-foreground);
+  background-color: transparent;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.newtab__card:hover,
+.newtab__card.is-active {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.newtab__icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--muted-foreground);
+}
+
+.newtab__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Medido: 40px de alto, gap 2px, padding 0 80px 0 6px *//* Medido: 40px de alto, gap 2px, padding 0 80px 0 6px */
+.editor__tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 40px;
+  padding: 0 80px 0 6px;
+  flex-shrink: 0;
+  background-color: transparent;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+/* Medido: 28px de alto, padding 4px 8px 4px 6px, radio 8px, 14px */
+.editor__tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 4px 8px 4px 6px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--secondary-foreground);
+  background-color: transparent;
+  max-width: 280px;
+  flex-shrink: 0;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.editor__tab:hover {
+  background-color: var(--sidebar-muted);
+}
+
+/* Pestaña activa: fondo #2c2c2c */
+.editor__tab.is-active {
+  background-color: #2c2c2c;
+  color: var(--foreground);
+}
+
+/* Botón de nueva pestaña: 28x28, radio 8px */
+/* La pestaña activa muestra el botón de cerrar; las demás al pasar el ratón */
+/* Pestaña del grupo derecho: marca visual sutil */
+.editor__tab.is-right {
+  border-left: 1px solid var(--border);
+  border-radius: 0 8px 8px 0;
+  padding-left: 8px;
+}
+
+.editor__new-tab.is-active {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.editor__tab-close {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition: opacity 150ms ease-out, background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.editor__tab.is-active .editor__tab-close,
+.editor__tab:hover .editor__tab-close {
+  opacity: 1;
+}
+
+.editor__tab-close:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.editor__new-tab {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  color: var(--secondary-foreground);
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.editor__new-tab:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.editor__tab > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.editor__tab-close {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+
+.editor__tab-close:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+/* Monaco necesita un contenedor con altura resuelta y recorte explícito. */
+.editor__body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Dos áreas de edición en paralelo */
+.editor__groups {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: row;
+}
+
+.editor__group {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.editor__group + .editor__group {
+  border-left: 1px solid var(--border);
+}
+
+.editor__monaco {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Widgets de Monaco sobre el tema oscuro. */
+.editor__monaco .monaco-editor,
+.editor__monaco .monaco-editor-background,
+.editor__monaco .monaco-editor .margin {
+  background-color: var(--background);
+}
+
+.editor__monaco .monaco-editor .inputarea {
+  min-width: 0;
+  min-height: 0;
+  opacity: 0;
+}
+
+.editor__gutter {
+  flex-shrink: 0;
+  width: 48px;
+  padding: 8px 8px 8px 0;
+  overflow: hidden;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+  background-color: var(--background);
+  user-select: none;
+  white-space: pre;
+}
+
+.editor__code {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.editor__highlight,
+.editor__input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 8px 12px;
+  border: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 2;
+}
+
+.editor__highlight {
+  pointer-events: none;
+  color: var(--syntax-default-fg);
+  background: transparent;
+}
+
+.editor__input {
+  resize: none;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--foreground);
+}
+
+.editor__input::selection {
+  background-color: color-mix(in srgb, var(--primary) 35%, transparent);
+  color: transparent;
+}
+
+.editor__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  background-color: var(--sidebar);
+  border-top: 1px solid var(--border);
+}
+
+.editor__status #editor-path {
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor__spacer {
+  flex: 1;
+}
+
+.editor__status .is-dirty {
+  color: var(--warning);
+}
+
+/* --- Menciones @ ------------------------------------------------------- */
+
+.mention__path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Paleta de comandos ------------------------------------------------ */
+
+.cmd__label {
+  font-family: var(--font-mono);
+  color: var(--foreground);
+  flex-shrink: 0;
+}
+
+.cmd__hint {
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popover__item.is-selected {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.popover__item.is-selected::after {
+  content: '';
+}
+
+/* --- Tarjeta de diff --------------------------------------------------- */
+
+.diff-card {
+  margin: 10px 0;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--muted);
+  overflow: hidden;
+}
+
+.diff-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background-color: var(--card);
+  border-bottom: 1px solid var(--card-border);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.diff-card__path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+}
+
+.diff-card__stats {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-card__add {
+  color: var(--success);
+}
+
+.diff-card__del {
+  color: var(--danger);
+}
+
+.diff-card__badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, var(--primary) 25%, transparent);
+  color: var(--foreground);
+  font-size: 10px;
+}
+
+.diff-card__body {
+  max-height: 320px;
+  overflow: auto;
+  padding: 6px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.diff-line {
+  display: flex;
+  gap: 8px;
+  padding: 0 10px;
+  white-space: pre;
+}
+
+.diff-line--add {
+  background-color: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success);
+}
+
+.diff-line--remove {
+  background-color: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.diff-line--context {
+  color: var(--secondary-foreground);
+}
+
+.diff-line--gap {
+  color: var(--muted-foreground);
+  font-style: italic;
+  justify-content: center;
+}
+
+.diff-line__num {
+  flex-shrink: 0;
+  width: 34px;
+  text-align: right;
+  color: var(--muted-foreground);
+  user-select: none;
+}
+
+.diff-line__sign {
+  flex-shrink: 0;
+  width: 10px;
+  user-select: none;
+}
+
+.diff-line__text {
+  min-width: 0;
+}
+
+.diff-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--card-border);
+  background-color: var(--card);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--secondary-foreground);
+}
+
+.diff-card__applied {
+  padding: 6px 10px;
+  border-top: 1px solid var(--card-border);
+  background-color: var(--card);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+}
+
+/* --- Indicador de trabajo -------------------------------------------- */
+
+.agent-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--muted-foreground);
+}
+
+.agent-loading__spinner {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  border: 2px solid color-mix(in srgb, var(--muted-foreground) 35%, transparent);
+  border-top-color: var(--foreground);
+  animation: spin 700ms linear infinite;
+}
+
+.agent-loading__elapsed {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Botón de parar: ocupa el sitio del de enviar mientras trabaja */
+.send.is-stop {
+  background-color: var(--danger);
+  color: var(--foreground);
+}
+
+.send.is-stop:hover {
+  filter: brightness(1.1);
+}
+
+/* Reacción activa */
+.msg__action.is-active {
+  background-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  color: var(--foreground);
+}
+
+/* --- Avisos del turno ------------------------------------------------ */
+
+.msg__notice {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  border-left: 3px solid var(--secondary);
+  background-color: var(--card);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--secondary-foreground);
+}
+
+.msg__notice--warning {
+  border-left-color: var(--warning, #fbbf24);
+  color: var(--foreground);
+}
+
+.msg__notice--error {
+  border-left-color: var(--danger);
+  color: var(--foreground);
+}
+
+/* --- Grupo de trabajo (patrón "Worked for Ns") ------------------------- */
+
+.work-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Medido: su contenedor de tarjetas de turno separa 6px, no 8. */
+  margin: 4px 0 6px;
+}
+
+.work-group__header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  color: var(--foreground);
+  user-select: none;
+  transition: background-color 150ms ease-out;
+}
+
+.work-group__header:hover {
+  background-color: var(--muted);
+}
+
+.work-group__label {
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Medido: chevron de 14x14, se gira 90° al desplegar */
+.work-group__chevron {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
+  transition: transform 200ms ease, color 120ms;
+  transform: rotate(90deg);
+}
+
+.work-group__header:hover .work-group__chevron {
+  color: var(--secondary-foreground);
+}
+
+.work-group.is-collapsed .work-group__chevron {
+  transform: rotate(0deg);
+}
+
+/* Medido: cuerpo con pl-3 pt-0.5 */
+.work-group__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 12px;
+  padding-top: 2px;
+  /* Medido en su DOM: el contenedor del grupo lleva radio 4px, no 0. */
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.work-group__body[hidden] {
+  display: none;
+}
+
+/* El grupo interior ("Ran commands") no añade margen propio */
+.work-group--nested {
+  margin: 0;
+}
+
+
+.work-group.is-collapsed .work-group__body {
+  display: none;
+}
+
+/* --- Fila de acción: "Ran <descripción>" ------------------------------- */
+
+.work-row {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Texto del razonamiento: atenuado y en cursiva, como el suyo */
+.reasoning__text {
+  padding: 2px 8px 6px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+  font-style: italic;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.work-row__header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  color: var(--muted-foreground);
+  min-width: 0;
+  transition: background-color 150ms ease-out;
+}
+
+.work-row__header:hover {
+  background-color: var(--muted);
+}
+
+.work-row__verb {
+  flex-shrink: 0;
+}
+
+.work-row__what {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-row__chevron {
+  display: grid;
+  place-items: center;
+  margin-left: 4px;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  transition: transform 200ms ease;
+}
+
+.work-row__header[aria-expanded='true'] .work-row__chevron {
+  transform: rotate(90deg);
+}
+
+.work-row.is-running .work-row__verb::after {
+  content: '…';
+  animation: tool-pulse 1s ease-in-out infinite;
+}
+
+.work-row.is-done .work-row__verb {
+  color: var(--success);
+}
+
+.work-row.is-error .work-row__header {
+  color: var(--danger);
+}
+
+.work-row__output {
+  margin: 2px 0 6px;
+  padding: 8px 10px;
+  max-height: 320px;
+  overflow: auto;
+  border-radius: var(--radius-md);
+  background-color: var(--muted);
+  color: var(--secondary-foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Salidas tipadas por herramienta */
+.tool-out {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 320px;
+  overflow: auto;
+  border-radius: var(--radius-md);
+  background-color: var(--muted);
+  color: var(--secondary-foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tool-out--error {
+  color: var(--danger);
+  background-color: color-mix(in srgb, var(--danger) 10%, var(--muted));
+}
+
+.tool-out--ok {
+  color: var(--success);
+}
+
+/* Árbol de directorio */
+.tool-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  border-radius: var(--radius-md);
+  background-color: var(--muted);
+}
+
+.tool-tree__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.tool-tree__row:hover {
+  background-color: var(--secondary);
+}
+
+.tool-tree__icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
+}
+
+.tool-tree__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--secondary-foreground);
+}
+
+.tool-tree__name.is-dir {
+  color: var(--foreground);
+}
+
+/* Terminal */
+.tool-terminal__out {
+  color: var(--secondary-foreground);
+}
+
+.tool-terminal__err {
+  color: var(--danger);
+}
+
+/* Código con números de línea */
+.tool-code {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  max-height: 320px;
+  overflow: auto;
+  border-radius: var(--radius-md);
+  background-color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tool-code__row {
+  display: flex;
+  gap: 10px;
+  padding: 0 10px 0 0;
+}
+
+.tool-code__num {
+  flex-shrink: 0;
+  width: 40px;
+  padding-right: 6px;
+  text-align: right;
+  color: var(--muted-foreground);
+  user-select: none;
+}
+
+.tool-code__text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--secondary-foreground);
+}
+
+.tool-code__more {
+  padding: 4px 10px 0 50px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+/* Búsqueda */
+.tool-search {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  border-radius: var(--radius-md);
+  background-color: var(--muted);
+}
+
+.tool-search__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.tool-search__row:hover {
+  background-color: var(--secondary);
+}
+
+.tool-search__file {
+  flex-shrink: 0;
+  color: var(--primary);
+  font-family: var(--font-mono);
+}
+
+.tool-search__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--secondary-foreground);
+  font-family: var(--font-mono);
+}
+
+/* Captura del navegador */
+.tool-shot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border-radius: var(--radius-md);
+  background-color: var(--muted);
+}
+
+.tool-shot__img {
+  width: 100%;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.tool-shot__link {
+  font-size: 12px;
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.tool-shot__link:hover {
+  text-decoration: underline;
+}
+
+@keyframes tool-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+/* --- Avisos del turno ------------------------------------------------ */
+
+.msg__notice {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  border-left: 3px solid var(--secondary);
+  background-color: var(--card);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--secondary-foreground);
+}
+
+.msg__notice--warning {
+  border-left-color: var(--warning);
+  color: var(--foreground);
+}
+
+.msg__notice--error {
+  border-left-color: var(--danger);
+  color: var(--foreground);
+}
+
+/* --- Markdown en los mensajes ------------------------------------------ */
+
+.msg__bubble--md {
+  max-width: 100%;
+  padding-left: 0;
+  padding-right: 0;
+  white-space: normal;
+  font-size: 14px;
+  line-height: 1.625;
+}
+
+.msg__bubble--md.is-error {
+  color: var(--danger);
+}
+
+.md-p {
+  margin: 0 0 8px;
+}
+
+.md-p:last-child {
+  margin-bottom: 0;
+}
+
+.md-h {
+  color: var(--foreground);
+}
+
+.md-h1 { font-size: 20px; font-weight: 600; margin: 24px 0 8px; }
+.md-h2 { font-size: 18px; font-weight: 600; margin: 24px 0 8px; }
+.md-h3 { font-size: 16px;
+  line-height: 24px; font-weight: 500; margin: 12px 0 4px; }
+.md-h4 { font-size: 14px;
+  line-height: 20px; font-weight: 500; margin: 12px 0 4px; }
+
+.md-h:first-child {
+  margin-top: 0;
+}
+
+.md-list {
+  margin: 8px 0;
+  padding-left: 16px;
+  line-height: 1.625;
+}
+
+.md-list li {
+  margin-bottom: 2px;
+}
+
+.md-list li::marker {
+  color: var(--muted-foreground);
+}
+
+/* Código en línea: valores exactos de Antigravity */
+.md-code {
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  background-color: var(--muted);
+  color: var(--code-foreground);
+  background-color: rgba(255, 255, 255, 0.043);
+  font-family: var(--font-mono);
+  font-size: 12.6px;
+  font-weight: 400;
+  line-height: 20.475px;
+}
+
+.md-pre {
+  margin: 10px 0;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--muted);
+  overflow: hidden;
+}
+
+.md-pre__lang {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  background-color: var(--card);
+  border-bottom: 1px solid var(--card-border);
+}
+
+.md-pre pre {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+
+.md-pre code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--syntax-default-fg);
+  white-space: pre;
+}
+
+/* Tokens de sintaxis */
+.tok-comment { color: var(--syntax-comment); font-style: italic; }
+.tok-string { color: var(--syntax-string); }
+.tok-number { color: var(--syntax-number); }
+.tok-keyword { color: var(--syntax-keyword); }
+.tok-builtin { color: var(--syntax-builtin); }
+.tok-function { color: var(--syntax-function); }
+.tok-class-name { color: var(--syntax-class-name); }
+.tok-property { color: var(--syntax-property); }
+.tok-tag { color: var(--syntax-tag); }
+.tok-operator { color: var(--syntax-operator); }
+.tok-constant { color: var(--syntax-constant); }
+
+.md-link {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.md-link:hover {
+  text-decoration: underline;
+}
+
+.md-hr {
+  margin: 14px 0;
+  border: none;
+  border-top: 1px solid var(--card-border);
+}
+
+.md-p strong,
+.md-list strong {
+  color: var(--foreground);
+  /* Medido en su DOM: la negrita del markdown pesa 490, no 600. Con la fuente
+     variable de Google Sans Flex, 490 es un peso válido y visiblemente más suave. */
+  font-weight: 490;
+  line-height: 22.75px;
+}
+
+/* Tablas markdown */
+.md-table {
+  width: 100%;
+  margin: 10px 0;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.md-table th,
+.md-table td {
+  padding: 6px 10px;
+  border: 1px solid var(--card-border);
+  text-align: left;
+}
+
+.md-table th {
+  background-color: var(--muted);
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+/* --- Caja de entrada ----------------------------------------------------- */
+
+/* Medido: 768x82, radio 12px, borde rgba(255,255,255,0.05) */
+.composer__inner {
+  width: 100%;
+  max-width: 768px;
+  /*
+   * Medido en su DOM: el composer arranca en x=295, el mismo borde que la
+   * columna de mensajes (38px desde el panel), no centrado.
+   */
+  margin: 0;
+  padding: 1px;
+  background-color: #0d0d11;
+  border-radius: 21px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: background-color 150ms ease-out;
+  /* Medido: sombra interior + anillo del fondo + filo claro + dos sombras */
+  box-shadow:
+    rgba(0, 0, 0, 0.275) 0 1px 2px 0 inset,
+    #0d0d11 0 0 0 4px,
+    rgba(255, 255, 255, 0.067) 0 0 0 5px,
+    rgba(0, 0, 0, 0.36) 0 18px 40px -12px,
+    rgba(0, 0, 0, 0.25) 0 2px 8px -2px;
+}
+
+.composer__card {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background-color: #15151a;
+  border-radius: 20px;
+  min-height: 80px;
+  /* Medido: brillo superior + filo de 1px + dos sombras */
+  box-shadow:
+    rgba(255, 255, 255, 0.08) 0 1px 0 0 inset,
+    var(--secondary) 0 0 0 1px,
+    rgba(0, 0, 0, 0.275) 0 3px 10px -2px,
+    rgba(0, 0, 0, 0.224) 0 1px 3px 0;
+}
+
+.composer__inner:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--card-border));
+}
+
+/* Medido: 758x40, padding 8px, 14px */
+.composer__input {
+  width: 100%;
+  min-height: 40px;
+  max-height: 200px;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.composer__input::placeholder {
+  color: var(--muted-foreground);
+}
+
+/* Medido: w-full justify-between gap-1 p-0.5 */
+.composer__project-row {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
+}
+
+/* La fila de proyecto solo aparece en el estado vacío */
+.content__main:not(.is-empty) .composer__project-row {
+  display: none;
+}
+
+.composer__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  width: 100%;
+  padding: 2px;
+}
+
+/* Medido: 28x28, radio completo, padding 6px, color #9d9d9d */
+.composer__icon-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border-radius: 9999px;
+  color: var(--secondary-foreground);
+  flex-shrink: 0;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.composer__icon-btn:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+/* El micrófono va en color pleno, medido rgb(204,204,204) */
+#btn-voice {
+  color: var(--foreground);
+}
+
+/* Dictado activo: el micrófono late en rojo */
+#btn-voice.is-recording {
+  color: var(--danger);
+  animation: mic-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* Iconos dentro de las pills: 14x14 */
+.pill__icon,
+.pill__chevron {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
+}
+
+.composer__spacer {
+  flex: 1;
+}
+
+.send {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border-radius: 9999px;
+  color: var(--muted-foreground);
+  background-color: var(--secondary);
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+  flex-shrink: 0;
+}
+
+.send.is-ready {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Medido: deshabilitado bg #2d2d2d con icono #6e6e6e, sin opacidad extra */
+.send:disabled {
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.send:not(:disabled):hover {
+  filter: brightness(1.1);
+}
+
+/* --- Popover de modelo ---------------------------------------------- */
+
+.composer {
+  flex-shrink: 0;
+  /* Mismo borde izquierdo que la columna de mensajes: 38px del panel. */
+  padding: 0 16px 16px 38px;
+  position: relative;
+}
+
+.popover {
+  position: absolute;
+  bottom: calc(100% - 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: max(30vw, 48rem);
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  z-index: 40;
+}
+
+.popover[hidden] {
+  display: none;
+}
+
+.popover__header {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+
+.popover__body {
+  overflow-y: auto;
+  padding: 4px;
+  min-height: 0;
+}
+
+.popover__group-title {
+  padding: 8px 8px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.popover__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--secondary-foreground);
+  text-align: left;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.popover__item:hover:not(:disabled) {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.popover__item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.popover__item.is-selected {
+  color: var(--foreground);
+}
+
+.popover__item.is-selected::after {
+  content: '✓';
+  margin-left: auto;
+  color: var(--primary);
+}
+
+.popover__note {
+  padding: 8px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+}
+
+/* --- Modal de ajustes ------------------------------------------------ */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+/* Medido 2.29.0: 1012x712, radio 12px */
+.settings {
+  position: relative;
+  display: flex;
+  /* Medido en su DOM: 1024x720 */
+  width: min(1024px, calc(100vw - 80px));
+  height: min(720px, calc(100vh - 80px));
+  /* Medido: su modal pinta rgb(7,7,9), el fondo base, no la tarjeta. */
+  background-color: var(--background);
+  border: 1px solid var(--card-border);
+  /* Medido en su DOM: radio 24px, no 12px */
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+}
+
+.settings__nav {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 8px 12px;
+  background-color: var(--sidebar);
+}
+
+.settings__nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Medido 2.29.0: 28px, radio 8px, weight 350, activo alfa 0.133 */
+/* Medido 2.29.0: 28px, radio 8px, weight 350 */
+/* Cabecera del panel de ajustes, como la suya */
+.settings__nav-header {
+  padding: 4px 8px 8px;
+  /* Medido: es un h1 de 12px/450/16px en su DOM */
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 450;
+  letter-spacing: -0.18px;
+  color: var(--foreground);
+}
+
+.settings__nav-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: var(--text-sm);
+  line-height: 20px;
+  font-weight: 350;
+  color: var(--secondary-foreground);
+  text-align: left;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.settings__nav-item:hover {
+  background-color: var(--sidebar-secondary);
+  color: var(--foreground);
+}
+
+.settings__nav-item.is-active {
+  background-color: var(--sidebar-secondary);
+  color: var(--foreground);
+}
+
+.settings__nav-group {
+  padding: 12px 10px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.settings__nav-footer {
+  flex-shrink: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--card-border);
+  margin-top: 8px;
+}
+
+.settings__profile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px 4px;
+  min-width: 0;
+}
+
+/* Chip de usuario: avatar circular con el logo, como el suyo */
+.settings__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background-color: var(--secondary);
+  /* El avatar usa el SVG enmascarado, así hereda el color del tema. */
+  background-image: none;
+  flex-shrink: 0;
+}
+
+.settings__profile-name {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings__profile-sub {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings__content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* La cabecera usa la MISMA columna centrada que el cuerpo, para que el
+   título quede alineado con las tarjetas de abajo. */
+.settings__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 672px;
+  margin: 0 auto;
+  padding: 24px 24px 0;
+  flex-shrink: 0;
+}
+
+/* Medido 2.29.0: 20px, weight 450 */
+.settings__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 450;
+  color: var(--foreground);
+}
+
+.settings__subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+}
+
+/* Medido: 28x28, píldora, fondo alfa 0.075 */
+.settings__close {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.settings__close:hover {
+  filter: brightness(1.2);
+}
+
+/* Medido 2.29.0: columna de 672px centrada, con 24px de padding */
+.settings__body {
+  flex: 1;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 672px;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-height: 0;
+}
+
+/* Medido 2.29.0: 14px, weight 450 */
+.settings__section-title {
+  margin: 0 0 2px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 450;
+  color: var(--foreground);
+}
+
+.settings__section-desc {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+}
+
+/* --- Filas de ajuste ------------------------------------------------- */
+
+.row-group {
+  border: 1px solid var(--card-border);
+  /* Medido en su DOM: la tarjeta de ajustes es de 16px, no 12. */
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+/* Medido 2.29.0: fila con 8px 12px de padding */
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px;
+}
+
+.row + .row {
+  border-top: 1px solid var(--card-border);
+}
+
+.row__main {
+  min-width: 0;
+  flex: 1;
+}
+
+.row__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  line-height: 20px;
+  font-weight: 350;
+  color: var(--foreground);
+}
+
+.row__desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.45;
+}
+
+.row__hint {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+}
+
+.row__control {
+  flex-shrink: 0;
+}
+
+/* Fila apilada: la etiqueta arriba y los campos debajo, a todo el ancho */
+.row--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.row--stacked .row__main {
+  min-width: 0;
+}
+
+.row--stacked .row__control {
+  width: 100%;
+  flex-shrink: 1;
+}
+
+.row--stacked .inline-fields {
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.row--stacked .inline-fields input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.count-badge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 9999px;
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 10px;
+  line-height: 15px;
+  text-align: center;
+}
+
+/* --- Controles -------------------------------------------------------- */
+
+/* Medido 2.29.0: 40px de alto, 14px */
+.select {
+  height: 40px;
+  padding: 0 26px 0 8px;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 -960 960 960' fill='%236e6e6e'%3E%3Cpath d='M480-541.85l-184 184L253.85-400 480-626.15 706.15-400 664-357.85l-184-184Z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-color: var(--secondary);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  outline: none;
+  cursor: pointer;
+}
+
+.select:focus {
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+.select--wide {
+  min-width: 150px;
+}
+
+.text-input {
+  width: 240px;
+  height: 30px;
+  padding: 0 8px;
+  background-color: var(--secondary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  outline: none;
+}
+
+.text-input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.text-input:focus {
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+/* Medido: contenedor píldora 32px con borde, padding 2px, fondo #111115 */
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 2px;
+  background-color: #111115;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  gap: 2px;
+}
+
+/* Medido: ítem píldora de 26px, padding 0 8px, 14px; activo #24252a */
+.segmented__btn {
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 9999px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--secondary-foreground);
+  white-space: nowrap;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.segmented__btn.is-active {
+  background-color: #24252a;
+  color: var(--foreground);
+}
+
+.segmented__btn:hover {
+  color: var(--foreground);
+}
+
+.switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 9999px;
+  background-color: var(--secondary);
+  transition: background-color 150ms;
+  flex-shrink: 0;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background-color: var(--secondary-foreground);
+  transition: transform 150ms, background-color 150ms;
+}
+
+.switch.is-on {
+  background-color: var(--primary);
+}
+
+.switch.is-on::after {
+  transform: translateX(16px);
+  background-color: var(--foreground);
+}
+
+.slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.slider input[type='range'] {
+  width: 110px;
+  accent-color: var(--primary);
+}
+
+.slider__value {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--secondary-foreground);
+  min-width: 34px;
+  text-align: right;
+}
+
+.color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--card-border);
+}
+
+.info-block {
+  padding: 12px 14px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.55;
+}
+
+.kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background-color: var(--secondary);
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.link {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+/* --- Menús de la barra de título -------------------------------------- */
+
+.menu {
+  position: relative;
+  -webkit-app-region: no-drag;
+}
+
+.menu__panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 230px;
+  padding: 4px;
+  background-color: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.6);
+  z-index: 200;
+}
+
+.menu__panel[hidden] {
+  display: none;
+}
+
+.menu__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--secondary-foreground);
+  text-align: left;
+  white-space: nowrap;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.menu__item:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.menu__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background-color: var(--card-border);
+}
+
+.titlebar__menuitem.is-open {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+/* --- Búsqueda en la barra lateral ------------------------------------- */
+
+.sidebar__search {
+  padding: 0 8px 6px;
+  flex-shrink: 0;
+}
+
+.sidebar__search[hidden] {
+  display: none;
+}
+
+.sidebar__search-input {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  background-color: var(--background);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  outline: none;
+}
+
+.sidebar__search-input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.sidebar__search-input:focus {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--card-border));
+}
+
+/* --- Menú contextual de conversación ---------------------------------- */
+
+/* Elemento activo del menú contextual: punto de acento a la izquierda */
+.menu__item.is-selected {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.menu__item.is-selected::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 9999px;
+  background-color: var(--primary);
+}
+
+.context-menu {
+  position: fixed;
+  min-width: 170px;
+  padding: 4px;
+  background-color: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.6);
+  z-index: 300;
+}
+
+.context-menu[hidden] {
+  display: none;
+}
+
+/* --- Sidebar colapsable ----------------------------------------------- */
+
+/*
+ * Solo se anima el color de fondo. El ancho lo anima la columna del grid, y la
+ * opacidad de los hijos se gestiona en `.is-collapsed`. Animar aquí también el
+ * `width` y la `opacity` hacía que las dos animaciones pelearan y el contenido
+ * parpadease durante los 260 ms.
+ */
+.sidebar {
+  transition: background-color 200ms ease-out;
+  /*
+   * Nunca se recorta. Al expandir, la columna del grid mide 0px en el primer
+   * fotograma; con `overflow: hidden` los iconos de la cabecera se recortaban y
+   * se iban revelando durante los 260ms de la animación, que es el barrido que
+   * se percibía como flechas apareciendo. En plegado ya era `visible`, así que
+   * ahora el comportamiento es el mismo en los dos estados.
+   */
+  overflow: visible;
+}
+
+/*
+ * 2.29.0: al colapsar, la barra se queda en una tira estrecha y los iconos
+ * superiores siguen visibles, apilados en vertical. El resto se oculta.
+ */
+/*
+ * 2.29.0: al colapsar, la barra deja de ocupar espacio y los iconos superiores
+ * flotan sobre el contenido. El chat se centra en la ventana entera.
+ */
+/*
+ * Colapsado: sigue EN el flujo del grid (si sale, los demás elementos se
+ * desplazan una columna). La columna mide 0px y el sidebar desborda con su
+ * ancho completo, así los iconos no se mueven y flotan sobre el contenido.
+ */
+.sidebar.is-collapsed {
+  position: relative;
+  width: 256px;
+  background-color: transparent;
+  z-index: 30;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.sidebar.is-collapsed .sidebar__header {
+  pointer-events: auto;
+  /* Mismo padding que la cabecera expandida: si difieren, los iconos se
+     desplazan al plegar la barra. */
+  height: 40px;
+  padding: 0 8px 0 0;
+  margin-bottom: 12px;
+}
+
+.sidebar.is-collapsed .sidebar__search,
+.sidebar.is-collapsed .sidebar__primary,
+.sidebar.is-collapsed .sidebar__section,
+.sidebar.is-collapsed .sidebar__list,
+.sidebar.is-collapsed .sidebar__footer {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 160ms ease-out, visibility 0s linear 160ms;
+}
+
+.sidebar__search,
+.sidebar__primary,
+.sidebar__section,
+.sidebar__list,
+.sidebar__footer {
+  transition: opacity 200ms ease-out 60ms, visibility 0s;
+}
+
+.divider {
+  transition: opacity 180ms ease;
+}
+
+.divider.is-collapsed {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.composer .pill {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* --- Controles extra de ajustes --------------------------------------- */
+
+.settings__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings__back {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background-color: var(--secondary);
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 20px;
+  flex-shrink: 0;
+}
+
+.settings__back:hover {
+  filter: brightness(1.2);
+}
+
+.settings__back[hidden] {
+  display: none;
+}
+
+.text-area {
+  width: 260px;
+  padding: 6px 8px;
+  background-color: var(--secondary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+}
+
+.text-area::placeholder {
+  color: var(--muted-foreground);
+}
+
+.text-area:focus {
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+.color-input {
+  width: 44px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.inline-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.inline-fields .text-input {
+  width: 150px;
+}
+
+/* --- Utilidades ---------------------------------------------------------- */
+
+/* Medido 2.29.0: píldora de 32px, padding 0 10px, texto var(--secondary-foreground) */
+.btn {
+  /* Medido: botón de 28 px de alto, padding 0 10px, píldora. */
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 14px;
+  line-height: 20px;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.btn:hover {
+  filter: brightness(1.15);
+}
+
+.btn--primary {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  fill: currentColor;
+}
+
+.is-hidden {
+  display: none !important;
+}
+
+.badge {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+/* --- Nota del monitor de ritmo ------------------------------------------ */
+
+.system-note {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-left: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0 8px 8px 0;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* --- Veredicto del monitor de seguridad ---------------------------------- */
+
+.work-row__guardian {
+  margin: 2px 0 4px 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+}
+
+.work-row__guardian.is-warn {
+  color: #d9a13b;
+}
+
+.work-row__guardian.is-danger {
+  color: #e06c60;
+}
+
+.work-row.is-checking .work-row__what::after {
+  content: ' · comprobando';
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+/* --- Deshacer hasta un paso --------------------------------------------- */
+
+.work-row__undo {
+  align-self: flex-start;
+  margin: 0 0 6px 8px;
+  padding: 0 8px;
+  height: 22px;
+  border: 1px solid var(--secondary);
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 150ms ease-out, background 150ms ease-out;
+}
+
+.work-row:hover .work-row__undo,
+.work-row__undo:focus-visible {
+  opacity: 1;
+}
+
+.work-row__undo:hover {
+  background: var(--border);
+  color: var(--foreground);
+}
+
+/* --- Plan editable ------------------------------------------------------- */
+
+.plan__hint {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.plan__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.plan__step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.plan__num {
+  flex-shrink: 0;
+  width: 16px;
+  padding-top: 5px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.plan__fields {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.plan__input,
+.plan__detail {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 19.5px;
+}
+
+.plan__detail {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.plan__input:hover,
+.plan__detail:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.plan__input:focus-visible,
+.plan__detail:focus-visible {
+  outline: 1px solid var(--primary);
+  outline-offset: 0;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.plan__row-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.plan__icon-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 150ms ease-out, color 150ms ease-out;
+}
+
+.plan__icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--foreground);
+}
+
+.plan__icon-btn.is-remove:hover {
+  color: #e06c60;
+}
+
+.plan__add {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+/* --- Grupo del planificador --------------------------------------------- */
+
+.planner-text {
+  margin: 2px 0 6px 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre-wrap;
+}
+
+.work-group--nested .work-group--nested {
+  margin-left: 8px;
+}
+
+/* --- Fallos de tests ----------------------------------------------------- */
+
+.tests-failures {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-left: 2px solid #e06c60;
+  border-radius: 0 8px 8px 0;
+  background: rgba(224, 108, 96, 0.08);
+}
+
+.tests-failures__title {
+  color: #e06c60;
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  line-height: 16px;
+}
+
+.tests-failures__item {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  font-family: ui-monospace, monospace;
+}
+
+/* Medido en su DOM: el nombre del proyecto va en muted-foreground, no en
+   secondary-foreground como el título de una conversación. */
+#project-name {
+  color: var(--muted-foreground);
+}
+
+/* Medido en su DOM: el código dentro de negrita va a 600, no a 400. */
+strong .md-code,
+.md-code strong {
+  font-weight: 600;
+}
+
+/* Medido en su DOM: la fila de Extensions va en blanco porque es una fila de
+   navegación (lleva chevron), no una vista del panel como Review/Files/Terminal. */
+.overview-row[data-panel='extensions'] {
+  color: var(--foreground);
+}
+
+/*
+ * Copiado de su CSS:
+ *   .focus-visible\:ring-1  → box-shadow 0 0 0 1px var(--tw-ring-color, currentcolor)
+ *   .has-[:focus-visible]:bg-secondary → &:has(:focus-visible) { background: var(--secondary) }
+ *   .group:is(:hover,:focus-visible) .agy-hover-label ~ .ml-auto.shrink-0 { opacity: 0 }
+ *   .agy-hover-label.flex-1 → mask-image degradado a la derecha
+ */
+.overview-row:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px currentColor;
+}
+
+.overview-row:has(:focus-visible) {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.overview-row:hover .overview-row__trailing,
+.overview-row:focus-visible .overview-row__trailing,
+.overview-row:has(:focus-visible) .overview-row__trailing {
+  opacity: 0;
+}
+
+.overview-row:hover .overview-row__label--grow,
+.overview-row:focus-visible .overview-row__label--grow,
+.overview-row:has(:focus-visible) .overview-row__label--grow {
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent calc(100% - 28px));
+}
+
+/* ==========================================================================
+   Tarjeta flotante del panel — copiada de su DOM
+   ==========================================================================
+   <div data-testid="overview-panel-host-sibling"
+        class="animate-overview-panel origin-top-right absolute top-2 right-2 ...">
+   320x166 · fondo rgb(19,19,23) · borde 1px rgba(255,255,255,0.06) · radio 12
+   sombra 0 4px 6px -1px rgba(0,0,0,.05), 0 2px 4px -2px rgba(0,0,0,.05)
+   ========================================================================== */
+
+.overview-host {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  height: auto;
+  /* --card, no el literal oscuro: en claro debe ser #f3f3f3. */
+  background-color: var(--card);
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--border);
+  border-radius: 12px;
+  box-shadow: rgba(0, 0, 0, 0.05) 0 4px 6px -1px, rgba(0, 0, 0, 0.05) 0 2px 4px -2px;
+  overflow: hidden;
+  transform-origin: right top;
+  transition: opacity 400ms var(--ease-expo-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform 400ms var(--ease-expo-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+/* Su animación de entrada: translateY(-8px) scale(0.95) con opacidad 0. */
+.overview-host[data-starting-style],
+.overview-host[data-ending-style] {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.95);
+}
+
+/* Refuerzo: el panel y su tarjeta no deben heredar el reset de bordes. */
+#overview-host.overview-host {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/*
+ * Medido: su host se posiciona contra un contenedor que empieza DEBAJO de la
+ * barra de título del panel (y=75), así que queda en y=83. El nuestro se
+ * posiciona contra uno que incluye la barra (y=35) y quedaba en y=43.
+ * Se compensa con la altura de la barra (40px) más el margen de 8px.
+ */
+#overview-host.overview-host {
+  top: calc(40px + 8px);
+}
+
+/* ==========================================================================
+   Alturas del panel — valores de su código, forzados al final
+   ==========================================================================
+   Su panel mide 164px:
+     contenedor  padding 4px arriba/abajo + gap 1px
+     cabecera    24px + 1px de borde inferior
+     4 filas     32px cada una + 3 gaps de 1px
+     4 + 24 + 1 + 4 + 128 + 3 = 164
+   Nuestras reglas de cabecera y lista no estaban aplicándose (el borde inferior
+   se quedaba en 0px y la lista no tenía gap), así que se fijan aquí con
+   especificidad suficiente.
+   ========================================================================== */
+
+#overview-panel .overview-panel__head {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 1px;
+  padding: 4px 4px 0;
+  /* Medido en su DOM: con el cuerpo vacío computa border-bottom 0px, así que la
+     línea entre «Overview» y «Review» no existe. */
+  border-bottom-width: 0;
+  border-bottom-style: solid;
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+#overview-panel .overview-panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 4px 4px;
+}
+
+#overview-panel .overview-panel__title-row {
+  height: 24px;
+  padding-left: 8px;
+  padding-right: 6px;
+  gap: 6px;
+}
+
+#overview-panel .overview-row {
+  height: 32px;
+  padding: 0 8px;
+  gap: 6px;
+}
+
+/*
+ * Su cabecera lleva `border-b border-border has-[+div:empty]:border-b-0`.
+ * Medido: con el cuerpo vacío computa `border-bottom: 0px`, así que la línea
+ * no se ve. Aquí se replica la misma condición.
+ */
+#overview-panel .overview-panel__head:has(+ .overview-panel__body:empty),
+#overview-panel .overview-panel__head:has(+ div:empty) {
+  border-bottom-width: 0;
+}
+
+/*
+ * En su DOM la cabecera contiene el título Y las cuatro filas, todas con
+ * `gap: 1px`: cinco hijos, cuatro separaciones. La nuestra separa cabecera y
+ * lista en dos bloques, así que el gap entre ambos se pone en el panel.
+ */
+#overview-panel {
+  gap: 1px;
+}
+
+/*
+ * Medido: su estado vacío se centra en el ancho completo del contenido
+ * (centro 847 en 257→1437). El nuestro vive dentro de la columna de 768px con
+ * 38px de margen y se centraba en 676. Se detecta por la presencia del bloque
+ * vacío, sin depender de la clase .is-empty.
+ */
+.thread__inner:has(> .thread__empty),
+.thread__inner:has(.thread__empty) {
+  max-width: none;
+  padding-left: 0;
+}
+
+/*
+ * Medido en su DOM: la fila de conversación mide 240x32 con
+ * `padding: 5px 8px 6px 30px` — las conversaciones de un proyecto van anidadas
+ * bajo él, con el título a x=38. La altura ya era 32; el padding-left es lo que
+ * falta para el anidado.
+ */
+.conversation--project-child {
+  padding-left: 30px;
+}
+
+/* ==========================================================================
+   Barra lateral izquierda — valores de su marcado literal
+   ==========================================================================
+   <div role="navigation" class="h-full w-full flex flex-col pb-2 bg-sidebar">
+     <div class="shrink-0 flex items-center pr-2 mb-3" style="height: 40px">
+     <div class="px-2">
+       <div class="flex flex-col gap-1.5" data-testid="sidebar-navigation-items">
+         <a class="... h-8 gap-1.5 px-2 py-1 rounded-lg border border-border
+                   text-foreground bg-sidebar-secondary">
+   ========================================================================== */
+
+.sidebar__header {
+  height: 40px;
+  padding: 0 8px 0 0;
+  margin-bottom: 12px;
+  gap: 4px;
+}
+
+/* «New Conversation» lleva borde y fondo propios, no es transparente. */
+.sidebar__action--accent {
+  background-color: var(--sidebar-secondary);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+
+.sidebar__action--accent:hover {
+  background-color: var(--secondary);
+}
+
+/* Su contenedor de navegación es `px-2`: padding 0 8px, sin relleno vertical.
+   El nuestro metía 18px arriba y 25px abajo, que desplazaban el bloque. */
+.sidebar__primary {
+  padding: 0 8px;
+}
+
+/* «New Conversation»: fondo y borde medidos en su DOM. */
+#btn-new-conversation-2.sidebar__action--accent {
+  background-color: rgba(255, 255, 255, 0.09);
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Conversaciones anidadas bajo el proyecto: su fila lleva padding-left 30px. */
+.sidebar__list--nested {
+  max-height: none;
+}
+
+.sidebar__list--nested .conversation {
+  padding-left: 30px;
+  /*
+   * Medido: sus filas anidadas miden 32 px como las de primer nivel. Aquí
+   * salían 31 porque la altura se calculaba dentro del contenedor; se fija.
+   */
+  height: 32px;
+  min-height: 32px;
+  flex-shrink: 0;
+}
+
+/*
+ * Medido en su DOM: `mt-3 mx-2 h-px shrink-0` con
+ * `background-color: rgba(0, 0, 0, 0)` — es un div de 1px SIN color.
+ * No pinta ninguna línea: solo reserva el espacio de 12px sobre «Projects».
+ */
+.sidebar__separator {
+  height: 1px;
+  margin: 12px 8px 0;
+  background-color: transparent;
+  flex-shrink: 0;
+}
+
+/* El icono del botón de personalizar se comprimía a 8x14 dentro del botón de
+   20x20. Su SVG es 14x14 y no debe encogerse. */
+.overview-panel__customize svg,
+.overview-row svg,
+.shrink-0 {
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   Logotipo en SVG con currentColor
+   ==========================================================================
+   Los dos SVG del escritorio son el mismo dibujo: solo cambia el `fill` del
+   grupo (#ffffff / #000000). Con `currentColor` un único fichero sirve para los
+   dos temas, y el color lo decide la variable de texto.
+   ========================================================================== */
+
+.sidebar__logo-img {
+  display: block;
+  width: 22px;
+  height: 22px;
+  /* --foreground, no --color-foreground: el tema claro lo pone en #1a1a1a. */
+  color: var(--foreground);
+  pointer-events: none;
+}
+
+.thread__empty-mark {
+  display: block;
+  width: 112px;
+  height: 112px;
+  color: var(--foreground);
+  opacity: 0.12;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* La marca de agua del estado vacío se recrea por JS: se dibuja con el SVG. */
+span.thread__empty-mark {
+  background-color: currentColor;
+  mask-image: url('/assets/logo.svg');
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+}
+
+/* Avatar de perfil de Ajustes: mismo criterio. */
+.settings__profile-avatar {
+  background-image: none;
+  background-color: var(--secondary);
+  mask-image: url('/assets/logo.svg');
+  mask-size: 70%;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  color: var(--foreground);
+}
+
+/* ==========================================================================
+   Tema claro — superficies que seguían oscuras
+   ==========================================================================
+   Estos valores estaban escritos en duro para el tema oscuro (composer,
+   píldoras y segmentado). En claro necesitan su equivalente.
+   ========================================================================== */
+
+:root[data-theme='light'] .composer__inner {
+  background-color: #ffffff;
+  box-shadow:
+    rgba(0, 0, 0, 0.06) 0 1px 2px inset,
+    #ffffff 0 0 0 4px,
+    rgba(0, 0, 0, 0.08) 0 0 0 5px,
+    rgba(0, 0, 0, 0.10) 0 18px 40px -12px,
+    rgba(0, 0, 0, 0.08) 0 2px 8px -2px;
+}
+
+:root[data-theme='light'] .composer__card {
+  background-color: #f7f7f7;
+}
+
+:root[data-theme='light'] .segmented {
+  background-color: #ececec;
+  border-color: #e0e0e0;
+}
+
+:root[data-theme='light'] .segmented__btn {
+  color: #5c5c5c;
+}
+
+:root[data-theme='light'] .segmented__btn.is-active {
+  background-color: #ffffff;
+  color: #1a1a1a;
+}
+
+/* Píldoras del composer (modelo y esfuerzo). */
+:root[data-theme='light'] .pill,
+:root[data-theme='light'] .pill__effort {
+  background-color: #efefef;
+  color: #5c5c5c;
+}
+
+:root[data-theme='light'] .pill:hover {
+  background-color: #e6e6e6;
+  color: #1a1a1a;
+}
+
+/*
+ * Medido en su DOM: la FILA del proyecto es transparente siempre (750x28).
+ * Lo que tiene forma de píldora es el botón de dentro (97x28, radio 9999px,
+ * padding 0 6px 0 8px, color muted-foreground). El fondo va en el botón y solo
+ * al pasar el ratón.
+ */
+:root[data-theme='light'] .composer__project-row,
+:root[data-theme='light'] .composer__project-row:hover {
+  background-color: transparent;
+}
+
+:root[data-theme='light'] .composer__project-row .pill {
+  background-color: transparent;
+  color: #87888f;
+  border-radius: 9999px;
+  padding: 0 6px 0 8px;
+}
+
+:root[data-theme='light'] .composer__project-row .pill:hover {
+  background-color: #ebebeb;
+  color: #1a1a1a;
+}
+
+/* Barra de título y su menú */
+:root[data-theme='light'] .titlebar__menuitem {
+  color: #5c5c5c;
+}
+
+:root[data-theme='light'] .titlebar__menuitem:hover {
+  background-color: #ebebeb;
+  color: #1a1a1a;
+}
+
+/* Ajustes: cabecera y elemento activo de la navegación */
+:root[data-theme='light'] .settings__nav-header,
+:root[data-theme='light'] .settings__nav-item.is-active {
+  color: #1a1a1a;
+}
+
+:root[data-theme='light'] .settings__nav-item {
+  color: #5c5c5c;
+}
+
+/* Saludo del estado vacío */
+:root[data-theme='light'] .thread__empty-title {
+  color: #1a1a1a;
+}
+
+/*
+ * El token `--sidebar` resuelve a #f9f9f9 en tema claro, pero el fondo del
+ * elemento seguía pintándose con el valor oscuro: hay una regla que gana por
+ * especificidad. Se fija aquí, con el token del tema, para que no dependa de
+ * cuál sea esa regla.
+ */
+:root[data-theme='light'] .sidebar,
+:root[data-theme='light'] aside.sidebar {
+  background-color: #f9f9f9;
+}
+
+/*
+ * Medido: con mensajes, el composer arranca en x=295, el mismo borde que la
+ * columna de mensajes. En conversación nueva va centrado.
+ * Se decide por la presencia del bloque vacío, igual que `.thread__inner`.
+ */
+.content__main:has(.thread__empty) .composer {
+  padding-left: 16px;
+}
+
+.content__main:has(.thread__empty) .composer__inner {
+  margin: 0 auto;
+}
+
+/* --- Tarjeta de revisión del turno -------------------------------------- */
+
+.turn-review {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  height: 28px;
+  margin: 4px 0 8px;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: transparent;
+  color: var(--secondary-foreground);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.turn-review:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.turn-review__add {
+  color: var(--success);
+}
+
+.turn-review__del {
+  color: var(--danger);
+}
+
+.turn-review__chevron {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
+}
+
+/* --- Buscar y reemplazar ------------------------------------------------ */
+
+.search-panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: 680px;
+  max-width: calc(100vw - 80px);
+  max-height: min(70vh, 620px);
+  margin: 8vh auto 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background-color: var(--card);
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.search-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 8px 0 14px;
+}
+
+.search-panel__title {
+  font-size: 12px;
+  font-weight: 490;
+  letter-spacing: -0.18px;
+  color: var(--muted-foreground);
+}
+
+.search-panel__close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.search-panel__close:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.search-panel__field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  margin: 0 10px 6px;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--background);
+}
+
+.search-panel__field:focus-within {
+  border-color: var(--ring);
+}
+
+.search-panel__icon {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
+}
+
+.search-panel__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background-color: transparent;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  outline: none;
+}
+
+.search-panel__input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.search-panel__toggle {
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 5px;
+  background-color: transparent;
+  color: var(--muted-foreground);
+  font-family: 'Google Sans Code', monospace;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.search-panel__toggle:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.search-panel__toggle.is-active {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.search-panel__replace {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--secondary-foreground);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.search-panel__replace:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.search-panel__status {
+  padding: 0 14px 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.search-panel__results {
+  flex: 1;
+  min-height: 0;
+  padding: 0 6px 8px;
+  overflow-y: auto;
+}
+
+.search-file {
+  margin-bottom: 2px;
+}
+
+.search-file__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.search-file__count {
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+
+.search-hit {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  padding: 2px 8px 2px 22px;
+  border: 0;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--secondary-foreground);
+  font-family: 'Google Sans Code', monospace;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-hit:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.search-hit__line {
+  flex: none;
+  min-width: 28px;
+  color: var(--muted-foreground);
+  text-align: right;
+}
+
+.search-hit__mark {
+  border-radius: 2px;
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+/* --- Quick fixes del LSP ------------------------------------------------ */
+
+.quickfix-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 220px;
+  max-width: 420px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background-color: var(--card);
+  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.4);
+}
+
+.quickfix-menu__head {
+  padding: 4px 8px 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.quickfix-menu__item {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.quickfix-menu__item:hover {
+  background-color: var(--secondary);
+}
+
+/* --- Varias terminales -------------------------------------------------- */
+
+.terminal__tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.terminal__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* Medido en su DOM: pastilla de 28 px, radio 9999, 14/20, padding 4 8 4 6. */
+.terminal__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 4px 8px 4px 6px;
+  border: 0;
+  border-radius: 9999px;
+  background-color: transparent;
+  color: rgb(188, 189, 198);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.terminal__tab:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.terminal__tab.is-active {
+  /* Su pestaña activa: blanco al 7,5 % de fondo y texto blanco. */
+  background-color: rgba(255, 255, 255, 0.075);
+  color: rgb(255, 255, 255);
+}
+
+.terminal__tab-close {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  color: inherit;
+  opacity: 0.6;
+}
+
+.terminal__tab-close:hover {
+  opacity: 1;
+}
+
+.terminal__add {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--muted-foreground);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.terminal__add:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+/* Cada terminal tiene su propio contenedor dentro de la pila. */
+.terminal__stack {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.terminal__instance {
+  position: absolute;
+  inset: 0;
+  padding: 4px 0 0 6px;
+}
+
+.terminal__instance[hidden] {
+  display: none;
+}
+
+/* Filas de terminal dentro del panel de resumen. */
+.overview-terminal-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background-color: transparent;
+  color: var(--secondary-foreground);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.overview-terminal-row:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.overview-terminal-row.is-active {
+  color: var(--foreground);
+}
+
+.overview-terminal-row__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-terminal-row__state {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* --- Panel lateral derecho (Review / Open File / Terminal / Browser) ----- */
+
+.aux {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background-color: var(--background);
+}
+
+.aux[hidden] {
+  display: none;
+}
+
+/* Fila superior: solo dos iconos alineados a la derecha. */
+.aux__titlebar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+
+.aux__spacer {
+  flex: 1;
+}
+
+.aux__icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.aux__icon:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+/* Lista de lanzamiento. */
+.aux__launcher {
+  flex: 1;
+  min-height: 0;
+  /* Medido en su DOM: el buscador empieza 80 px bajo el borde del panel. */
+  padding: 44px 20px 0;
+  overflow-y: auto;
+}
+
+.aux__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  /* Su separación hasta la primera fila es de 35 px. */
+  margin: 0 8px 35px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background-color: var(--background);
+}
+
+.aux__search:focus-within {
+  border-color: var(--ring);
+}
+
+.aux__search-icon {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
+}
+
+.aux__search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background-color: transparent;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  outline: none;
+}
+
+.aux__search-input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.aux__list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Filas de 32 px, medidas en su DOM. */
+.aux__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background-color: transparent;
+  color: var(--secondary-foreground);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aux__item:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.aux__item.is-active {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.aux__item-icon {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.aux__item-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.aux__view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.aux__view[hidden] {
+  display: none;
+}
+
+.aux__view--list {
+  padding: 12px 20px;
+}
+
+.aux__empty {
+  padding: 8px 0;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+/* Maximizar el panel: ocupa casi todo el ancho, como su botón de maximizar. */
+.body.is-aux-maximized {
+  grid-template-columns: 0 0 1fr var(--aux-width);
+}
+
+.body.is-aux-maximized > .content {
+  display: none;
+}
+
+/* Contenido de las vistas Review y Open File. */
+.aux__summary {
+  padding: 4px 8px 10px;
+  color: var(--secondary-foreground);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.aux__add {
+  color: var(--success);
+}
+
+.aux__del {
+  color: var(--danger);
+}
+
+.aux__file {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background-color: transparent;
+  color: var(--secondary-foreground);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aux__file:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.aux__file.is-active {
+  color: var(--foreground);
+}
+
+.aux__file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aux__file-path {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Cabecera secundaria de la terminal: medido y=85, 16px/24px, padding-left 12. */
+.terminal__subheader {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  margin: 8px 0 6px;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.terminal__shell {
+  flex: 1;
+  min-width: 0;
+  color: var(--foreground);
+  font-size: 16px;
+  line-height: 24px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal__menu {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.terminal__menu:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+/*
+ * Convivencia del editor con el panel lateral.
+ *
+ * Su CSS define el reparto así:
+ *   --aux-pane-width:       calc((100vw - var(--sidebar-width)) * 0.5);
+ *   --settled-content-width: calc(100vw - var(--sidebar-width) - var(--aux-pane-width));
+ * Es decir: el panel se lleva la mitad de lo que queda tras la barra lateral y el
+ * contenido es el resto, con el editor DENTRO de ese resto.
+ *
+ * Nuestro editor era una columna fija de 572 px con `flex-shrink: 0`, así que con
+ * el panel abierto la suma se pasaba del viewport y el panel se salía. Con el
+ * panel abierto pasa a repartirse el contenido en vez de imponer su ancho.
+ */
+.body.is-terminal-open .editor {
+  width: auto;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* --- Lista de terminales del panel (medida en su DOM) ------------------- */
+
+.terminal__body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.terminal__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Su columna: clamp(150px, 250px, min(600px, 100%)) con separador de 1 px. */
+.terminal__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: clamp(150px, 250px, min(600px, 100%));
+  flex-shrink: 0;
+  padding: 8px 4px;
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+/* Cabecera «Terminals»: h-6, pl-2 pr-1.5, text-xs, opacidad 50 %. */
+.terminal__list-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 6px 0 8px;
+}
+
+.terminal__list-label {
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  opacity: 0.5;
+  user-select: none;
+}
+
+/* Fila de terminal: h-8, px-2, rounded-lg, activa con bg-secondary. */
+.terminal__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background-color: transparent;
+  color: var(--secondary-foreground);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  user-select: none;
+  cursor: pointer;
+}
+
+.terminal__row:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.terminal__row.is-active {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.terminal__row-icon {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* --- Desplegable de ajustes (medido en su DOM) -------------------------- */
+
+.dropdown {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.dropdown--wide {
+  width: 100%;
+}
+
+/* Disparador: pastilla de 28 px sobre `--secondary`. */
+.dropdown__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 132px;
+  height: 28px;
+  padding: 0 6px 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background-color: var(--secondary);
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 19.5px;
+  cursor: pointer;
+}
+
+.dropdown--wide .dropdown__trigger {
+  width: 100%;
+}
+
+.dropdown__trigger:hover {
+  background-color: var(--secondary-foreground);
+  color: var(--background);
+}
+
+.dropdown__chevron {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  opacity: 0.6;
+}
+
+/* Panel: 268x199, radio 12, borde 1 px, sombra suya. */
+.dropdown__panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 268px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.086);
+  border-radius: 12px;
+  background-color: var(--card);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.086),
+    0 20px 44px -12px rgba(0, 0, 0, 0.376);
+}
+
+.dropdown__panel[hidden] {
+  display: none;
+}
+
+/* Opción: 47 px de alto, radio 7, 13/19.5. */
+.dropdown__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 47px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 7px;
+  background-color: transparent;
+  color: rgb(188, 189, 198);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 19.5px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dropdown__item:hover {
+  background-color: var(--secondary);
+}
+
+.dropdown__item.is-active {
+  color: rgb(255, 255, 255);
+}
+
+.dropdown__item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.dropdown__item-desc {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: normal;
+}
+
+.dropdown__check {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  transform: rotate(180deg);
+}
+
+/* --- Tarjeta de terminal de cada llamada (medida en su DOM) -------------- */
+
+.work-row__terminal {
+  margin-top: 2px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--background);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.work-row__terminal[hidden] {
+  display: none;
+}
+
+/* Cabecera: 6px 12px, 12/16 mono, con borde inferior. */
+.work-row__cmd {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+  font-family: 'Google Sans Code', ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.work-row__prompt {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+/* Salida: mismo mono y tamaño, sin el borde inferior. */
+.work-row__output {
+  margin: 0;
+  padding: 6px 12px;
+  color: var(--secondary-foreground);
+  font-family: 'Google Sans Code', ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+/*
+ * Dentro de la tarjeta de terminal el contenido no lleva fondo ni radio propios:
+ * el suyo pinta un único bloque. Medido: su salida es texto plano sobre el
+ * fondo de la tarjeta, sin caja interior.
+ */
+.work-row__terminal .tree,
+.work-row__terminal .code-block,
+.work-row__terminal .tool-out,
+.work-row__terminal pre,
+.work-row__terminal code {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  max-height: none;
+}
+
+.work-row__terminal .tree {
+  padding: 6px 12px;
+}
+
+/* --- Cabecera de sección de ajustes (medida en su DOM) ------------------- */
+
+.settings__section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  margin: 0 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-family: inherit;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Título: text-sm font-medium. */
+.settings__section-title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+
+/* Contador: 10 px semibold en pastilla, con borde. */
+.settings__section-count {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  user-select: none;
+}
+
+/* Chevron de 16, girado cuando la sección está abierta. */
+.settings__section-chevron {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--muted-foreground);
+  transition: transform 200ms ease;
+}
+
+.settings__section-head[aria-expanded='true'] .settings__section-chevron {
+  transform: rotate(90deg);
+}
+
+.settings__section-body[hidden] {
+  display: none;
+}
+
+/* La fila superior del panel alberga también las pestañas de la vista. */
+.aux__titlebar .terminal__tabs {
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.aux__titlebar .terminal__tabs[hidden] {
+  display: none;
+}
+
+.aux__titlebar .terminal__add[hidden],
+.aux__titlebar .aux__icon[hidden] {
+  display: none;
+}
+
+/*
+ * El desplegable se recortaba: la tarjeta de ajustes tiene `overflow: hidden`
+ * para que las filas respeten el radio, y eso cortaba el panel flotante —el
+ * primer item salía partido por arriba y el último por abajo—.
+ * Mientras haya uno abierto, la tarjeta deja de recortar.
+ */
+.row-group:has(.dropdown__panel:not([hidden])) {
+  overflow: visible;
+}
+
+/* Y el panel no debe quedar tapado por la fila siguiente. */
+.dropdown__panel {
+  z-index: 60;
+}
+
+/* --- Vista de Automations (medida en su DOM) ---------------------------- */
+
+.automations {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 32px 24px;
+  overflow-y: auto;
+}
+
+.automations[hidden] {
+  display: none;
+}
+
+.automations__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 56px;
+}
+
+/* Título: 18/28, peso 450. */
+.automations__title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 450;
+  color: var(--foreground);
+}
+
+.automations__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Pastilla de 32, radio completo, padding 0 8px 0 6px. */
+.automations__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px 0 6px;
+  border: 0;
+  border-radius: 9999px;
+  background-color: var(--secondary);
+  color: rgb(188, 189, 198);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 450;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.automations__btn:hover {
+  color: var(--foreground);
+}
+
+.automations__btn > span[data-icon] {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+}
+
+.automations__body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Estado vacío: título 16/24 peso 350 y descripción 14/20 en muted. */
+.automations__empty-title {
+  margin: 0 0 4px;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 350;
+  color: var(--foreground);
+}
+
+.automations__empty-desc {
+  max-width: 448px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 350;
+  color: rgb(135, 136, 143);
+}
+
+/* Fila de una automatización programada. */
+.automations__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+
+.automations__row-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--foreground);
+}
+
+.automations__row-when {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* Historial de ejecuciones bajo cada automatización. */
+.automations__runs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.automations__run {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.automations__run-when {
+  color: rgb(135, 136, 143);
+}
+
+/* --- Tarjeta de decisión en línea (medida en su DOM) -------------------- */
+
+.ask-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin: 8px 0;
+  padding: 6px;
+  border-radius: 20px;
+  background-color: var(--card);
+}
+
+/* Cabecera: icono 20x21, pregunta 14/20, plegar 24x24. */
+.ask-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 6px;
+}
+
+.ask-card__icon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 21px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.ask-card__question {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--foreground);
+  overflow-wrap: break-word;
+}
+
+.ask-card__collapse {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 9999px;
+  background-color: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transform: rotate(90deg);
+  transition: transform 200ms ease;
+}
+
+.ask-card__collapse.is-collapsed {
+  transform: rotate(0deg);
+}
+
+.ask-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 6px 4px;
+}
+
+.ask-card__body[hidden] {
+  display: none;
+}
+
+/* Opciones: filas de 30 px, numeradas. */
+.ask-card__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background-color: transparent;
+  color: var(--secondary-foreground);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ask-card__option:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.ask-card__option.is-selected {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.ask-card__num {
+  flex-shrink: 0;
+  min-width: 12px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.ask-card__label {
+  flex: 1;
+  min-width: 0;
+}
+
+.ask-card__desc {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.ask-card__input {
+  height: 30px;
+  margin-top: 2px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: transparent;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.ask-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.ask-card__skip,
+.ask-card__submit {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9999px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.ask-card__skip {
+  background-color: transparent;
+  color: var(--muted-foreground);
+}
+
+.ask-card__skip:hover {
+  color: var(--foreground);
+}
+
+.ask-card__submit {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.ask-card__submit:hover {
+  background-color: var(--secondary-foreground);
+  color: var(--background);
+}
+
+/* Host de la tarjeta de decisión: anclado sobre el composer. */
+.ask-host {
+  position: relative;
+  z-index: 20;
+  /* Mismo ancho y alineación que la columna del chat (768, centrada). */
+  width: 100%;
+  max-width: 768px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0 0 8px;
+}
+
+.ask-host[hidden] {
+  display: none;
+}
+
+.ask-host .ask-card {
+  margin: 0;
+}
+
+/* Badge circular del número, como el suyo. */
+.ask-card__num {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ask-card__option.is-selected .ask-card__num {
+  border-color: var(--secondary-foreground);
+  color: var(--foreground);
+}
+
+.ask-card__input[hidden] {
+  display: none;
+}
+
+/* Icono de la pregunta: círculo con «?», como el suyo. */
+.ask-card__icon {
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ask-card__mic {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: auto;
+  border: 0;
+  border-radius: 9999px;
+  background-color: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.ask-card__mic:hover {
+  color: var(--foreground);
+}
+
+/*
+ * Con una tarjeta de decisión abierta, el composer sube y se pega a ella.
+ *
+ * Su composer lleva `margin-top: 178px` para centrarse en el estado vacío, pero
+ * cuando hay tarjeta el suyo queda a 8 px de ella. Sin esto, la tarjeta aparecía
+ * flotando en mitad de la pantalla con 178 px de aire debajo.
+ */
+/*
+ * El composer no se mueve: es la tarjeta la que absorbe el espacio libre.
+ *
+ * Antes ponía `margin-top: 0` al composer, y eso lo desplazaba 178 px hacia
+ * arriba. Lo correcto es que el `auto` lo tome la tarjeta: así el composer se
+ * queda donde estaba y la tarjeta se pega encima suya.
+ */
+.content__main:has(.ask-host:not([hidden])) #ask-host {
+  margin-top: auto;
+}
+
+.content__main:has(.ask-host:not([hidden])) .composer {
+  margin-top: 0;
+}
+
+/*
+ * Aparición y desaparición de la tarjeta de decisión.
+ *
+ * Medido en su app: la tarjeta no lleva animación propia (`animation: none` en
+ * toda su cadena). Pero su sistema define `fade-in` (opacidad 0→1), así que se
+ * usa esa — sin desplazamientos ni escalas que ellos no tienen.
+ */
+@keyframes ask-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ask-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.ask-card {
+  animation: ask-fade-in 150ms ease-out both;
+}
+
+.ask-card.is-closing {
+  animation: ask-fade-out 120ms ease-in both;
+  pointer-events: none;
+}
+
+/* El cuerpo se pliega con una altura animada, como el resto de sus colapsables. */
+.ask-card__body {
+  overflow: hidden;
+  transition: opacity 150ms ease-out;
+}
+
+/* Icono dentro de una pestaña de vista. */
+.terminal__tab-icon {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+/* Estado de la cuenta de Google en Ajustes. */
+.google-state {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.google-state.is-on {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+/* --- Imagen generándose, con su animación de entrada -------------------- */
+
+/*
+ * Mientras Flow trabaja, se muestra un marcador. La entrada de la imagen usa
+ * `logoEntrance` de su sistema (opacidad, 6px y desenfoque, 1s), que es la
+ * animación que usan para contenido visual.
+ */
+@keyframes image-entrance {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes image-shimmer {
+  0% { mask-position: 100% 50%; }
+  68%, 100% { mask-position: 0% 50%; }
+}
+
+.generated-image {
+  display: block;
+  max-width: 100%;
+  margin: 8px 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  animation: image-entrance 1s ease-out both;
+}
+
+.generated-image--loading {
+  display: grid;
+  place-items: center;
+  /* Mismo ancho que la columna de mensajes, no todo el panel. */
+  width: 100%;
+  max-width: 768px;
+  min-height: 180px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background-color: var(--secondary);
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 20px;
+  animation: image-entrance 400ms ease-out both;
+}
+
+.generated-image__label {
+  background: linear-gradient(
+    90deg,
+    var(--muted-foreground) 0%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: image-shimmer 1.9s linear infinite;
+}

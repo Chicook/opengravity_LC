@@ -1,0 +1,321 @@
+'use strict';
+
+/**
+ * Cliente LSP mínimo.
+ *
+ * Habla Language Server Protocol por stdio: JSON-RPC 2.0 con cabeceras
+ * `Content-Length`, igual que MCP pero con framing distinto (MCP usa líneas).
+ *
+ * Cubre lo que necesita el editor: inicialización, apertura y cambios de
+ * documento, diagnósticos, autocompletado e ir a definición.
+ */
+
+const { spawn } = require('node:child_process');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+
+/** Comandos por defecto según el lenguaje. El usuario puede sobrescribirlos. */
+const DEFAULT_SERVERS = {
+  typescript: { command: 'typescript-language-server', args: ['--stdio'] },
+  javascript: { command: 'typescript-language-server', args: ['--stdio'] },
+  python: { command: 'pyright-langserver', args: ['--stdio'] },
+  go: { command: 'gopls', args: [] },
+  rust: { command: 'rust-analyzer', args: [] },
+  json: { command: 'vscode-json-language-server', args: ['--stdio'] },
+};
+
+/** Lenguaje LSP a partir de la extensión del fichero. */
+function languageForPath(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  switch (ext) {
+    case '.ts':
+    case '.tsx':
+    case '.mts':
+    case '.cts':
+      return 'typescript';
+    case '.js':
+    case '.jsx':
+    case '.mjs':
+    case '.cjs':
+      return 'javascript';
+    case '.py':
+      return 'python';
+    case '.go':
+      return 'go';
+    case '.rs':
+      return 'rust';
+    case '.json':
+      return 'json';
+    default:
+      return null;
+  }
+}
+
+/** Identificador de lenguaje para `textDocument`. */
+function lspLanguageId(language) {
+  return language === 'javascript' ? 'javascript' : language;
+}
+
+class LspClient {
+  constructor(options) {
+    this.language = options.language;
+    this.rootPath = options.rootPath;
+    this.child = null;
+    this.buffer = Buffer.alloc(0);
+    this.nextId = 1;
+    this.pending = new Map();
+    this.opened = new Map(); // uri -> version
+    this.diagnostics = new Map(); // uri -> diagnósticos
+    this.ready = false;
+    this.onDiagnostics = options.onDiagnostics ?? (() => {});
+    this.onLog = options.onLog ?? (() => {});
+  }
+
+  /** Arranca el servidor y completa el handshake. */
+  async start() {
+    const { command, args } = this.serverCommand;
+    this.child = spawn(command, args, {
+      cwd: this.rootPath,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+
+    this.child.stdout.on('data', (chunk) => this.consume(chunk));
+    this.child.stderr.on('data', (chunk) => this.onLog(String(chunk).slice(0, 400)));
+
+    this.child.on('error', (error) => {
+      this.onLog(`no se pudo arrancar ${command}: ${error.message}`);
+      this.ready = false;
+    });
+
+    this.child.on('exit', () => {
+      this.ready = false;
+    });
+
+    const rootUri = pathToFileURL(this.rootPath).href;
+
+    const result = await this.request('initialize', {
+      processId: process.pid,
+      rootUri,
+      capabilities: {
+        textDocument: {
+          synchronization: { dynamicRegistration: false },
+          completion: { completionItem: { snippetSupport: false } },
+          hover: { contentFormat: ['plaintext', 'markdown'] },
+          definition: {},
+          codeAction: {
+            codeActionLiteralSupport: {
+              codeActionKind: {
+                valueSet: [
+                  'quickfix',
+                  'refactor',
+                  'refactor.extract',
+                  'refactor.inline',
+                  'source.fixAll',
+                  'source.organizeImports',
+                ],
+              },
+            },
+          },
+          publishDiagnostics: {},
+        },
+        workspace: { workspaceFolders: false },
+      },
+      workspaceFolders: null,
+    });
+
+    this.ready = true;
+    this.notify('initialized', {});
+    return result;
+  }
+
+  get serverCommand() {
+    return this.serverCommandOverride ?? DEFAULT_SERVERS[this.language] ?? null;
+  }
+
+  setServerCommand(override) {
+    this.serverCommandOverride = override;
+  }
+
+  /** Abre un documento si no estaba abierto. */
+  didOpen(uri, text) {
+    if (this.opened.has(uri)) return;
+    this.opened.set(uri, 1);
+    this.notify('textDocument/didOpen', {
+      textDocument: {
+        uri,
+        languageId: lspLanguageId(this.language),
+        version: 1,
+        text,
+      },
+    });
+  }
+
+  /** Notifica un cambio de contenido. */
+  didChange(uri, text) {
+    const version = (this.opened.get(uri) ?? 0) + 1;
+    this.opened.set(uri, version);
+    this.notify('textDocument/didChange', {
+      textDocument: { uri, version },
+      contentChanges: [{ text }],
+    });
+  }
+
+  /** Pide autocompletado en una posición. */
+  completion(uri, line, character) {
+    return this.request('textDocument/completion', {
+      textDocument: { uri },
+      position: { line, character },
+    });
+  }
+
+  /** Pide ir a definición. */
+  definition(uri, line, character) {
+    return this.request('textDocument/definition', {
+      textDocument: { uri },
+      position: { line, character },
+    });
+  }
+
+  /** Pide las acciones de código (quick fixes) para un rango. */
+  codeAction(uri, rango, diagnosticos) {
+    return this.request('textDocument/codeAction', {
+      textDocument: { uri },
+      range: rango,
+      context: { diagnostics: diagnosticos ?? [] },
+    });
+  }
+
+  /** Ejecuta un comando del servidor. */
+  executeCommand(comando, argumentos) {
+    return this.request('workspace/executeCommand', {
+      command: comando,
+      arguments: argumentos ?? [],
+    });
+  }
+
+  /** Diagnósticos conocidos de un fichero. */
+  diagnosticsFor(uri) {
+    return this.diagnostics.get(uri) ?? [];
+  }
+
+  /** Envía una petición y espera respuesta. */
+  request(method, params) {
+    if (!this.child || this.child.killed) {
+      return Promise.reject(new Error('servidor LSP no disponible'));
+    }
+
+    const id = this.nextId;
+    this.nextId += 1;
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`timeout en ${method}`));
+      }, 15000);
+
+      this.pending.set(id, { resolve, reject, timer });
+      this.send({ jsonrpc: '2.0', id, method, params });
+    });
+  }
+
+  /** Envía una notificación (sin respuesta). */
+  notify(method, params) {
+    if (!this.child || this.child.killed) return;
+    this.send({ jsonrpc: '2.0', method, params });
+  }
+
+  /** Escribe un mensaje con el framing de LSP. */
+  send(message) {
+    const body = Buffer.from(JSON.stringify(message), 'utf8');
+    const header = Buffer.from(`Content-Length: ${body.length}\r\n\r\n`, 'ascii');
+    try {
+      this.child.stdin.write(Buffer.concat([header, body]));
+    } catch {
+      // stdin cerrado
+    }
+  }
+
+  /** Acumula bytes y procesa mensajes completos. */
+  consume(chunk) {
+    this.buffer = Buffer.concat([this.buffer, chunk]);
+
+    while (true) {
+      const headerEnd = this.buffer.indexOf('\r\n\r\n');
+      if (headerEnd === -1) return;
+
+      const header = this.buffer.slice(0, headerEnd).toString('ascii');
+      const match = header.match(/Content-Length:\s*(\d+)/i);
+      if (!match) {
+        this.buffer = this.buffer.slice(headerEnd + 4);
+        continue;
+      }
+
+      const length = Number(match[1]);
+      const bodyStart = headerEnd + 4;
+      if (this.buffer.length < bodyStart + length) return;
+
+      const body = this.buffer.slice(bodyStart, bodyStart + length).toString('utf8');
+      this.buffer = this.buffer.slice(bodyStart + length);
+
+      let message;
+      try {
+        message = JSON.parse(body);
+      } catch {
+        continue;
+      }
+
+      this.handle(message);
+    }
+  }
+
+  handle(message) {
+    if (message.id !== undefined && (message.result !== undefined || message.error !== undefined)) {
+      const entry = this.pending.get(message.id);
+      if (!entry) return;
+      this.pending.delete(message.id);
+      clearTimeout(entry.timer);
+      if (message.error) entry.reject(new Error(message.error.message ?? 'error LSP'));
+      else entry.resolve(message.result);
+      return;
+    }
+
+    if (message.method === 'textDocument/publishDiagnostics') {
+      const { uri, diagnostics } = message.params ?? {};
+      this.diagnostics.set(uri, diagnostics ?? []);
+      this.onDiagnostics(uri, diagnostics ?? []);
+      return;
+    }
+
+    // Peticiones del servidor que no atendemos: responder null para no bloquear.
+    if (message.id !== undefined && message.method) {
+      this.send({ jsonrpc: '2.0', id: message.id, result: null });
+    }
+  }
+
+  /** Cierra el servidor. */
+  stop() {
+    for (const [, entry] of this.pending) {
+      clearTimeout(entry.timer);
+      entry.reject(new Error('servidor LSP cerrado'));
+    }
+    this.pending.clear();
+
+    try {
+      this.notify('shutdown', null);
+      this.notify('exit', null);
+    } catch {
+      // ignorado
+    }
+
+    try {
+      this.child?.kill();
+    } catch {
+      // ya cerrado
+    }
+    this.child = null;
+    this.ready = false;
+  }
+}
+
+module.exports = { LspClient, languageForPath, DEFAULT_SERVERS };

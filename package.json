@@ -1,0 +1,77 @@
+{
+  "name": "opengravity",
+  "productName": "Opengravity",
+  "version": "0.1.0",
+  "private": true,
+  "description": "IDE con agentes multi-proveedor — app de escritorio open source",
+  "license": "MIT",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node --experimental-strip-types src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "app": "npm run build && npm run build:monaco && electron .",
+    "app:only": "electron .",
+    "build:monaco": "node scripts/build-monaco.mjs",
+    "dist": "npm run build && npm run build:monaco && electron-builder --win nsis portable",
+    "dist:dir": "npm run build && npm run build:monaco && electron-builder --win --dir",
+    "test": "node --test test/*.test.mjs",
+    "pretest": "npm run build",
+    "test:watch": "node --test --watch test/*.test.mjs"
+  },
+  "dependencies": {
+    "@lydell/node-pty": "^1.2.0-beta.18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.2",
+    "monaco-editor": "^0.57.0",
+    "typescript": "^5.7.0",
+    "typescript-language-server": "^6.0.3"
+  },
+  "build": {
+    "appId": "app.opengravity",
+    "productName": "Opengravity",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/**/*",
+      "renderer/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Opengravity",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico"
+    },
+    "linux": {
+      "icon": "assets/icon-512.png",
+      "category": "Development"
+    }
+  }
+}

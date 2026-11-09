@@ -1,0 +1,193 @@
+'use strict';
+
+/**
+ * Renderizador de Markdown mínimo y seguro.
+ *
+ * Sin dependencias. Escapa el HTML primero, así que el texto del modelo nunca
+ * puede inyectar etiquetas. Soporta lo que usa un chat de código:
+ *
+ *   - bloques de código ``` con lenguaje
+ *   - código en línea `x`
+ *   - negrita **x**, cursiva *x*, tachado ~~x~~
+ *   - encabezados # ## ###
+ *   - listas - / * / 1.
+ *   - enlaces [texto](url)
+ *   - reglas horizontales ---
+ *   - párrafos y saltos de línea
+ *
+ * Se expone como `window.Markdown.render(text)`.
+ */
+
+(function () {
+  /** Escapa los caracteres peligrosos de HTML. */
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /** Deshace el escapado aplicado al principio, para re-tokenizar el código. */
+  function unescapeHtml(text) {
+    return String(text)
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&');
+  }
+
+  /** Aplica los estilos en línea (negrita, cursiva, código, enlaces). */
+  function inline(text) {
+    let out = text;
+
+    // Código en línea primero: su contenido no debe procesarse más.
+    const codeSlots = [];
+    out = out.replace(/`([^`]+)`/g, (_match, code) => {
+      codeSlots.push(`<code class="md-code">${code}</code>`);
+      return `\u0000${codeSlots.length - 1}\u0000`;
+    });
+
+    // Negrita, cursiva, tachado.
+    out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    out = out.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    out = out.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+
+    // Enlaces: solo http(s) y rutas relativas.
+    out = out.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_match, label, href) => {
+      const safe = /^(https?:\/\/|\/|#)/.test(href) ? href : '#';
+      return `<a href="${safe}" class="md-link">${label}</a>`;
+    });
+
+    // Restaura el código en línea.
+    out = out.replace(/\u0000(\d+)\u0000/g, (_match, index) => codeSlots[Number(index)] ?? '');
+
+    return out;
+  }
+
+  /**
+   * Convierte Markdown a HTML.
+   * El texto de entrada se escapa antes de nada.
+   */
+  function render(markdown) {
+    const source = escapeHtml(markdown).replace(/\r\n/g, '\n');
+    const lines = source.split('\n');
+
+    const html = [];
+    let index = 0;
+
+    while (index < lines.length) {
+      const line = lines[index] ?? '';
+
+      // --- Bloque de código ---
+      const fence = line.match(/^\s*```(\w*)\s*$/);
+      if (fence) {
+        const language = fence[1] ?? '';
+        const body = [];
+        index += 1;
+        while (index < lines.length && !/^\s*```\s*$/.test(lines[index] ?? '')) {
+          body.push(lines[index] ?? '');
+          index += 1;
+        }
+        index += 1; // salta el cierre
+        const cls = language ? ` class="language-${language}"` : '';
+        // El documento ya viene escapado; se revierte para que el resaltador
+        // vea las comillas y operadores reales.
+        const source = unescapeHtml(body.join('\n'));
+        const highlighted =
+          window.Highlight && language ? window.Highlight.render(source, language) : escapeHtml(source);
+        html.push(
+          `<div class="md-pre"><div class="md-pre__lang">${language || 'texto'}</div>` +
+            `<pre><code${cls}>${highlighted}</code></pre></div>`,
+        );
+        continue;
+      }
+
+      // --- Tabla ---
+      if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|[\s:|-]+\|\s*$/.test(lines[index + 1] ?? '')) {
+        const parseRow = (row) =>
+          row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+
+        const header = parseRow(line);
+        index += 2; // cabecera + separador
+
+        const rows = [];
+        while (index < lines.length && /^\s*\|.*\|\s*$/.test(lines[index] ?? '')) {
+          rows.push(parseRow(lines[index] ?? ''));
+          index += 1;
+        }
+
+        const thead = `<thead><tr>${header.map((c) => `<th>${inline(c)}</th>`).join('')}</tr></thead>`;
+        const tbody = `<tbody>${rows
+          .map((cells) => `<tr>${cells.map((c) => `<td>${inline(c)}</td>`).join('')}</tr>`)
+          .join('')}</tbody>`;
+
+        html.push(`<table class="md-table">${thead}${tbody}</table>`);
+        continue;
+      }
+
+      // --- Regla horizontal ---
+      if (/^\s*---+\s*$/.test(line)) {
+        html.push('<hr class="md-hr" />');
+        index += 1;
+        continue;
+      }
+
+      // --- Encabezados ---
+      const heading = line.match(/^(#{1,4})\s+(.*)$/);
+      if (heading) {
+        const level = heading[1].length;
+        html.push(`<h${level} class="md-h md-h${level}">${inline(heading[2])}</h${level}>`);
+        index += 1;
+        continue;
+      }
+
+      // --- Listas ---
+      const bullet = line.match(/^\s*[-*+]\s+(.*)$/);
+      const ordered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      if (bullet || ordered) {
+        const tag = bullet ? 'ul' : 'ol';
+        const items = [];
+        while (index < lines.length) {
+          const current = lines[index] ?? '';
+          const match = bullet ? current.match(/^\s*[-*+]\s+(.*)$/) : current.match(/^\s*\d+[.)]\s+(.*)$/);
+          if (!match) break;
+          items.push(`<li>${inline(match[1])}</li>`);
+          index += 1;
+        }
+        html.push(`<${tag} class="md-list">${items.join('')}</${tag}>`);
+        continue;
+      }
+
+      // --- Línea en blanco ---
+      if (line.trim().length === 0) {
+        index += 1;
+        continue;
+      }
+
+      // --- Párrafo (hasta línea en blanco o bloque especial) ---
+      const paragraph = [];
+      while (index < lines.length) {
+        const current = lines[index] ?? '';
+        if (current.trim().length === 0) break;
+        if (/^\s*```/.test(current)) break;
+        if (/^(#{1,4})\s+/.test(current)) break;
+        if (/^\s*[-*+]\s+/.test(current)) break;
+        if (/^\s*\d+[.)]\s+/.test(current)) break;
+        if (/^\s*---+\s*$/.test(current)) break;
+        paragraph.push(inline(current));
+        index += 1;
+      }
+
+      if (paragraph.length > 0) {
+        html.push(`<p class="md-p">${paragraph.join('<br />')}</p>`);
+      }
+    }
+
+    return html.join('');
+  }
+
+  window.Markdown = { render };
+})();

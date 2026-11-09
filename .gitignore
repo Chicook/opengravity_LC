@@ -1,0 +1,30 @@
+# Dependencias
+node_modules/
+dist/
+release/
+*.tsbuildinfo
+
+# Entorno
+.env
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# SO
+.DS_Store
+Thumbs.db
+
+# ThinkRail
+.thinkrail/context/*
+!.thinkrail/context/.gitignore
+
+# Bundle de Monaco (se genera con npm run build:monaco)
+renderer/monaco/
+
+# Salidas largas de herramientas
+.opengravity/
+
+# Worktrees aislados de los subagentes
+.worktrees/
