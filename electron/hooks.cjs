@@ -15,12 +15,38 @@ const CLAVES_DE_RUTA = {
   read_file: ['path'],
   write_file: ['path'],
   edit_file: ['path', 'target'],
+  multi_replace: ['path'],
+  edit_notebook: ['path'],
   list_directory: ['path'],
   search_files: ['path', 'directory'],
   search_code: ['path'],
   view_code_item: ['path'],
   run_command: ['cwd'],
 };
+
+/** ¿La ruta resuelta sigue dentro del workspace? */
+function dentroDelWorkspace(cwd, absoluta) {
+  const relativa = path.relative(cwd, absoluta);
+  return relativa === '' || (relativa !== '..' && !relativa.startsWith(`..${path.sep}`) && !path.isAbsolute(relativa));
+}
+
+/**
+ * Quita del entorno las variables que parecen credenciales.
+ *
+ * Es la parte de "entorno limpio" del sandbox: un comando no debe heredar la
+ * clave del modelo, tokens de GitHub/Slack ni credenciales de la nube.
+ */
+const VARIABLE_SECRETA =
+  /(api[_-]?key|secret|passw|credential|token|^aws_|^openai_|^anthropic_|^gemini_|^google_application_credentials$|^ssh_auth_sock$)/i;
+
+function sanearEntorno(env) {
+  const limpio = {};
+  for (const [clave, valor] of Object.entries(env ?? {})) {
+    if (VARIABLE_SECRETA.test(clave)) continue;
+    limpio[clave] = valor;
+  }
+  return limpio;
+}
 
 /**
  * Pre-hook: convierte rutas relativas en absolutas respecto al workspace.
@@ -29,7 +55,7 @@ const CLAVES_DE_RUTA = {
  * explora a ciegas gastando pasos. Se midió en una prueba real: 48 761 tokens
  * frente a 3 341 tras arreglar el directorio de trabajo.
  */
-function absolutizarRutas(toolName, args, getCwd) {
+function absolutizarRutas(toolName, args, getCwd, restringir = false) {
   const claves = CLAVES_DE_RUTA[toolName];
   if (!claves) return { args, notas: [] };
 
@@ -42,10 +68,24 @@ function absolutizarRutas(toolName, args, getCwd) {
   for (const clave of claves) {
     const valor = nuevos[clave];
     if (typeof valor !== 'string' || valor.length === 0) continue;
-    if (path.isAbsolute(valor)) continue;
 
-    nuevos[clave] = path.resolve(cwd, valor);
-    notas.push(`${clave}: "${valor}" → ruta absoluta`);
+    const absoluta = path.isAbsolute(valor) ? path.normalize(valor) : path.resolve(cwd, valor);
+
+    /*
+     * Sandbox de workspace (fase 1): las herramientas de fichero no pueden
+     * salir del directorio de trabajo. Es una comprobación de ruta, no un
+     * sandbox del SO: un comando de shell todavía puede salir por su cuenta.
+     */
+    if (restringir && !dentroDelWorkspace(cwd, absoluta)) {
+      throw new Error(
+        `La ruta «${valor}» queda fuera del workspace y el sandbox de workspace está activo.`,
+      );
+    }
+
+    if (!path.isAbsolute(valor)) {
+      nuevos[clave] = absoluta;
+      notas.push(`${clave}: "${valor}" → ruta absoluta`);
+    }
   }
 
   return { args: nuevos, notas };
@@ -180,7 +220,12 @@ function conHooks(tool, opciones) {
 
       // --- pre ---
       let actuales = args ?? {};
-      const ruta = absolutizarRutas(tool.name, actuales, getCwd);
+      const ruta = absolutizarRutas(
+        tool.name,
+        actuales,
+        getCwd,
+        opciones.getRestringir?.() === true,
+      );
       actuales = ruta.args;
       notas.push(...ruta.notas);
 
@@ -330,6 +375,8 @@ function aplicarHooksDeRazonamiento(texto, opciones = {}) {
 module.exports = {
   conHooks,
   absolutizarRutas,
+  dentroDelWorkspace,
+  sanearEntorno,
   redactarSecretos,
   truncarAGuardar,
   aplicarReglasDeReescritura,

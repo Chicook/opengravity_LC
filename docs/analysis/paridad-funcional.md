@@ -122,3 +122,9 @@ Auditoría del orquestador y las herramientas, verificada con pruebas y en vivo:
 - Subagentes de un solo nivel, sin delegación recursiva. Los grants por
   herramienta ya están: `define_subagent.tools` solo puede quitar herramientas
   del nivel permitido; nunca da escritura ni MCP por sí solo.
+- **Sandbox de workspace, fase 1** (opt-in en Ajustes): las herramientas de
+  fichero no pueden resolver rutas fuera del proyecto, `run_command` fija su cwd
+  dentro del workspace y arranca con las variables de entorno que parecen
+  credenciales eliminadas. No es un jail del SO: un comando de shell todavía
+  puede salir del directorio; la fase 2 usaría AppContainer/Job Objects en
+  Windows o namespaces/bubblewrap en Linux.

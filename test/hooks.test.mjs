@@ -9,6 +9,8 @@ import { modulo, temporal } from './helpers.mjs';
 const {
   conHooks,
   absolutizarRutas,
+  dentroDelWorkspace,
+  sanearEntorno,
   redactarSecretos,
   aplicarReglasDeReescritura,
   aplicarHooksDeTexto,
@@ -38,6 +40,76 @@ describe('absolutizarRutas', () => {
   test('sin workspace no hace nada', () => {
     const { args } = absolutizarRutas('read_file', { path: 'a.ts' }, () => '');
     assert.equal(args.path, 'a.ts');
+  });
+
+  test('con el sandbox activo rechaza rutas fuera del workspace', () => {
+    const cwd = path.resolve('workspace');
+    assert.throws(
+      () => absolutizarRutas('read_file', { path: '../fuera.txt' }, () => cwd, true),
+      /fuera del workspace/,
+    );
+    assert.throws(
+      () => absolutizarRutas('edit_notebook', { path: path.join(cwd, '..', 'fuera.ipynb') }, () => cwd, true),
+      /fuera del workspace/,
+    );
+    assert.throws(
+      () => absolutizarRutas('multi_replace', { path: path.join(cwd, '..', 'fuera.ts') }, () => cwd, true),
+      /fuera del workspace/,
+    );
+    assert.throws(
+      () => absolutizarRutas('run_command', { command: 'ls', cwd: '..' }, () => cwd, true),
+      /fuera del workspace/,
+    );
+  });
+
+  test('con el sandbox activo deja pasar rutas internas', () => {
+    const cwd = path.resolve('workspace');
+    const dentro = path.join(cwd, 'src', 'a.ts');
+    const { args } = absolutizarRutas('read_file', { path: dentro }, () => cwd, true);
+    assert.equal(args.path, dentro);
+  });
+});
+
+describe('sandbox de workspace', () => {
+  const cwd = path.resolve('workspace');
+
+  test('dentroDelWorkspace distingue dentro, borde y fuera', () => {
+    assert.equal(dentroDelWorkspace(cwd, cwd), true);
+    assert.equal(dentroDelWorkspace(cwd, path.join(cwd, 'src', 'a.ts')), true);
+    assert.equal(dentroDelWorkspace(cwd, path.join(cwd, '..', 'a.ts')), false);
+    assert.equal(dentroDelWorkspace(cwd, path.resolve(cwd, '..')), false);
+  });
+
+  test('sanearEntorno quita credenciales y conserva el entorno básico', () => {
+    const limpio = sanearEntorno({
+      PATH: '/bin',
+      HOME: '/home/u',
+      SystemRoot: 'C:\\Windows',
+      NODE_ENV: 'test',
+      OPENAI_API_KEY: 'sk-x',
+      GITHUB_TOKEN: 'ghp_x',
+      AWS_SECRET_ACCESS_KEY: 'x',
+      DB_PASSWORD: 'x',
+      MY_API_KEY: 'x',
+    });
+    assert.deepEqual(Object.keys(limpio).sort(), ['HOME', 'NODE_ENV', 'PATH', 'SystemRoot'].sort());
+  });
+
+  test('conHooks corta la herramienta antes de ejecutarla', async () => {
+    const falsa = {
+      name: 'read_file',
+      description: 'lee',
+      parameters: { type: 'object', properties: {} },
+      async execute() {
+        return { content: 'no debería ejecutarse' };
+      },
+    };
+    const envuelta = conHooks(falsa, {
+      getCwd: () => cwd,
+      getLimite: () => 16000,
+      getRestringir: () => true,
+    });
+    await assert.rejects(() => envuelta.execute({ path: '../fuera.txt' }, {}), /fuera del workspace/);
   });
 });
 

@@ -52,6 +52,8 @@ Deja dos ficheros en `release/`:
   `snapshot`, `click`, `fill`, `type`, `press`, `select`, `scroll`, `hover`,
   `wait`, `batch`, `navigate`, `eval`) sobre el Chromium integrado
 - Permisos: preset global, permisos por herramienta y reglas de red
+- **Sandbox de workspace opcional**: rutas de fichero dentro del proyecto, cwd de
+  comandos fijado y variables de entorno con credenciales fuera del proceso
 - **Diffs con aprobación** antes de escribir
 - **Checkpoints**: deshacer restaura los ficheros en disco
 - Skills inyectables, perfil local y servidores MCP como plugins

@@ -30,6 +30,7 @@
     queuedMessages: 'Queue',
     openLinksIn: 'External Browser',
     browserJsPolicy: 'Request Review',
+    restrictToWorkspace: false,
     theme: 'Dark',
     themeContrast: 'Default',
     darkPreset: 'Default Dark',
@@ -465,6 +466,17 @@
             label: 'Network Access Rules',
             desc: 'Configura las URLs permitidas y denegadas para lectura.',
             control: makeButton({ label: 'Open', onClick: () => selectSection('network') }),
+          }),
+          makeRow({
+            label: 'Workspace Sandbox',
+            desc:
+              'Restringe las rutas de fichero al workspace, fija el cwd de los comandos y ' +
+              'quita del entorno las variables con credenciales. No es un sandbox del SO: ' +
+              'un comando todavía puede salir del directorio por su cuenta.',
+            control: makeToggle({
+              value: prefs.restrictToWorkspace === true,
+              onChange: (value) => setPref('restrictToWorkspace', value),
+            }),
           }),
         ],
       }),

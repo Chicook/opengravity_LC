@@ -2275,7 +2275,7 @@ ipcMain.handle('tests:run', async () => {
     return { ok: false, error: 'no se encontró cómo correr los tests en este proyecto' };
   }
 
-  const ejecutar = makeRunCommandTool(() => state.cwd);
+  const ejecutar = makeRunCommandTool(() => state.cwd, () => state.prefs);
   const salida = await ejecutar.execute({
     command: detectado.comando,
     cwd: state.cwd,
@@ -2791,14 +2791,14 @@ ipcMain.handle('tools:list', async () => {
     makeMultiReplaceTool(() => state.cwd),
     makeEditNotebookTool(() => state.cwd),
     makeGenerateImageTool(() => state.cwd),
-    makeRunCommandTool(() => state.cwd),
+    makeRunCommandTool(() => state.cwd, () => state.prefs),
     makeCommandStatusTool(),
     makeManageTaskTool(),
     makeSearchWebTool(() => state.prefs),
     makeViewCodeItemTool(() => state.cwd),
     makeMemoryTool(getMemoria(), () => state.cwd),
     makeSkillTool(() => descubrirSkills(state.cwd)),
-    makeRunWorkflowTool(() => state.cwd, (a) => makeRunCommandTool(() => state.cwd).execute(a)),
+    makeRunWorkflowTool(() => state.cwd, (a) => makeRunCommandTool(() => state.cwd, () => state.prefs).execute(a)),
     ...makeBrowserTools(() => state.prefs, (message, detail) =>
       askPermission(mainWindow, message, detail),
     ),
@@ -3541,14 +3541,14 @@ ipcMain.handle('chat:send', async (event, payload) => {
     makeMultiReplaceTool(() => state.cwd),
     makeEditNotebookTool(() => state.cwd),
     makeGenerateImageTool(() => state.cwd),
-    makeRunCommandTool(() => state.cwd),
+    makeRunCommandTool(() => state.cwd, () => state.prefs),
     makeCommandStatusTool(),
     makeManageTaskTool(),
     makeSearchWebTool(() => state.prefs),
     makeViewCodeItemTool(() => state.cwd),
     makeMemoryTool(getMemoria(), () => state.cwd),
     makeSkillTool(() => descubrirSkills(state.cwd)),
-    makeRunWorkflowTool(() => state.cwd, (a) => makeRunCommandTool(() => state.cwd).execute(a)),
+    makeRunWorkflowTool(() => state.cwd, (a) => makeRunCommandTool(() => state.cwd, () => state.prefs).execute(a)),
     ...makeBrowserTools(() => state.prefs, (message, detail) =>
       askPermission(mainWindow, message, detail),
     ),
@@ -3995,7 +3995,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
         };
       }
 
-      const ejecutar = makeRunCommandTool(() => state.cwd);
+      const ejecutar = makeRunCommandTool(() => state.cwd, () => state.prefs);
       const salida = await ejecutar.execute({
         command: detectado.comando,
         cwd: state.cwd,
@@ -4659,6 +4659,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
       getCwd: () => state.cwd,
       getReglas: () => prefs.hookRules ?? [],
       getLimite: () => Number(prefs.toolOutputLimit ?? 16000),
+      getRestringir: () => state.prefs.restrictToWorkspace === true,
     }),
   );
 

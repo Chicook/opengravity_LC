@@ -1,6 +1,7 @@
 'use strict';
 
 const { makeEditNotebookTool } = require('./notebook.cjs');
+const { dentroDelWorkspace, sanearEntorno } = require('./hooks.cjs');
 
 /**
  * Herramientas propias del proceso principal.
@@ -1180,7 +1181,7 @@ function resumenSalida(tarea, limite) {
 }
 
 /** Herramienta: ejecutar un comando en el workspace, sin bloquear indefinidamente. */
-function makeRunCommandTool(getCwd) {
+function makeRunCommandTool(getCwd, getPrefs) {
   return {
     name: 'run_command',
     description:
@@ -1236,7 +1237,28 @@ function makeRunCommandTool(getCwd) {
       }
 
       const esperaMs = Math.min(10000, Math.max(500, Number(args.waitDurationSeconds ?? 8000)));
-      const cwd = args.cwd ? String(args.cwd) : getCwd();
+      const prefs = typeof getPrefs === 'function' ? getPrefs() : {};
+      const restringir = prefs?.restrictToWorkspace === true;
+
+      const path = require('node:path');
+      const workspace = getCwd();
+      const cwd = args.cwd ? path.resolve(workspace, String(args.cwd)) : workspace;
+
+      /*
+       * Sandbox de workspace, fase 1: el comando arranca dentro del workspace y
+       * no hereda variables con credenciales. No es un jail del SO: un comando
+       * puede salir del directorio por su cuenta; eso requiere AppContainer o
+       * namespaces y queda para la fase 2.
+       */
+      if (restringir && !dentroDelWorkspace(workspace, cwd)) {
+        return {
+          content:
+            `El sandbox de workspace está activo y «${cwd}» queda fuera de ` +
+            `«${workspace}». Usa un directorio dentro del proyecto.`,
+          isError: true,
+        };
+      }
+      const entorno = restringir ? sanearEntorno(process.env) : null;
 
       const id = `cmd-${++contadorTareas}`;
       const tarea = {
@@ -1254,7 +1276,12 @@ function makeRunCommandTool(getCwd) {
         child: null,
       };
 
-      const child = spawn(command, { cwd, shell: true, windowsHide: true });
+      const child = spawn(command, {
+        cwd,
+        shell: true,
+        windowsHide: true,
+        ...(entorno ? { env: entorno } : {}),
+      });
       tarea.child = child;
       tarea.pid = child.pid;
       tareas.set(id, tarea);
