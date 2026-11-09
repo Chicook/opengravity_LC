@@ -7144,12 +7144,20 @@ span.thread__empty-mark {
 .ask-host {
   position: relative;
   z-index: 20;
-  /* Mismo ancho y alineación que la columna del chat (768, centrada). */
+  /* Misma columna que el composer: 768 px desde x=295, no centrada en el
+     content__main. Con el panel Overview abierto, centrar aquí la desplazaba
+     170 px a la derecha de los mensajes y del campo de escritura. */
   width: 100%;
   max-width: 768px;
+  margin-left: 38px;
+  margin-right: 0;
+  padding: 0 0 8px;
+}
+
+/* En conversación nueva el composer se centra; la tarjeta también. */
+.content__main:has(.thread__empty) .ask-host {
   margin-left: auto;
   margin-right: auto;
-  padding: 0 0 8px;
 }
 
 .ask-host[hidden] {

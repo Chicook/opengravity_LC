@@ -933,6 +933,13 @@ function closeAutomations() {
     hijo.hidden = hijo.dataset.ocultoPorAutomations === '1';
     delete hijo.dataset.ocultoPorAutomations;
   }
+
+  // Una pregunta que llegó con la vista abierta se muestra ahora.
+  const askHost = document.getElementById('ask-host');
+  if (askHost?.dataset.preguntaPendiente === '1') {
+    askHost.hidden = false;
+    delete askHost.dataset.preguntaPendiente;
+  }
 }
 
 /** Pinta la lista de automatizaciones o su estado vacío. */
@@ -1550,6 +1557,7 @@ function showQuestionCard(payload) {
       if (host) {
         host.replaceChildren();
         host.hidden = true;
+        delete host.dataset.preguntaPendiente;
       }
       card.remove();
     }, 120);
@@ -1724,7 +1732,14 @@ function showQuestionCard(payload) {
   const host = document.getElementById('ask-host');
   if (host) {
     host.replaceChildren(card);
-    host.hidden = false;
+    /*
+     * La vista de Automations sustituye al hilo y al composer. Si la pregunta
+     * llega mientras está abierta, no debe flotar encima de esa vista: se deja
+     * guardada y aparece al volver a la conversación.
+     */
+    const automationsAbierta = document.getElementById('automations-view')?.hidden === false;
+    host.hidden = automationsAbierta;
+    if (automationsAbierta) host.dataset.preguntaPendiente = '1';
   } else {
     els.threadInner.append(card);
   }
