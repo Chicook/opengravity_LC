@@ -2819,6 +2819,7 @@ function addToolRow(name, args, callId, target, stepIndex) {
 
   const row = document.createElement('div');
   row.className = 'work-row is-running';
+  row.dataset.tool = name;
   if (Number.isFinite(stepIndex)) row.dataset.stepIndex = String(stepIndex);
 
   const btn = document.createElement('button');
@@ -2906,14 +2907,18 @@ function scrollToBottom() {
 // Eventos del agente
 // ---------------------------------------------------------------------------
 
-/** Última fila de herramienta con ese nombre, para colgarle el veredicto. */
+/**
+ * Última fila de herramienta con ese nombre, para colgarle el veredicto.
+ * Se busca por `data-tool`, no por el texto visible: dos llamadas al mismo
+ * comando con argumentos distintos comparten etiqueta.
+ */
 function buscarFilaDeHerramienta(nombre) {
-  const filas = [...document.querySelectorAll('.work-row')];
-  for (let i = filas.length - 1; i >= 0; i -= 1) {
-    const texto = filas[i].querySelector('.work-row__what')?.textContent ?? '';
-    if (texto === friendlyTool(nombre)) return filas[i];
-  }
-  return null;
+  const filas = [...document.querySelectorAll('.work-row')].map((row) => ({
+    tool: row.dataset.tool,
+    running: row.classList.contains('is-running'),
+    row,
+  }));
+  return window.GuardianRow.chooseRow(filas, nombre)?.row ?? null;
 }
 
 /** Pinta el veredicto del monitor en la fila de la herramienta. */
