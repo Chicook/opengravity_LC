@@ -21,6 +21,8 @@
     body: $('settings-body'),
     back: $('settings-back'),
     feedback: $('settings-feedback'),
+    projects: $('settings-projects'),
+    projectsMore: $('settings-projects-more'),
   };
 
   /** Valores por defecto de las preferencias. */
@@ -51,6 +53,11 @@
 
   /** Sección activa. */
   let active = 'general';
+
+  /** Proyectos conocidos por las conversaciones guardadas. */
+  let proyectos = [];
+  let proyectoActivo = null;
+  let mostrarTodosLosProyectos = false;
 
   // -------------------------------------------------------------------------
   // Descripciones de sección
@@ -99,8 +106,8 @@
       subtitle: 'Conecta tu cuenta para generar imágenes con Flow.',
     },
     project: {
-      title: 'Proyecto',
-      subtitle: 'Ajustes que solo afectan a este proyecto.',
+      title: 'Projects',
+      subtitle: 'Manage project folders and settings.',
     },
     developer: {
       title: 'Developer',
@@ -1265,7 +1272,7 @@
    * conversations»).
    */
   function renderProject() {
-    const cwd = bridge?.getState?.()?.cwd ?? '';
+    const cwd = proyectoActivo || bridge?.getState?.()?.cwd || '';
     const nombre = cwd.split(/[\\/]/).filter(Boolean).pop() || 'Proyecto';
     const skills = bridge.getSkills ? bridge.getSkills() : [];
     const conversaciones = (bridge.getState?.()?.sessions ?? []).length;
@@ -1894,8 +1901,15 @@
 
   function render() {
     const meta = SECTIONS[active] ?? SECTIONS.general;
-    els.title.textContent = meta.title;
-    els.subtitle.textContent = meta.subtitle;
+    if (active === 'project') {
+      const cwd = proyectoActivo || bridge?.getState?.()?.cwd || '';
+      const nombre = cwd.split(/[\\/]/).filter(Boolean).pop();
+      els.title.textContent = nombre || meta.title;
+      els.subtitle.textContent = 'Manage project folders and settings.';
+    } else {
+      els.title.textContent = meta.title;
+      els.subtitle.textContent = meta.subtitle;
+    }
     els.back.hidden = !meta.parent;
 
     els.body.replaceChildren();
@@ -1905,6 +1919,7 @@
     for (const btn of els.nav.querySelectorAll('[data-section]')) {
       btn.classList.toggle('is-active', btn.dataset.section === active);
     }
+    renderProyectos();
   }
 
   function selectSection(section) {
@@ -1913,31 +1928,60 @@
     els.body.scrollTop = 0;
   }
 
-  /** En su DOM la sección de proyecto lleva el nombre del proyecto abierto. */
-  /**
-   * El nombre del proyecto abierto va en SU propia entrada de la navegación.
-   *
-   * Antes se escribía encima de «Customizations», así que esa sección
-   * desaparecía de la lista y parecía que el proyecto la sustituía. En el suyo
-   * son dos entradas distintas: el proyecto arriba y Conversations después.
-   */
-  function nombrarSeccionDeProyecto() {
-    const boton = els.nav?.querySelector('[data-section="project"]');
-    if (!boton) return;
-    /*
-     * La entrada del proyecto NUNCA se oculta: `bridge.getState()` no siempre
-     * devuelve el `cwd` de forma síncrona, así que ocultarla la hacía
-     * desaparecer de la navegación sin motivo.
-     */
-    const cwd = bridge?.getState?.()?.cwd ?? '';
-    const nombre = String(cwd).split(/[\\/]/).filter(Boolean).pop();
-    boton.textContent = nombre || 'Project';
-    boton.hidden = false;
+  /** Pinta las entradas de proyecto; Antigravity muestra tres y «Show All». */
+  function renderProyectos() {
+    if (!els.projects) return;
+    const actual = bridge?.getState?.()?.cwd ?? '';
+    const lista = proyectos.length > 0 ? proyectos : actual ? [actual] : [];
+    const visibles = mostrarTodosLosProyectos ? lista : lista.slice(0, 3);
+
+    els.projects.replaceChildren();
+    for (const cwd of visibles) {
+      const nombre = String(cwd).split(/[\\/]/).filter(Boolean).pop() || 'Project';
+      const boton = document.createElement('button');
+      boton.type = 'button';
+      boton.className = 'settings__nav-item';
+      boton.textContent = nombre;
+      boton.title = cwd;
+      boton.dataset.cwd = cwd;
+      const activo = (proyectoActivo || actual) === cwd && active === 'project';
+      boton.classList.toggle('is-active', activo);
+      boton.addEventListener('click', () => {
+        proyectoActivo = cwd;
+        selectSection('project');
+      });
+      els.projects.append(boton);
+    }
+
+    if (els.projectsMore) {
+      els.projectsMore.hidden = lista.length <= 3;
+      els.projectsMore.textContent = mostrarTodosLosProyectos ? 'Show Less' : 'Show All';
+    }
+  }
+
+  async function cargarProyectos() {
+    const actual = bridge?.getState?.()?.cwd ?? '';
+    let cwds = [];
+    try {
+      const sesiones = (await window.api.listSessions()) || [];
+      const vistos = new Set();
+      for (const sesion of sesiones) {
+        if (sesion.cwd && !vistos.has(sesion.cwd)) {
+          vistos.add(sesion.cwd);
+          cwds.push(sesion.cwd);
+        }
+      }
+    } catch {
+      cwds = [];
+    }
+    if (actual) cwds = [actual, ...cwds.filter((cwd) => cwd !== actual)];
+    proyectos = cwds;
+    renderProyectos();
   }
 
   function open(section) {
-    nombrarSeccionDeProyecto();
     if (section && SECTIONS[section]) active = section;
+    void cargarProyectos();
 
     // Relee las preferencias: pueden haber cambiado desde la app.
     window.api
@@ -1974,6 +2018,10 @@
     });
 
     els.feedback.addEventListener('click', () => selectSection('feedback'));
+    els.projectsMore?.addEventListener('click', () => {
+      mostrarTodosLosProyectos = !mostrarTodosLosProyectos;
+      renderProyectos();
+    });
 
     window.api
       .getPrefs()
