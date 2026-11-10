@@ -1980,8 +1980,11 @@ async function restoreCheckpoints(keepCount) {
                 resultado.restored += 1;
               }
             }
-          } catch {
-            // si falla un fichero, se sigue con el resto
+          } catch (error) {
+            failures.push({
+              path: cambio.ruta,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
         }
       }
