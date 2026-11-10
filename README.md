@@ -54,7 +54,8 @@ Deja dos ficheros en `release/`:
   `wait`, `batch`, `navigate`, `eval`) sobre el Chromium integrado
 - Permisos: preset global, permisos por herramienta y reglas de red
 - **Sandbox de workspace opcional**: rutas de fichero dentro del proyecto, cwd de
-  comandos fijado y variables de entorno con credenciales fuera del proceso
+  comandos fijado, credenciales fuera del entorno y límites de proceso (Job
+  Object en Windows; grupo + `ulimit` en POSIX), con terminación del árbol
 - **Diffs con aprobación** antes de escribir
 - **Checkpoints**: deshacer restaura los ficheros en disco
 - Skills inyectables, perfil local y servidores MCP como plugins

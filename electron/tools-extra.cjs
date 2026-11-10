@@ -2,6 +2,7 @@
 
 const { makeEditNotebookTool } = require('./notebook.cjs');
 const { dentroDelWorkspace, sanearEntorno } = require('./hooks.cjs');
+const { argumentosGuardWin, argumentosHelperWin, limitesDeSandbox, obtenerHelperWin, prefijoPosix } = require('./sandbox.cjs');
 
 /**
  * Herramientas propias del proceso principal.
@@ -1180,6 +1181,99 @@ function resumenSalida(tarea, limite) {
   return partes.join('\n');
 }
 
+/**
+ * Termina una tarea y todo su árbol.
+ *
+ * En Windows, `child.kill()` solo mata el shell; `taskkill /T` mata los hijos.
+ * En POSIX, el comando corre en su propio grupo (`detached`) y se mata el grupo.
+ * El guard del Job Object se mata también: al cerrar su handle se libera el job.
+ */
+function matarTarea(tarea) {
+  if (!tarea) return;
+
+  const pid = tarea.pid;
+  if (!pid) {
+    try {
+      tarea.guard?.kill();
+    } catch {
+      // ya terminado
+    }
+    return;
+  }
+
+  if (process.platform === 'win32') {
+    /*
+     * Tarea lanzada por el helper nativo: el comando se creó suspendido y ya
+     * está en el Job, así que cerrar el helper (KILL_ON_JOB_CLOSE) termina todo
+     * el árbol. No hace falta taskkill.
+     */
+    if (tarea.helper) {
+      try {
+        tarea.child?.kill();
+      } catch {
+        // ya terminado
+      }
+      return;
+    }
+
+    /*
+     * Respaldo con el guard PowerShell: primero se mata el árbol; el guard
+     * observa la salida del target y limpia el job. Matar el guard antes podía
+     * dejar escapar al hijo.
+     */
+    if (process.env.OG_SANDBOX_DEBUG === '1') {
+      console.log(`[sandbox] matar ${tarea.id} pid=${pid} guard=${tarea.guard?.pid ?? 'ninguno'}`);
+    }
+    try {
+      const tk = require('node:child_process').spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
+        windowsHide: true,
+        stdio: 'ignore',
+      });
+      if (process.env.OG_SANDBOX_DEBUG === '1') {
+        tk.on('close', (code) => console.log(`[sandbox] taskkill ${pid} → ${code}`));
+        tk.on('error', (error) => console.log(`[sandbox] taskkill ${pid} error: ${error.message}`));
+      }
+    } catch {
+      // taskkill no disponible
+    }
+
+    if (tarea.guard) {
+      const guard = tarea.guard;
+      const temporizador = setTimeout(() => {
+        try {
+          guard.kill();
+        } catch {
+          // ya terminado
+        }
+      }, 2000);
+      temporizador.unref?.();
+    }
+
+    try {
+      tarea.child?.kill('SIGKILL');
+    } catch {
+      // ya terminado
+    }
+    return;
+  }
+
+  try {
+    if (tarea.grupo) process.kill(-pid, 'SIGKILL');
+    else tarea.child?.kill('SIGKILL');
+  } catch {
+    try {
+      tarea.child?.kill('SIGKILL');
+    } catch {
+      // ya terminado
+    }
+  }
+}
+
+/** Termina todas las tareas, por ejemplo al cerrar la app. */
+function matarTodasLasTareas() {
+  for (const tarea of tareas.values()) matarTarea(tarea);
+}
+
 /** Herramienta: ejecutar un comando en el workspace, sin bloquear indefinidamente. */
 function makeRunCommandTool(getCwd, getPrefs) {
   return {
@@ -1276,14 +1370,89 @@ function makeRunCommandTool(getCwd, getPrefs) {
         child: null,
       };
 
-      const child = spawn(command, {
-        cwd,
-        shell: true,
-        windowsHide: true,
-        ...(entorno ? { env: entorno } : {}),
-      });
+      const limites = limitesDeSandbox(prefs);
+      const usaSandbox = restringir;
+
+      let child = null;
+      let viaHelper = false;
+
+      if (usaSandbox && process.platform === 'win32') {
+        const helper = await obtenerHelperWin();
+        if (helper) {
+          child = spawn(
+            helper,
+            argumentosHelperWin({
+              cwd,
+              limites,
+              parentPid: process.pid,
+              command,
+            }),
+            {
+              cwd,
+              windowsHide: true,
+              stdio: 'pipe',
+              ...(entorno ? { env: entorno } : {}),
+            },
+          );
+          viaHelper = true;
+          if (process.env.OG_SANDBOX_DEBUG === '1') {
+            console.log(`[sandbox] helper ${helper} target-cmd=${command.slice(0, 60)}`);
+          }
+        }
+      }
+
+      if (!child) {
+        const comandoFinal =
+          usaSandbox && process.platform !== 'win32'
+            ? `${prefijoPosix(limites)}${command}`
+            : command;
+        child = spawn(comandoFinal, {
+          cwd,
+          shell: true,
+          windowsHide: true,
+          ...(usaSandbox && process.platform !== 'win32' ? { detached: true } : {}),
+          ...(entorno ? { env: entorno } : {}),
+        });
+      }
+
       tarea.child = child;
       tarea.pid = child.pid;
+      tarea.grupo = usaSandbox && process.platform !== 'win32';
+      tarea.sandbox = usaSandbox;
+      tarea.helper = viaHelper;
+
+      if (process.env.OG_SANDBOX_DEBUG === '1' && viaHelper) {
+        child.on('exit', (code, signal) => {
+          console.log(`[sandbox] helper ${child.pid} exit=${code} signal=${signal}`);
+        });
+        child.stderr.on('data', (chunk) => {
+          console.log(`[sandbox] stderr ${chunk.toString().slice(0, 160)}`);
+        });
+      }
+
+      /*
+       * Respaldo: si el lanzador nativo no se pudo compilar, el guard PowerShell
+       * aplica los límites que puede al shell. La ruta buena es el helper, que
+       * arranca el comando suspendido y lo asigna al Job antes de ejecutarlo.
+       */
+      if (!viaHelper && usaSandbox && process.platform === 'win32' && child.pid) {
+        try {
+          const guard = spawn(
+            'powershell.exe',
+            argumentosGuardWin({ pid: child.pid, parentPid: process.pid, limites }),
+            { windowsHide: true, stdio: 'ignore' },
+          );
+          guard.on('error', () => {
+            tarea.guard = null;
+          });
+          tarea.guard = guard;
+          if (process.env.OG_SANDBOX_DEBUG === '1') {
+            console.log(`[sandbox] guard ${guard.pid} target=${child.pid}`);
+          }
+        } catch {
+          tarea.guard = null;
+        }
+      }
       tareas.set(id, tarea);
 
       child.stdout.on('data', (chunk) => {
@@ -1319,11 +1488,7 @@ function makeRunCommandTool(getCwd, getPrefs) {
         }
       }
       if (args.terminate === true) {
-        try {
-          child.kill('SIGTERM');
-        } catch {
-          // ya terminado
-        }
+        matarTarea(tarea);
       }
 
       // Espera acotada: si no termina, se devuelve el id y sigue en segundo plano.
@@ -1453,11 +1618,7 @@ function makeManageTaskTool() {
       if (!tarea) return { content: `No existe la tarea ${args.taskId}.`, isError: true };
 
       if (accion === 'kill') {
-        try {
-          tarea.child.kill('SIGKILL');
-        } catch {
-          // ya terminada
-        }
+        matarTarea(tarea);
         return { content: `Tarea ${tarea.id} (${tarea.nombre}) terminada.` };
       }
 
@@ -1895,6 +2056,7 @@ module.exports = {
   makeEditFileTool,
   makeMultiReplaceTool,
   makeRunCommandTool,
+  matarTodasLasTareas,
   setAlTerminarTarea,
   makeCommandStatusTool,
   makeManageTaskTool,

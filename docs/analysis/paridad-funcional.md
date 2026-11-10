@@ -127,9 +127,14 @@ Auditoría del orquestador y las herramientas, verificada con pruebas y en vivo:
   `invoke_subagent`), no se permite dentro de un worktree, y el presupuesto es de
   8 subagentes por turno, compartido entre el padre y los anidados. `list_peers`
   filtra los de primer nivel y `manage_subagent list` muestra el padre.
-- **Sandbox de workspace, fase 1** (opt-in en Ajustes): las herramientas de
-  fichero no pueden resolver rutas fuera del proyecto, `run_command` fija su cwd
-  dentro del workspace y arranca con las variables de entorno que parecen
-  credenciales eliminadas. No es un jail del SO: un comando de shell todavía
-  puede salir del directorio; la fase 2 usaría AppContainer/Job Objects en
-  Windows o namespaces/bubblewrap en Linux.
+- **Sandbox de workspace, fase 2** (opt-in en Ajustes): las herramientas de
+  fichero no pueden resolver rutas fuera del proyecto y `run_command` arranca
+  con las variables de entorno que parecen credenciales eliminadas. En Windows
+  un lanzador nativo (C# compilado con el csc del sistema) crea el comando
+  **suspendido**, lo asigna a un Job Object y lo reanuda: límites de memoria,
+  procesos y CPU, y terminación de todo el árbol al salir el comando o la app.
+  En Linux/macOS se usa un grupo de procesos propio y `ulimit` para CPU y
+  procesos (la memoria virtual no se limita: V8 reserva varios GB y `ulimit -v`
+  rompería comandos normales; haría falta cgroups). Si el lanzador
+  nativo no se puede compilar, queda el guard PowerShell como respaldo. No es
+  AppContainer: los procesos siguen corriendo con el usuario actual.

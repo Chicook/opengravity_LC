@@ -51,6 +51,10 @@
       "assets/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "electron/sandbox-run.cs",
+      "electron/sandbox-win.ps1"
+    ],
     "win": {
       "target": [
         "nsis",

@@ -5216,6 +5216,12 @@ app.on('before-quit', () => {
   trayectoria.volcarTodo().catch(() => {});
   void stopRemote();
   cerrarTodasLasPty();
+  try {
+    // Mata también los comandos en segundo plano y sus árboles de procesos.
+    require('./tools-extra.cjs').matarTodasLasTareas();
+  } catch {
+    // sin tareas o módulo no cargado
+  }
   for (const [, client] of lspClients) {
     try {
       client.stop();

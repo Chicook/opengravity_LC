@@ -31,6 +31,9 @@
     openLinksIn: 'External Browser',
     browserJsPolicy: 'Request Review',
     restrictToWorkspace: false,
+    sandboxMemoryMB: 1024,
+    sandboxMaxProcesses: 32,
+    sandboxCpuSeconds: 300,
     theme: 'Dark',
     themeContrast: 'Default',
     darkPreset: 'Default Dark',
@@ -471,11 +474,47 @@
             label: 'Workspace Sandbox',
             desc:
               'Restringe las rutas de fichero al workspace, fija el cwd de los comandos y ' +
-              'quita del entorno las variables con credenciales. No es un sandbox del SO: ' +
-              'un comando todavía puede salir del directorio por su cuenta.',
+              'quita del entorno las variables con credenciales. En Windows añade un Job ' +
+              'Object con límites de memoria, procesos y CPU que termina el árbol al salir.',
             control: makeToggle({
               value: prefs.restrictToWorkspace === true,
               onChange: (value) => setPref('restrictToWorkspace', value),
+            }),
+          }),
+        ],
+      }),
+
+      makeSection({
+        title: 'Sandbox Limits',
+        desc:
+          'Límites del sandbox de procesos. En Windows los aplica un Job Object; en ' +
+          'Linux/macOS, ulimit. Se activan con «Workspace Sandbox».',
+        rows: [
+          makeRow({
+            label: 'Memory (MB)',
+            desc: 'Memoria máxima para el comando y sus hijos (Windows; en POSIX se omite).',
+            control: makeInput({
+              type: 'number',
+              value: String(prefs.sandboxMemoryMB ?? 1024),
+              onCommit: (value) => setPref('sandboxMemoryMB', Number(value) || 1024),
+            }),
+          }),
+          makeRow({
+            label: 'Processes',
+            desc: 'Número máximo de procesos vivos del árbol.',
+            control: makeInput({
+              type: 'number',
+              value: String(prefs.sandboxMaxProcesses ?? 32),
+              onCommit: (value) => setPref('sandboxMaxProcesses', Number(value) || 32),
+            }),
+          }),
+          makeRow({
+            label: 'CPU seconds',
+            desc: 'Tiempo de CPU máximo antes de terminar el árbol.',
+            control: makeInput({
+              type: 'number',
+              value: String(prefs.sandboxCpuSeconds ?? 300),
+              onCommit: (value) => setPref('sandboxCpuSeconds', Number(value) || 300),
             }),
           }),
         ],
