@@ -1393,10 +1393,10 @@ function makeRunCommandTool(getCwd, getPrefs) {
       const cwd = args.cwd ? path.resolve(workspace, String(args.cwd)) : workspace;
 
       /*
-       * Sandbox de workspace, fase 1: el comando arranca dentro del workspace y
-       * no hereda variables con credenciales. No es un jail del SO: un comando
-       * puede salir del directorio por su cuenta; eso requiere AppContainer o
-       * namespaces y queda para la fase 2.
+       * El comando nunca hereda variables con credenciales: el saneado es
+       * incondicional y el cwd solo se restringe con el sandbox activo. No es un
+       * jail del SO: un comando puede salir del directorio por su cuenta; eso
+       * requiere AppContainer o namespaces y queda para la fase 2.
        */
       if (restringir && !dentroDelWorkspace(workspace, cwd)) {
         return {
@@ -1406,7 +1406,7 @@ function makeRunCommandTool(getCwd, getPrefs) {
           isError: true,
         };
       }
-      const entorno = restringir ? sanearEntorno(process.env) : null;
+      const entorno = sanearEntorno(process.env);
 
       const id = `cmd-${++contadorTareas}`;
       const tarea = {
@@ -1445,7 +1445,7 @@ function makeRunCommandTool(getCwd, getPrefs) {
               cwd,
               windowsHide: true,
               stdio: 'pipe',
-              ...(entorno ? { env: entorno } : {}),
+              env: entorno,
             },
           );
           viaHelper = true;
@@ -1465,7 +1465,7 @@ function makeRunCommandTool(getCwd, getPrefs) {
           shell: true,
           windowsHide: true,
           ...(usaSandbox && process.platform !== 'win32' ? { detached: true } : {}),
-          ...(entorno ? { env: entorno } : {}),
+          env: entorno,
         });
       }
 

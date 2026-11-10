@@ -95,6 +95,20 @@ describe('sandbox de workspace', () => {
     assert.deepEqual(Object.keys(limpio).sort(), ['HOME', 'NODE_ENV', 'PATH', 'SystemRoot'].sort());
   });
 
+  test('sanearEntorno quita claves y tokens, pero conserva PATH', () => {
+    const limpio = sanearEntorno({
+      PATH: 'C:\\Windows',
+      OPENCODE_API_KEY: 'sk-secreta',
+      GITHUB_TOKEN: 'ghp_secreto',
+      HOME: 'C:\\Users\\x',
+    });
+
+    assert.equal(limpio.PATH, 'C:\\Windows');
+    assert.equal(limpio.HOME, 'C:\\Users\\x');
+    assert.equal(limpio.OPENCODE_API_KEY, undefined);
+    assert.equal(limpio.GITHUB_TOKEN, undefined);
+  });
+
   test('conHooks corta la herramienta antes de ejecutarla', async () => {
     const falsa = {
       name: 'read_file',
