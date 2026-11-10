@@ -1998,16 +1998,69 @@ async function runNewTabAction(action) {
   }
 }
 
+/**
+ * Pide un nombre de conversación con el modal propio.
+ *
+ * `window.prompt` no existe en Electron, así que sin esto no hay forma de
+ * renombrar desde la UI. Resuelve con el nombre o `null` si se cancela.
+ */
+function pedirNombreDeConversacion(actual) {
+  const modal = document.getElementById('rename-modal');
+  const input = document.getElementById('rename-input');
+  const confirm = document.getElementById('rename-confirm');
+  if (!modal || !input || !confirm) return Promise.resolve(null);
+
+  return new Promise((resolve) => {
+    let resuelto = false;
+    const cerrar = (valor) => {
+      if (resuelto) return;
+      resuelto = true;
+      modal.setAttribute('hidden', '');
+      modal.onclick = null;
+      modal.onkeydown = null;
+      input.onkeydown = null;
+      confirm.onclick = null;
+      resolve(valor);
+    };
+
+    const guardar = () => {
+      const nuevo = input.value.trim();
+      cerrar(nuevo && nuevo !== actual ? nuevo : null);
+    };
+
+    input.value = actual;
+    modal.removeAttribute('hidden');
+    input.focus();
+    input.select();
+
+    confirm.onclick = guardar;
+    input.onkeydown = (evento) => {
+      if (evento.key !== 'Enter') return;
+      evento.preventDefault();
+      guardar();
+    };
+    modal.onkeydown = (evento) => {
+      if (evento.key !== 'Escape') return;
+      evento.preventDefault();
+      cerrar(null);
+    };
+    // Backdrop y Cancelar comparten `data-close-rename`: una sola delegación por apertura.
+    modal.onclick = (evento) => {
+      if (evento.target.closest?.('[data-close-rename]')) cerrar(null);
+    };
+  });
+}
+
 /** Renombra la conversación activa. */
 async function renameConversation() {
   if (!ui.activeConversation) return;
 
   const session = ui.sessions.find((item) => item.id === ui.activeConversation);
   const actual = session?.title ?? '';
-  const nuevo = window.prompt('Nuevo nombre para la conversación', actual);
-  if (!nuevo || nuevo.trim() === actual) return;
+  const nuevo = await pedirNombreDeConversacion(actual);
+  if (!nuevo) return;
 
-  await window.api.renameSession(ui.activeConversation, nuevo.trim());
+  await window.api.renameSession(ui.activeConversation, nuevo);
   await refreshConversations();
   renderPaneTitle();
 }

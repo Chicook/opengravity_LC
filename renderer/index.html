@@ -692,6 +692,19 @@
       </div>
     </div>
 
+    <!-- ================= Renombrar conversación ================= -->
+    <div class="modal" id="rename-modal" hidden>
+      <div class="modal__backdrop" data-close-rename></div>
+      <div class="revert">
+        <h3 class="revert__title">Renombrar conversación</h3>
+        <input class="text-input rename__input" id="rename-input" autocomplete="off" />
+        <div class="revert__actions">
+          <button class="btn" data-close-rename>Cancelar</button>
+          <button class="btn btn--primary" id="rename-confirm">Guardar</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ================= Paleta de comandos ================= -->
     <div class="modal palette" id="palette-modal" hidden>
       <div class="modal__backdrop" data-close-palette></div>

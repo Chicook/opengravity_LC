@@ -3134,7 +3134,13 @@ ipcMain.handle('sessions:export', async (_event, id) => {
 ipcMain.handle('sessions:rename', async (_event, id, title) => {
   titulosManuales.add(String(id));
   const sessions = await getStore();
-  await sessions.rename(id, String(title ?? '').slice(0, 120));
+  try {
+    await sessions.rename(id, String(title ?? '').slice(0, 120));
+  } catch (error) {
+    // Si no se guardó, el título automático puede seguir gestionando la sesión.
+    titulosManuales.delete(String(id));
+    throw error;
+  }
   return { ok: true };
 });
 
