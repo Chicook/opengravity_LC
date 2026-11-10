@@ -10,9 +10,17 @@ async function restoreSnapshots({ keys, checkpoints, writeFile, rm }) {
   const procesadas = [];
   let restored = 0;
 
-  for (const key of [...keys].sort((a, b) => b - a)) {
-    const snapshot = checkpoints.get(key);
-    if (!snapshot) continue;
+  /*
+   * El plan se copia antes de cualquier `await`: otro handler (`sessions:new`,
+   * `sessions:load`) puede vaciar el mapa a mitad y el revert debe terminar
+   * igualmente con los snapshots que había al empezar.
+   */
+  const plan = [...keys]
+    .sort((a, b) => b - a)
+    .map((key) => [key, checkpoints.get(key)])
+    .filter(([, snapshot]) => Boolean(snapshot));
+
+  for (const [key, snapshot] of plan) {
     procesadas.push(key);
 
     for (const [absolute, original] of snapshot) {

@@ -3200,6 +3200,11 @@ ipcMain.handle('sessions:load', async (_event, id) => {
   const sessions = await getStore();
   const loaded = await sessions.load(id);
 
+  // Cargar otra conversación no puede heredar sus checkpoints ni su tarjeta de
+  // revisión: un revert posterior desharía ficheros de la sesión anterior.
+  resetSessionState(state, turnCheckpoints, cambiosDelTurno);
+  currentTurnKey = null;
+
   state.sessionId = loaded.meta.id;
   state.messages = loaded.messages;
   state.providerId = loaded.meta.provider;

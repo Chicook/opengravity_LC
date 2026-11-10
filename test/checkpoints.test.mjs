@@ -78,3 +78,26 @@ test('un fallo parcial obliga a reaplicar la cadena entera al reintentar', async
   assert.equal(disco.get('X.txt'), 'O', 'gana el original más antiguo');
   assert.equal(checkpoints.size, 0);
 });
+
+test('el revert termina aunque otro handler vacíe el mapa a mitad', async () => {
+  const disco = new Map();
+  const checkpoints = new Map([
+    [0, new Map([['A.txt', 'A-viejo']])],
+    [2, new Map([['B.txt', 'B-viejo']])],
+  ]);
+
+  const resultado = await restoreSnapshots({
+    keys: [0, 2],
+    checkpoints,
+    writeFile: async (ruta, contenido) => {
+      disco.set(ruta, contenido);
+      // sessions:new durante el revert: vacía el mapa entre dos `await`.
+      checkpoints.clear();
+    },
+    rm: async () => {},
+  });
+
+  assert.deepEqual(resultado, { restored: 2, failures: [] });
+  assert.equal(disco.get('B.txt'), 'B-viejo');
+  assert.equal(disco.get('A.txt'), 'A-viejo');
+});
