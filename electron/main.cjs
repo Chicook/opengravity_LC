@@ -2190,6 +2190,51 @@ async function getStore() {
   return store;
 }
 
+/**
+ * Pide al modelo un título corto y semántico para la conversación.
+ *
+ * Antigravity no recorta el prompt: genera un título. Se hace en una llamada
+ * aparte, después del turno, para no retrasar la respuesta. Si falla, el título
+ * heurístico que ya escribió el almacén se queda como estaba.
+ */
+async function generarTituloDeConversacion(provider, model, textoUsuario, textoAsistente) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  let titulo = '';
+  try {
+    const peticion = {
+      model,
+      maxTokens: 256,
+      temperature: 0.2,
+      system:
+        'Eres un generador de títulos de conversación. Devuelve SOLO un título en ' +
+        'inglés de 3 a 6 palabras, en Title Case, sin comillas ni punto final.',
+      messages: [
+        {
+          role: 'user',
+          content:
+            `Usuario: ${String(textoUsuario).slice(0, 2000)}\n` +
+            `Asistente: ${String(textoAsistente).slice(0, 2000)}`,
+        },
+      ],
+    };
+    for await (const chunk of provider.streamGenerate(peticion, controller.signal)) {
+      if (chunk.type === 'text') titulo += chunk.text;
+      if (chunk.type === 'done') break;
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+
+  titulo = titulo
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s"'`«»“”]+|[\s"'`«»“”]+$/g, '')
+    .replace(/[.。]+$/g, '')
+    .trim();
+  if (titulo.length === 0) return null;
+  return titulo.split(' ').slice(0, 6).join(' ').slice(0, 80);
+}
+
 // ---------------------------------------------------------------------------
 // Ventana
 // ---------------------------------------------------------------------------
@@ -3107,6 +3152,14 @@ ipcMain.handle('sessions:apply-retention', async () => applyRetention());
 ipcMain.handle('sessions:list', async () => {
   const sessions = await getStore();
   return sessions.list();
+});
+
+/** Empieza una conversación nueva de verdad: resetea el hilo del motor. */
+ipcMain.handle('sessions:new', async () => {
+  if (state.busy) return { ok: false, error: 'el agente está trabajando' };
+  state.sessionId = null;
+  state.messages = [];
+  return { ok: true };
 });
 
 /** Carga una sesión en el estado actual. */
@@ -5168,6 +5221,31 @@ ipcMain.handle('chat:send', async (event, payload) => {
       keepCount: initialCount,
       sessionId: state.sessionId,
     });
+
+    // Primer turno: sustituye el título recortado por uno semántico, como su
+    // interfaz. Se lanza después de «final» para no retrasar la respuesta.
+    if (initialCount === 0 && state.sessionId && state.prefs.saveHistory !== false) {
+      const sessionId = state.sessionId;
+      const primerUsuario = result.messages.find((m) => m.role === 'user')?.content ?? '';
+      const ultimoAsistente =
+        [...result.messages].reverse().find((m) => m.role === 'assistant' && m.content)?.content ?? '';
+      let providerTitulo;
+      try {
+        providerTitulo = createProvider(state.providerId, buildProviderConfig());
+      } catch {
+        providerTitulo = provider;
+      }
+      void generarTituloDeConversacion(providerTitulo, state.model, primerUsuario, ultimoAsistente)
+        .then(async (titulo) => {
+          if (!titulo) return;
+          const sessions = await getStore();
+          await sessions.rename(sessionId, titulo);
+          send({ type: 'session_title', sessionId, title: titulo });
+        })
+        .catch((error) => {
+          console.error('[titulo] fallo', error?.message ?? error);
+        });
+    }
 
     if (state.prefs.notifications === true) {
       try {

@@ -242,6 +242,7 @@ contextBridge.exposeInMainWorld('api', {
   gitAbortMerge: () => ipcRenderer.invoke('git:abort-merge'),
 
   listSessions: () => ipcRenderer.invoke('sessions:list'),
+  newSession: () => ipcRenderer.invoke('sessions:new'),
 
   /** Aplica la retención del historial. */
   applyRetention: () => ipcRenderer.invoke('sessions:apply-retention'),

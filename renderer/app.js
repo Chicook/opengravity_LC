@@ -228,7 +228,9 @@ function friendlyTool(name, args) {
     case 'read_file':
       return corto ? `Ran read ${corto}` : 'Ran read file';
     case 'run_command':
-      return corto ? `Ran ${corto}` : 'Ran command';
+      // Antigravity separa la etiqueta del comando: «Ran» + la tarjeta con el
+      // comando. Meter el comando también en la etiqueta lo duplicaba.
+      return 'Ran';
     case 'search_files':
     case 'search_code':
       return corto ? `Ran search for ${corto}` : 'Ran search';
@@ -2781,21 +2783,17 @@ function ensureToolGroup() {
 
   const wrapper = ensureWorkWrapper();
 
-  // Nivel 2: «Ran commands», dentro del resumen del turno.
-  const sub = document.createElement('div');
-  sub.className = 'work-group work-group--nested';
-  const inner = crearColapsable('Ran commands', 'tool-group-collapsible');
-
-  sub.append(inner.header, inner.body);
-  wrapper.body.append(sub);
-
+  /*
+   * Antigravity cuelga las filas «Ran …» directamente del grupo «Worked for»;
+   * un grupo intermedio «Ran commands» añadía una etiqueta que su interfaz no
+   * tiene. El resumen del turno ya es el encabezado.
+   */
   ui.toolGroup = {
     wrap: wrapper.wrap,
     header: wrapper.header,
     label: wrapper.label,
-    body: inner.body,
-    // El grupo interno es la línea de resumen («Explored files, ran commands…»).
-    inner: { header: inner.header, label: inner.label, body: inner.body },
+    body: wrapper.body,
+    inner: null,
     startedAt: wrapper.startedAt,
     rows: new Map(),
   };
@@ -3131,6 +3129,12 @@ function handleChatEvent(event) {
       setBusy(event.busy);
       break;
 
+    case 'session_title': {
+      // El título semántico llega después de «final»: se refresca la lista.
+      void refreshConversations();
+      break;
+    }
+
     case 'final':
       if (event.sessionId) {
         ui.activeConversation = event.sessionId;
@@ -3331,6 +3335,17 @@ async function openConversation(id) {
 
     clearThread();
 
+    // Los mensajes `tool` no guardan argumentos; la llamada que los originó
+    // está en el mensaje `assistant` anterior. Se usan para que el historial
+    // pinte el comando y no un genérico «Ran command».
+    const llamadasPorId = new Map();
+    for (const message of loaded.messages) {
+      if (message.role !== 'assistant' || !Array.isArray(message.toolCalls)) continue;
+      for (const llamada of message.toolCalls) {
+        if (llamada?.id) llamadasPorId.set(llamada.id, llamada);
+      }
+    }
+
     let indiceDeMensaje = 0;
     for (const message of loaded.messages) {
       indiceDeMensaje += 1;
@@ -3357,7 +3372,12 @@ async function openConversation(id) {
         // dejarla marcada como «en ejecución».
         // El callId sintético hace que la fila quede registrada en el grupo, que es
         // de donde sale la línea de resumen del turno.
-        const fila = addToolRow(message.name ?? 'tool', {}, `hist-${indiceDeMensaje}`);
+        const llamada = message.toolCallId ? llamadasPorId.get(message.toolCallId) : null;
+        const fila = addToolRow(
+          llamada?.name ?? message.name ?? 'tool',
+          llamada?.arguments ?? {},
+          `hist-${indiceDeMensaje}`,
+        );
         if (fila) {
           fila.row.classList.remove('is-running');
           fila.row.classList.add('is-done');
@@ -3379,7 +3399,16 @@ async function openConversation(id) {
   }
 }
 
-function newConversation() {
+async function newConversation() {
+  // Antes solo se limpiaba la UI: el motor seguía con `state.sessionId` y el
+  // mensaje nuevo se añadía a la conversación anterior. Hay que resetearlo.
+  if (ui.busy) return;
+  try {
+    const resultado = await window.api.newSession();
+    if (resultado && resultado.ok === false) return;
+  } catch {
+    // sin IPC se mantiene el flujo local
+  }
   closeAutomations();
   ui.activeConversation = null;
   renderPaneTitle();
@@ -6040,7 +6069,7 @@ async function boot() {
    */
   document.getElementById('automations-create')?.addEventListener('click', async () => {
     closeAutomations();
-    newConversation();
+    await newConversation();
     els.input.value = 'Guíame para crear una tarea automatizada';
     autoGrow();
     updateSendState();
