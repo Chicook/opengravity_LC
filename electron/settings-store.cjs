@@ -14,8 +14,14 @@ let cola = Promise.resolve();
 
 async function escribirAtomico(ruta, payload) {
   const temporal = `${ruta}.tmp`;
-  await fsp.writeFile(temporal, JSON.stringify(payload, null, 2), 'utf8');
-  await fsp.rename(temporal, ruta);
+  try {
+    await fsp.writeFile(temporal, JSON.stringify(payload, null, 2), 'utf8');
+    await fsp.rename(temporal, ruta);
+  } catch (err) {
+    // Sin esto un fallo de rename deja el temporal huérfano en userData.
+    await fsp.rm(temporal, { force: true }).catch(() => {});
+    throw err;
+  }
 }
 
 function guardarEnCola(ruta, payload) {

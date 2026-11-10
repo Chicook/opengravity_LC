@@ -2409,8 +2409,16 @@ ipcMain.handle('workspace:open', async () => {
 
   state.cwd = result.filePaths[0];
   terminalCwd = null;
-  await saveSettings();
-  return { cwd: state.cwd };
+
+  // El workspace ya está activo en memoria: si falla el disco no se revierte,
+  // pero el rechazo debe quedar consumido aquí (el renderer no lo captura).
+  try {
+    await saveSettings();
+    return { cwd: state.cwd };
+  } catch (err) {
+    console.error(`[settings] no se pudieron guardar las preferencias: ${err?.message ?? err}`);
+    return { cwd: state.cwd, settingsError: true };
+  }
 });
 
 /** Abre el diálogo de selección de fichero. */

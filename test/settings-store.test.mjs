@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -66,6 +66,18 @@ test('escribirAtomico reemplaza un fichero existente', async () => {
   await escribirAtomico(ruta, { version: 2 });
 
   assert.equal(JSON.parse(await readFile(ruta, 'utf8')).version, 2);
+  assert.equal((await readdir(dir)).some((nombre) => nombre.endsWith('.tmp')), false);
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('si el rename falla no queda temporal huérfano', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'og-settings-'));
+  // El destino es un directorio: el rename de un fichero sobre él falla.
+  const ruta = join(dir, 'destino');
+  await mkdir(ruta);
+
+  await assert.rejects(escribirAtomico(ruta, { version: 1 }));
   assert.equal((await readdir(dir)).some((nombre) => nombre.endsWith('.tmp')), false);
 
   await rm(dir, { recursive: true, force: true });
