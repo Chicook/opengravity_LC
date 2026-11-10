@@ -4338,15 +4338,15 @@ button {
 .settings {
   position: relative;
   display: flex;
-  /* Medido en su DOM: 1024x720 */
+  /* Medido en su DOM: 1024 x 80vh */
   width: min(1024px, calc(100vw - 80px));
-  height: min(720px, calc(100vh - 80px));
+  height: min(720px, 80vh);
   /* Medido: su modal pinta rgb(7,7,9), el fondo base, no la tarjeta. */
   background-color: var(--background);
-  border: 1px solid var(--card-border);
+  border: 1px solid color-mix(in srgb, var(--foreground) 6%, transparent);
   /* Medido en su DOM: radio 24px, no 12px */
   border-radius: 24px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   overflow: hidden;
 }
 
@@ -4388,8 +4388,8 @@ button {
   height: 28px;
   padding: 4px 8px;
   border-radius: 8px;
-  font-size: var(--text-sm);
-  line-height: 20px;
+  font-size: 16px;
+  line-height: 24px;
   font-weight: 350;
   color: var(--secondary-foreground);
   text-align: left;
@@ -4409,9 +4409,9 @@ button {
 .settings__nav-group {
   padding: 12px 10px 4px;
   font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 450;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--muted-foreground);
 }
 
@@ -4510,26 +4510,32 @@ button {
 
 .settings__subtitle {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: 14px;
+  font-weight: 350;
   color: var(--muted-foreground);
-  line-height: 1.5;
+  line-height: 20px;
 }
 
-/* Medido: 28x28, píldora, fondo alfa 0.075 */
+/* Medido: 28x28, transparente, a 17px del borde superior y derecho */
 .settings__close {
+  position: absolute;
+  top: 17px;
+  right: 17px;
+  z-index: 2;
   width: 28px;
   height: 28px;
   display: grid;
   place-items: center;
   border-radius: 9999px;
-  background-color: var(--secondary);
-  color: var(--secondary-foreground);
-  font-size: 13px;
+  background-color: transparent;
+  color: var(--muted-foreground);
+  font-size: 14px;
   flex-shrink: 0;
 }
 
 .settings__close:hover {
-  filter: brightness(1.2);
+  background-color: var(--secondary);
+  color: var(--foreground);
 }
 
 /* Medido 2.29.0: columna de 672px centrada, con 24px de padding */
@@ -4539,7 +4545,7 @@ button {
   width: 100%;
   max-width: 672px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 1px 24px 24px;
   display: flex;
   flex-direction: column;
   gap: 22px;
@@ -6838,7 +6844,8 @@ span.thread__empty-mark {
   background: transparent;
   color: var(--foreground);
   font-family: inherit;
-  cursor: pointer;
+  cursor: default;
+  pointer-events: none;
   user-select: none;
 }
 
@@ -6847,7 +6854,7 @@ span.thread__empty-mark {
   margin: 0;
   font-size: 14px;
   line-height: 20px;
-  font-weight: 500;
+  font-weight: 450;
 }
 
 /* Contador: 10 px semibold en pastilla, con borde. */
@@ -6865,12 +6872,7 @@ span.thread__empty-mark {
 
 /* Chevron de 16, girado cuando la sección está abierta. */
 .settings__section-chevron {
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  color: var(--muted-foreground);
-  transition: transform 200ms ease;
+  display: none;
 }
 
 .settings__section-head[aria-expanded='true'] .settings__section-chevron {

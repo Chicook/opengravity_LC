@@ -66,7 +66,7 @@
   const SECTIONS = {
     general: {
       title: 'General',
-      subtitle: 'Configura la ejecución del agente, la entrega de mensajes en cola y los permisos.',
+      subtitle: 'Configure agent execution, queued message delivery, and permissions.',
     },
     account: {
       title: 'Account',
@@ -90,7 +90,7 @@
       subtitle: 'Ajustes para las conversaciones que no están dentro de un proyecto.',
     },
     feedback: {
-      title: 'Provide Feedback',
+      title: 'Give Feedback',
       subtitle: 'Cuéntanos qué falla o qué falta.',
     },
     customizations: {
@@ -104,6 +104,7 @@
     google: {
       title: 'Google',
       subtitle: 'Conecta tu cuenta para generar imágenes con Flow.',
+      parent: 'account',
     },
     project: {
       title: 'Projects',
@@ -434,95 +435,32 @@
     return [
       makeSection({
         title: 'Global Permissions',
-        desc: 'Configura los permisos globales de recursos permitidos y denegados.',
+        desc: 'Configure global allowed and denied resource permissions. Learn more.',
         rows: [
           makeRow({
             label: 'Permission Preset',
-            desc: 'Controla las acciones que el agente puede tomar.',
+            desc: 'Controls the actions the agent can take.',
             control: makeSelect({
               options: [
-                { label: 'Request Review', description: 'Todo comando requiere aprobación.' },
-                { label: 'Default', description: 'Pregunta antes de las operaciones sensibles.' },
-                { label: 'Auto (Preview)', description: 'Decide solo si el comando puede correr.' },
-                { label: 'Turbo', description: 'Ejecuta sin restricciones.' },
+                { label: 'Request Review', description: 'Every command requires approval.' },
+                { label: 'Default', description: 'Ask before sensitive operations.' },
+                { label: 'Auto (Preview)', description: 'Decide alone whether the command may run.' },
+                { label: 'Turbo', description: 'Run without restrictions.' },
               ],
               value: prefs.permissionPreset,
               onChange: (value) => setPref('permissionPreset', value),
             }),
           }),
           makeRow({
-            label: 'Security Monitor',
-            desc:
-              'Puntúa cada acción de 0 a 10 antes de ejecutarla y bloquea lo peligroso: ' +
-              'borrados masivos, exfiltración, credenciales, desactivar TLS, debilitar tests.',
-            control: makeSelect({
-              options: [
-                { label: 'block', description: 'Bloquea lo que puntúe por encima del umbral.' },
-                { label: 'ask', description: 'Pregunta antes de ejecutar lo dudoso.' },
-                { label: 'llm', description: 'Usa el clasificador para decidir.' },
-                { label: 'off', description: 'No revisa ninguna acción.' },
-              ],
-              value: prefs.securityMonitor ?? 'block',
-              onChange: (value) => setPref('securityMonitor', value),
-            }),
-          }),
-          makeRow({
             label: 'Tool Permissions',
-            desc: 'Modifica los permisos de ficheros, terminal y herramientas MCP.',
+            desc: 'Modify permissions for file, terminal, and MCP tools.',
             badge: 8,
             control: makeButton({ label: 'Open', onClick: () => selectSection('tools') }),
           }),
           makeRow({
             label: 'Network Access Rules',
-            desc: 'Configura las URLs permitidas y denegadas para lectura.',
+            desc: 'Configure allowed and denied URLs for reading.',
             control: makeButton({ label: 'Open', onClick: () => selectSection('network') }),
-          }),
-          makeRow({
-            label: 'Workspace Sandbox',
-            desc:
-              'Restringe las rutas de fichero al workspace, fija el cwd de los comandos y ' +
-              'quita del entorno las variables con credenciales. En Windows añade un Job ' +
-              'Object con límites de memoria, procesos y CPU que termina el árbol al salir.',
-            control: makeToggle({
-              value: prefs.restrictToWorkspace === true,
-              onChange: (value) => setPref('restrictToWorkspace', value),
-            }),
-          }),
-        ],
-      }),
-
-      makeSection({
-        title: 'Sandbox Limits',
-        desc:
-          'Límites del sandbox de procesos. En Windows los aplica un Job Object; en ' +
-          'Linux/macOS, ulimit. Se activan con «Workspace Sandbox».',
-        rows: [
-          makeRow({
-            label: 'Memory (MB)',
-            desc: 'Memoria máxima para el comando y sus hijos (Windows; en POSIX se omite).',
-            control: makeInput({
-              type: 'number',
-              value: String(prefs.sandboxMemoryMB ?? 1024),
-              onCommit: (value) => setPref('sandboxMemoryMB', Number(value) || 1024),
-            }),
-          }),
-          makeRow({
-            label: 'Processes',
-            desc: 'Número máximo de procesos vivos del árbol.',
-            control: makeInput({
-              type: 'number',
-              value: String(prefs.sandboxMaxProcesses ?? 32),
-              onCommit: (value) => setPref('sandboxMaxProcesses', Number(value) || 32),
-            }),
-          }),
-          makeRow({
-            label: 'CPU seconds',
-            desc: 'Tiempo de CPU máximo antes de terminar el árbol.',
-            control: makeInput({
-              type: 'number',
-              value: String(prefs.sandboxCpuSeconds ?? 300),
-              onCommit: (value) => setPref('sandboxCpuSeconds', Number(value) || 300),
-            }),
           }),
         ],
       }),
@@ -533,7 +471,7 @@
         rows: [
           makeRow({
             label: 'Plan Review Policy',
-            desc: 'Si el agente te pide revisar sus documentos antes de continuar.',
+            desc: 'Whether the agent asks you to review its documents.',
             hint: buildPlanHint(),
             control: makeSelect({
               options: ['Always Ask', 'Always Review', 'Never'],
@@ -550,7 +488,7 @@
         rows: [
           makeRow({
             label: 'Queued Messages',
-            desc: 'Configura cuándo se envían los mensajes de seguimiento.',
+            desc: 'Configure when follow-up messages are sent.',
             hint: buildShortcutHint(),
             control: makeSegmented({
               options: ['Queue', 'Send Immediately'],
@@ -563,11 +501,11 @@
 
       makeSection({
         title: 'Built-in Browser',
-        desc: 'Configura la apertura de enlaces y las preferencias del navegador integrado.',
+        desc: 'Configure link opening and built-in browser preferences.',
         rows: [
           makeRow({
             label: 'Open Links In',
-            desc: 'Dónde se abren los enlaces por defecto al hacer clic.',
+            desc: 'Where links open by default when clicked.',
             control: makeSegmented({
               options: ['External Browser', 'Built-in Browser'],
               value: prefs.openLinksIn,
@@ -583,7 +521,7 @@
         rows: [
           makeRow({
             label: 'Browser Javascript Execution Policy',
-            desc: 'Si el agente puede ejecutar JavaScript propio para automatizar acciones complejas.',
+            desc: 'Whether the agent may run its own JavaScript to automate complex actions.',
             control: makeSelect({
               options: ['Request Review', 'Always Allow', 'Never'],
               value: prefs.browserJsPolicy,
@@ -599,29 +537,29 @@
       }),
 
       makeInfo(
-        `${availableProviders} de ${state.providers.length} proveedores de modelo disponibles. ` +
-          'Configúralos en Models.',
+        `${availableProviders} of ${state.providers.length} model providers available. ` +
+          'Configure them in Models.',
       ),
     ];
   }
 
   function buildPlanHint() {
     const frag = document.createDocumentFragment();
-    frag.append(document.createTextNode('Escribe '));
+    frag.append(document.createTextNode('Type '));
     frag.append(el('span', 'kbd', '/'));
-    frag.append(document.createTextNode(' y selecciona '));
+    frag.append(document.createTextNode(' and select '));
     frag.append(el('span', 'kbd', 'plan'));
-    frag.append(document.createTextNode(' para que el agente genere un plan.'));
+    frag.append(document.createTextNode(' to have the agent generate a plan.'));
     return frag;
   }
 
   function buildShortcutHint() {
     const frag = document.createDocumentFragment();
-    frag.append(document.createTextNode('Atajos en '));
+    frag.append(document.createTextNode('Keyboard shortcuts '));
     frag.append(el('span', 'kbd', 'Ctrl'));
     frag.append(document.createTextNode(' + '));
     frag.append(el('span', 'kbd', 'Enter'));
-    frag.append(document.createTextNode(' para enviar.'));
+    frag.append(document.createTextNode(' to send.'));
     return frag;
   }
 
@@ -651,6 +589,14 @@
             label: 'Plan',
             desc: 'Sin plan asociado: usas tus propias claves de API o modelos locales.',
             control: el('span', 'count-badge', 'Local'),
+          }),
+          makeRow({
+            label: 'Google',
+            desc: 'Conecta tu cuenta para generar imágenes con Flow.',
+            control: makeButton({
+              label: 'Abrir',
+              onClick: () => selectSection('google'),
+            }),
           }),
         ],
       }),
@@ -1365,12 +1311,80 @@
   }
 
   /**
-   * Developer: en su versión son herramientas  /**
    * Developer: en su versión son herramientas de desarrollo que se guardan en
    * local. Aquí se exponen las que tiene sentido en una app open source.
    */
   function renderDeveloper() {
     return [
+      makeSection({
+        title: 'Security',
+        desc: 'Controles avanzados del agente y del sandbox de procesos.',
+        rows: [
+          makeRow({
+            label: 'Security Monitor',
+            desc:
+              'Puntúa cada acción de 0 a 10 antes de ejecutarla y bloquea lo peligroso: ' +
+              'borrados masivos, exfiltración, credenciales, desactivar TLS, debilitar tests.',
+            control: makeSelect({
+              options: [
+                { label: 'block', description: 'Bloquea lo que puntúe por encima del umbral.' },
+                { label: 'ask', description: 'Pregunta antes de ejecutar lo dudoso.' },
+                { label: 'llm', description: 'Usa el clasificador para decidir.' },
+                { label: 'off', description: 'No revisa ninguna acción.' },
+              ],
+              value: prefs.securityMonitor ?? 'block',
+              onChange: (value) => setPref('securityMonitor', value),
+            }),
+          }),
+          makeRow({
+            label: 'Workspace Sandbox',
+            desc:
+              'Restringe las rutas de fichero al workspace, fija el cwd de los comandos y ' +
+              'quita del entorno las variables con credenciales. En Windows añade un Job ' +
+              'Object con límites de memoria, procesos y CPU que termina el árbol al salir.',
+            control: makeToggle({
+              value: prefs.restrictToWorkspace === true,
+              onChange: (value) => setPref('restrictToWorkspace', value),
+            }),
+          }),
+        ],
+      }),
+      makeSection({
+        title: 'Sandbox Limits',
+        desc:
+          'Límites del sandbox de procesos. En Windows los aplica un Job Object; en ' +
+          'Linux/macOS, ulimit. Se activan con «Workspace Sandbox».',
+        rows: [
+          makeRow({
+            label: 'Memory (MB)',
+            desc: 'Memoria máxima para el comando y sus hijos (Windows; en POSIX se omite).',
+            control: makeInput({
+              type: 'number',
+              value: String(prefs.sandboxMemoryMB ?? 1024),
+              onCommit: (value) => setPref('sandboxMemoryMB', Number(value) || 1024),
+            }),
+          }),
+          makeRow({
+            label: 'Processes',
+            desc: 'Número máximo de procesos vivos del árbol.',
+            control: makeInput({
+              type: 'number',
+              value: String(prefs.sandboxMaxProcesses ?? 32),
+              onCommit: (value) => setPref('sandboxMaxProcesses', Number(value) || 32),
+            }),
+          }),
+          makeRow({
+            label: 'CPU seconds',
+            desc: 'Tiempo de CPU máximo antes de terminar el árbol.',
+            control: makeInput({
+              type: 'number',
+              value: String(prefs.sandboxCpuSeconds ?? 300),
+              onCommit: (value) => setPref('sandboxCpuSeconds', Number(value) || 300),
+            }),
+          }),
+        ],
+      }),
+
       makeSection({
         title: 'Depuración',
         rows: [
