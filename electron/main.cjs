@@ -54,7 +54,7 @@ const worktreeMod = require('./worktree.cjs');
 const testrunner = require('./testrunner.cjs');
 const { AlmacenDeMemoria, makeMemoryTool, bloqueDeMemorias } = require('./memory.cjs');
 const { guardarEnCola } = require('./settings-store.cjs');
-const { cifrarClaves, descifrarClaves } = require('./secret-store.cjs');
+const { descifrarClaves, prepararPrefsParaDisco } = require('./secret-store.cjs');
 
 /**
  * Esquema propio `app://`.
@@ -149,6 +149,7 @@ async function loadSettings() {
     if (parsed && typeof parsed.lastWorkspace === 'string') state.cwd = parsed.lastWorkspace;
     if (parsed && parsed.prefs && typeof parsed.prefs === 'object') {
       const prefs = { ...parsed.prefs };
+      const clavesEnClaro = Boolean(prefs.apiKeys && Object.keys(prefs.apiKeys).length > 0);
 
       // Las claves cifradas vuelven a memoria en claro; `apiKeys` en claro (de
       // versiones anteriores) es más reciente y manda sobre el blob.
@@ -161,6 +162,12 @@ async function loadSettings() {
       }
 
       state.prefs = prefs;
+
+      // Migración única: un settings.json antiguo con claves en claro se
+      // reescribe cifrado. Sin cifrado disponible no se toca el disco.
+      if (clavesEnClaro && !parsed.prefs.apiKeysEnc && safeStorage.isEncryptionAvailable()) {
+        await saveSettings();
+      }
     }
   } catch {
     // sin preferencias guardadas: se usan los valores por defecto
@@ -179,18 +186,7 @@ async function saveSettings() {
     previo = {};
   }
 
-  const prefsParaDisco = { ...(previo.prefs ?? {}), ...(state.prefs ?? {}) };
-
-  // Claves API: nunca en claro si hay cifrado. Si no lo hay (o el usuario vació
-  // el mapa) se tira el blob viejo, que ya no refleja lo que hay en memoria.
-  const claves = state.prefs?.apiKeys;
-  const cifrado = cifrarClaves(claves, safeStorage);
-  if (cifrado) {
-    prefsParaDisco.apiKeysEnc = cifrado;
-    delete prefsParaDisco.apiKeys;
-  } else if (claves) {
-    delete prefsParaDisco.apiKeysEnc;
-  }
+  const prefsParaDisco = prepararPrefsParaDisco(state.prefs, previo.prefs, safeStorage);
 
   const payload = {
     providerId: state.providerId ?? previo.providerId ?? null,

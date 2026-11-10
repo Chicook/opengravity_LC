@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { cifrarClaves, descifrarClaves } = require('../electron/secret-store.cjs');
+const { cifrarClaves, descifrarClaves, prepararPrefsParaDisco } = require('../electron/secret-store.cjs');
 
 const falso = {
   isEncryptionAvailable: () => true,
@@ -40,4 +40,50 @@ test('devuelve null ante texto vacío, no string o base64 corrupto', () => {
 test('conserva mapas con varios proveedores y caracteres no ASCII', () => {
   const claves = { 'opencode-go': 'sk-ñandú', local: 'clave con espacios' };
   assert.deepEqual(descifrarClaves(cifrarClaves(claves, falso), falso), claves);
+});
+
+// --- prefs para disco -------------------------------------------------------
+
+const sinCifrado = { isEncryptionAvailable: () => false };
+
+test('conserva el blob ilegible aunque apiKeys llegue vacío', () => {
+  // Descifrado falló al cargar: `apiKeysEnc` sigue en memoria. Un `{}`
+  // incidental (blur del campo) no debe borrarlo.
+  const prefs = { apiKeys: {}, apiKeysEnc: 'blob-ilegible' };
+  assert.deepEqual(prepararPrefsParaDisco(prefs, {}, falso), { apiKeysEnc: 'blob-ilegible' });
+});
+
+test('borra el blob viejo cuando el mapa se vacía y no hay cifrado ilegible', () => {
+  const prefs = { apiKeys: {}, tema: 'Dark' };
+  const previo = { apiKeysEnc: 'blob-viejo', tema: 'Light' };
+  const disco = prepararPrefsParaDisco(prefs, previo, falso);
+
+  assert.equal(disco.apiKeysEnc, undefined);
+  assert.equal(disco.apiKeys, undefined);
+  assert.equal(disco.tema, 'Dark');
+});
+
+test('con claves y cifrado escribe apiKeysEnc y no apiKeys', () => {
+  const prefs = { apiKeys: { 'opencode-go': 'sk-prueba' }, tema: 'Dark' };
+  const disco = prepararPrefsParaDisco(prefs, { apiKeysEnc: 'blob-viejo' }, falso);
+
+  assert.equal(typeof disco.apiKeysEnc, 'string');
+  assert.equal('apiKeys' in disco, false);
+  assert.deepEqual(descifrarClaves(disco.apiKeysEnc, falso), prefs.apiKeys);
+  assert.equal(disco.tema, 'Dark');
+});
+
+test('sin cifrado disponible guarda en claro sin romper', () => {
+  const prefs = { apiKeys: { a: 'b' } };
+  const disco = prepararPrefsParaDisco(prefs, { apiKeysEnc: 'blob-viejo' }, sinCifrado);
+
+  assert.deepEqual(disco.apiKeys, { a: 'b' });
+  assert.equal(disco.apiKeysEnc, undefined);
+});
+
+test('sin claves en memoria no toca lo que había en disco', () => {
+  const disco = prepararPrefsParaDisco({ tema: 'Dark' }, { apiKeysEnc: 'blob' }, falso);
+
+  assert.equal(disco.apiKeysEnc, 'blob');
+  assert.equal('apiKeys' in disco, false);
 });

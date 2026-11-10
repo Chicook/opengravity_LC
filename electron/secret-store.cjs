@@ -22,4 +22,30 @@ function descifrarClaves(texto, safeStorage) {
   }
 }
 
-module.exports = { cifrarClaves, descifrarClaves };
+/**
+ * Prefs tal como deben quedar en disco (sin claves en claro si se puede).
+ *
+ * `prefs` es el estado en memoria y `previo` lo que ya había en el fichero.
+ * Un `apiKeysEnc` que sobrevive en `prefs` es un cifrado que no se pudo leer:
+ * solo se descarta cuando hay `apiKeys` en memoria y no queda ese blob.
+ */
+function prepararPrefsParaDisco(prefs, previo, safeStorage) {
+  const actuales = prefs ?? {};
+  const prefsParaDisco = { ...(previo ?? {}), ...actuales };
+  const claves = actuales.apiKeys;
+  const cifrado = cifrarClaves(claves, safeStorage);
+
+  if (cifrado) {
+    prefsParaDisco.apiKeysEnc = cifrado;
+    delete prefsParaDisco.apiKeys;
+    return prefsParaDisco;
+  }
+
+  // Sin blob nuevo: el viejo solo sirve si es lo único que guarda las claves.
+  if (claves && !actuales.apiKeysEnc) delete prefsParaDisco.apiKeysEnc;
+  // Un mapa vacío no aporta nada al fichero.
+  if (claves && Object.keys(claves).length === 0) delete prefsParaDisco.apiKeys;
+  return prefsParaDisco;
+}
+
+module.exports = { cifrarClaves, descifrarClaves, prepararPrefsParaDisco };
