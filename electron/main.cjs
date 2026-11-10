@@ -53,6 +53,7 @@ const { cargarCatalogo } = require('./marketplace.cjs');
 const worktreeMod = require('./worktree.cjs');
 const testrunner = require('./testrunner.cjs');
 const { AlmacenDeMemoria, makeMemoryTool, bloqueDeMemorias } = require('./memory.cjs');
+const { guardarEnCola } = require('./settings-store.cjs');
 
 /**
  * Esquema propio `app://`.
@@ -152,29 +153,26 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
+  await fsp.mkdir(app.getPath('userData'), { recursive: true });
+
+  // Se parte de lo que ya había en disco: si un valor es nulo ahora mismo
+  // (por ejemplo el modelo aún no elegido), no se borra el que estaba.
+  let previo = {};
   try {
-    await fsp.mkdir(app.getPath('userData'), { recursive: true });
-
-    // Se parte de lo que ya había en disco: si un valor es nulo ahora mismo
-    // (por ejemplo el modelo aún no elegido), no se borra el que estaba.
-    let previo = {};
-    try {
-      previo = JSON.parse(await fsp.readFile(settingsPath(), 'utf8')) ?? {};
-    } catch {
-      previo = {};
-    }
-
-    const payload = {
-      providerId: state.providerId ?? previo.providerId ?? null,
-      model: state.model ?? previo.model ?? null,
-      lastWorkspace: state.cwd ?? previo.lastWorkspace ?? null,
-      prefs: { ...(previo.prefs ?? {}), ...(state.prefs ?? {}) },
-    };
-
-    await fsp.writeFile(settingsPath(), JSON.stringify(payload, null, 2), 'utf8');
+    previo = JSON.parse(await fsp.readFile(settingsPath(), 'utf8')) ?? {};
   } catch {
-    // guardar preferencias es best-effort
+    previo = {};
   }
+
+  const payload = {
+    providerId: state.providerId ?? previo.providerId ?? null,
+    model: state.model ?? previo.model ?? null,
+    lastWorkspace: state.cwd ?? previo.lastWorkspace ?? null,
+    prefs: { ...(previo.prefs ?? {}), ...(state.prefs ?? {}) },
+  };
+
+  // Escritura atómica y en cola: nunca queda un settings.json a medias.
+  await guardarEnCola(settingsPath(), payload);
 }
 
 /**
