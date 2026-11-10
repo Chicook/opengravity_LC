@@ -49,16 +49,20 @@ Deja dos ficheros en `release/`:
 - Catálogo de herramientas abierto: lectura/escritura de código y cuadernos,
   búsqueda, terminal en segundo plano, MCP, memoria, skills, subagentes (en
   paralelo y anidados de solo lectura con presupuesto), planes,
-  generación de imágenes y **14 acciones de navegador** (`open`, `read`,
+  `run_extension_code` para extensiones temporales, generación de imágenes y
+  **14 acciones de navegador** (`open`, `read`,
   `snapshot`, `click`, `fill`, `type`, `press`, `select`, `scroll`, `hover`,
   `wait`, `batch`, `navigate`, `eval`) sobre el Chromium integrado
 - Permisos: preset global, permisos por herramienta y reglas de red
 - **Sandbox de workspace opcional**: rutas de fichero dentro del proyecto, cwd de
   comandos fijado, credenciales fuera del entorno y límites de proceso (Job
-  Object en Windows; grupo + `ulimit` en POSIX), con terminación del árbol
+  Object en Windows; grupo + `ulimit` en POSIX), con terminación del árbol.
+  AppContainer queda fuera: un comando normal necesita el toolchain del sistema,
+  así que haría falta un contenedor con su propio Node
 - **Diffs con aprobación** antes de escribir
 - **Checkpoints**: deshacer restaura los ficheros en disco
-- Skills inyectables, perfil local y servidores MCP como plugins
+- Skills inyectables, perfil local y servidores MCP como plugins, con
+  **catálogo local** instalable desde Ajustes (sin cuentas, planes ni pagos)
 
 ### Editor
 
