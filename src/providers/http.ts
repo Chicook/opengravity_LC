@@ -47,6 +47,17 @@ export async function* readSSE(
       }
     }
   } finally {
+    /*
+     * Al recibir `[DONE]` salimos sin consumir el resto del cuerpo. Si no se
+     * cancela, la conexión queda ocupada y la siguiente petición al mismo
+     * endpoint espera indefinidamente (por ejemplo, el título de la sesión
+     * después del turno). Cancelar cierra ese cuerpo y libera la conexión.
+     */
+    try {
+      await reader.cancel();
+    } catch {
+      // el cuerpo ya estaba cerrado
+    }
     reader.releaseLock();
   }
 
