@@ -15,7 +15,7 @@
  * se carga con `import()` dinámico, así este fichero puede ser CommonJS.
  */
 
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, net, safeStorage } = require('electron');
 const path = require('node:path');
 const fsp = require('node:fs/promises');
 const http = require('node:http');
@@ -54,6 +54,7 @@ const worktreeMod = require('./worktree.cjs');
 const testrunner = require('./testrunner.cjs');
 const { AlmacenDeMemoria, makeMemoryTool, bloqueDeMemorias } = require('./memory.cjs');
 const { guardarEnCola } = require('./settings-store.cjs');
+const { cifrarClaves, descifrarClaves } = require('./secret-store.cjs');
 
 /**
  * Esquema propio `app://`.
@@ -146,7 +147,21 @@ async function loadSettings() {
     if (parsed && typeof parsed.providerId === 'string') state.providerId = parsed.providerId;
     if (parsed && typeof parsed.model === 'string') state.model = parsed.model;
     if (parsed && typeof parsed.lastWorkspace === 'string') state.cwd = parsed.lastWorkspace;
-    if (parsed && parsed.prefs && typeof parsed.prefs === 'object') state.prefs = parsed.prefs;
+    if (parsed && parsed.prefs && typeof parsed.prefs === 'object') {
+      const prefs = { ...parsed.prefs };
+
+      // Las claves cifradas vuelven a memoria en claro; `apiKeys` en claro (de
+      // versiones anteriores) es más reciente y manda sobre el blob.
+      if (prefs.apiKeysEnc) {
+        const claves = descifrarClaves(prefs.apiKeysEnc, safeStorage);
+        if (claves) {
+          delete prefs.apiKeysEnc;
+          prefs.apiKeys = { ...claves, ...(prefs.apiKeys ?? {}) };
+        }
+      }
+
+      state.prefs = prefs;
+    }
   } catch {
     // sin preferencias guardadas: se usan los valores por defecto
   }
@@ -164,11 +179,24 @@ async function saveSettings() {
     previo = {};
   }
 
+  const prefsParaDisco = { ...(previo.prefs ?? {}), ...(state.prefs ?? {}) };
+
+  // Claves API: nunca en claro si hay cifrado. Si no lo hay (o el usuario vació
+  // el mapa) se tira el blob viejo, que ya no refleja lo que hay en memoria.
+  const claves = state.prefs?.apiKeys;
+  const cifrado = cifrarClaves(claves, safeStorage);
+  if (cifrado) {
+    prefsParaDisco.apiKeysEnc = cifrado;
+    delete prefsParaDisco.apiKeys;
+  } else if (claves) {
+    delete prefsParaDisco.apiKeysEnc;
+  }
+
   const payload = {
     providerId: state.providerId ?? previo.providerId ?? null,
     model: state.model ?? previo.model ?? null,
     lastWorkspace: state.cwd ?? previo.lastWorkspace ?? null,
-    prefs: { ...(previo.prefs ?? {}), ...(state.prefs ?? {}) },
+    prefs: prefsParaDisco,
   };
 
   // Escritura atómica y en cola: nunca queda un settings.json a medias.
