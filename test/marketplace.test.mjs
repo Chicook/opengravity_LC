@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { cargarCatalogo, normalizarEntrada, entradaAPlugin } = require('../electron/marketplace.cjs');
+const { cargarCatalogo, normalizarEntrada } = require('../electron/marketplace.cjs');
 
 test('el catálogo empaquetado tiene entradas válidas y sin ids repetidos', () => {
   const catalogo = cargarCatalogo();
@@ -34,24 +34,3 @@ test('normalizarEntrada descarta entradas incompletas', () => {
   assert.equal(normalizarEntrada({ id: 'x', name: 'X', command: 'npx', args: [1] }), null);
 });
 
-test('entradaAPlugin produce un plugin habilitado con id propio', () => {
-  const args = ['-y', 'server'];
-  const env = { A: '1' };
-  const plugin = entradaAPlugin({
-    id: 'filesystem',
-    name: 'Filesystem',
-    command: 'npx',
-    args,
-    env,
-  });
-  assert.deepEqual(plugin, {
-    id: 'mcp-filesystem',
-    name: 'Filesystem',
-    command: 'npx',
-    args: ['-y', 'server'],
-    env: { A: '1' },
-    enabled: true,
-  });
-  plugin.args.push('otro');
-  assert.equal(args.length, 2);
-});

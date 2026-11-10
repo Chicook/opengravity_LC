@@ -4375,17 +4375,6 @@ button {
 
 /* Medido 2.29.0: 28px, radio 8px, weight 350, activo alfa 0.133 */
 /* Medido 2.29.0: 28px, radio 8px, weight 350 */
-/* Cabecera del panel de ajustes, como la suya */
-.settings__nav-header {
-  padding: 4px 8px 8px;
-  /* Medido: es un h1 de 12px/450/16px en su DOM */
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 450;
-  letter-spacing: -0.18px;
-  color: var(--foreground);
-}
-
 .settings__nav-item {
   display: flex;
   align-items: center;
@@ -4559,7 +4548,7 @@ button {
 
 /* Medido 2.29.0: 14px, weight 450 */
 .settings__section-title {
-  margin: 0 0 2px;
+  margin: 0;
   font-size: 14px;
   line-height: 20px;
   font-weight: 450;
@@ -5776,8 +5765,7 @@ span.thread__empty-mark {
   color: #1a1a1a;
 }
 
-/* Ajustes: cabecera y elemento activo de la navegación */
-:root[data-theme='light'] .settings__nav-header,
+/* Ajustes: elemento activo de la navegación */
 :root[data-theme='light'] .settings__nav-item.is-active {
   color: #1a1a1a;
 }
@@ -6852,14 +6840,6 @@ span.thread__empty-mark {
   cursor: default;
   pointer-events: none;
   user-select: none;
-}
-
-/* Título: text-sm font-medium. */
-.settings__section-title {
-  margin: 0;
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 450;
 }
 
 /* Contador: 10 px semibold en pastilla, con borde. */

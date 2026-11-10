@@ -47,16 +47,4 @@ function cargarCatalogo(ruta = RUTA_CATALOGO) {
   return salida;
 }
 
-/** Convierte una entrada del catálogo en el plugin que consume el bucle. */
-function entradaAPlugin(entrada) {
-  return {
-    id: `mcp-${entrada.id}`,
-    name: entrada.name,
-    command: entrada.command,
-    args: [...entrada.args],
-    env: { ...entrada.env },
-    enabled: true,
-  };
-}
-
-module.exports = { RUTA_CATALOGO, cargarCatalogo, normalizarEntrada, entradaAPlugin };
+module.exports = { RUTA_CATALOGO, cargarCatalogo, normalizarEntrada };
