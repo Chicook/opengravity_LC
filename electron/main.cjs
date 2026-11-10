@@ -4235,7 +4235,9 @@ ipcMain.handle('chat:send', async (event, payload) => {
       'IMPORTANTE: el subagente no comparte tu contexto. En `prompt` dale la RUTA COMPLETA ' +
       'de cada fichero relativa al directorio de trabajo (por ejemplo ' +
       '`prueba-nucleo/src/carrito.mjs`, no `src/carrito.mjs`) y dile exactamente qué debe ' +
-      'devolverte. Si la ruta es ambigua, el subagente fallará y gastará pasos buscándola.',
+      'devolverte. Si la ruta es ambigua, el subagente fallará y gastará pasos buscándola. ' +
+      'Para reutilizar una definición guardada, pasa `definition` (su nombre) y, si quieres, ' +
+      '`prompt`; sin prompt se usa la descripción de la definición.',
     parameters: {
       type: 'object',
       properties: {
@@ -4245,6 +4247,13 @@ ipcMain.handle('chat:send', async (event, payload) => {
           items: {
             type: 'object',
             properties: {
+              definition: {
+                type: 'string',
+                description:
+                  'Nombre de una definición guardada con `define_subagent`. Hereda su rol, ' +
+                  'system prompt, permisos y allowSubagents; puedes añadir `prompt` para la ' +
+                  'tarea concreta.',
+              },
               name: {
                 type: 'string',
                 description: 'Nombre corto, para identificar su resultado.',
@@ -4276,7 +4285,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
                   'no es un repo git, se queda en inherit.',
               },
             },
-            required: ['name', 'prompt'],
+            required: [],
           },
         },
       },
@@ -4286,6 +4295,18 @@ ipcMain.handle('chat:send', async (event, payload) => {
       const pedidos = Array.isArray(args?.subagents) ? args.subagents.slice(0, 5) : [];
       if (pedidos.length === 0) {
         return { content: 'No hay subagentes que lanzar.', isError: true };
+      }
+      if (
+        !pedidos.every(
+          (sub) =>
+            sub &&
+            (typeof sub.name === 'string' || typeof sub.definition === 'string'),
+        )
+      ) {
+        return {
+          content: 'Cada subagente necesita `name` o `definition` (y opcionalmente `prompt`).',
+          isError: true,
+        };
       }
 
       const padreSolicitado = typeof args?.__padre === 'string' ? args.__padre : null;
