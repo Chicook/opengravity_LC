@@ -1269,6 +1269,60 @@ function matarTarea(tarea) {
   }
 }
 
+/**
+ * Herramienta: ejecutar un fragmento de JavaScript como extensión temporal.
+ *
+ * Es el equivalente open source de `run_extension_code`: no hay una API
+ * propietaria de extensiones, así que el código corre con Node en el mismo
+ * sandbox que `run_command`, con `args` disponible en el script.
+ */
+function makeRunExtensionCodeTool(getCwd, ejecutarComando) {
+  const workflow = makeRunWorkflowTool(getCwd, ejecutarComando);
+  return {
+    name: 'run_extension_code',
+    description:
+      'Ejecuta un fragmento de JavaScript como una extensión temporal del agente. ' +
+      'Corre con Node en el sandbox, recibe `args` y devuelve lo que escriba por ' +
+      'consola. Para código de proyecto, usa run_workflow.',
+    parameters: {
+      type: 'object',
+      properties: {
+        code: {
+          type: 'string',
+          description: 'Código JavaScript (ESM). El objeto args está disponible en el script.',
+        },
+        args: {
+          type: 'object',
+          description: 'Datos de entrada para la extensión.',
+        },
+        waitMillis: {
+          type: 'number',
+          description:
+            'Milisegundos a esperar antes de pasarla a segundo plano (0–10000). ' +
+            'Por defecto 10000.',
+        },
+      },
+      required: ['code'],
+    },
+    async execute(args) {
+      const codigo = String(args?.code ?? '');
+      if (codigo.trim().length === 0) {
+        return { content: 'No hay código que ejecutar.', isError: true };
+      }
+      const script =
+        "import { readFileSync } from 'node:fs';\n" +
+        "const args = JSON.parse(readFileSync(process.argv[2], 'utf8'));\n" +
+        codigo;
+      return workflow.execute({
+        script,
+        language: 'node',
+        args: args?.args ?? {},
+        waitMillis: args?.waitMillis,
+      });
+    },
+  };
+}
+
 /** Termina todas las tareas, por ejemplo al cerrar la app. */
 function matarTodasLasTareas() {
   for (const tarea of tareas.values()) matarTarea(tarea);
@@ -2065,6 +2119,7 @@ module.exports = {
   makeEditNotebookTool,
   makeGenerateImageTool,
   makeRunWorkflowTool,
+  makeRunExtensionCodeTool,
   isUrlAllowed,
   makeFetchUrlTool,
   makeOpenUrlTool,

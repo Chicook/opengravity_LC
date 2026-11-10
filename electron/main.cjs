@@ -36,6 +36,7 @@ const {
   makeEditNotebookTool,
   makeGenerateImageTool,
   makeRunWorkflowTool,
+  makeRunExtensionCodeTool,
   makeBrowserTools,
 } = require('./tools-extra.cjs');
 const { diffLines, compactDiff } = require('./diff.cjs');
@@ -46,6 +47,7 @@ const { CicloDePlan, PROMPT_PLANNER, PROMPT_EXECUTOR, HERRAMIENTAS_DE_LECTURA } 
 const { descubrirSkills, bloqueDeSkills, makeSkillTool } = require('./skills.cjs');
 const { compilarCron, siguienteEjecucion, describirCron } = require('./cron.cjs');
 const subagentes = require('./subagents.cjs');
+const { cargarCatalogo } = require('./marketplace.cjs');
 const worktreeMod = require('./worktree.cjs');
 const testrunner = require('./testrunner.cjs');
 const { AlmacenDeMemoria, makeMemoryTool, bloqueDeMemorias } = require('./memory.cjs');
@@ -467,7 +469,10 @@ function guardTool(tool, preset, prefs, getWindow) {
       tool.name === 'multi_replace'
     );
   };
-  const esComando = () => tool.name === 'run_command' || tool.name === 'run_workflow';
+  const esComando = () =>
+    tool.name === 'run_command' ||
+    tool.name === 'run_workflow' ||
+    tool.name === 'run_extension_code';
 
   return {
     ...tool,
@@ -1012,6 +1017,9 @@ ipcMain.handle('mcp:probe', async (_event, server) => {
     await client?.close().catch(() => {});
   }
 });
+
+/** Catálogo local de servidores MCP, sin red ni cuentas. */
+ipcMain.handle('marketplace:list', async () => cargarCatalogo());
 
 /** Estado de los servidores MCP configurados, sin arrancarlos. */
 ipcMain.handle('mcp:list', async () => {
@@ -2799,6 +2807,7 @@ ipcMain.handle('tools:list', async () => {
     makeMemoryTool(getMemoria(), () => state.cwd),
     makeSkillTool(() => descubrirSkills(state.cwd)),
     makeRunWorkflowTool(() => state.cwd, (a) => makeRunCommandTool(() => state.cwd, () => state.prefs).execute(a)),
+    makeRunExtensionCodeTool(() => state.cwd, (a) => makeRunCommandTool(() => state.cwd, () => state.prefs).execute(a)),
     ...makeBrowserTools(() => state.prefs, (message, detail) =>
       askPermission(mainWindow, message, detail),
     ),
@@ -3549,6 +3558,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
     makeMemoryTool(getMemoria(), () => state.cwd),
     makeSkillTool(() => descubrirSkills(state.cwd)),
     makeRunWorkflowTool(() => state.cwd, (a) => makeRunCommandTool(() => state.cwd, () => state.prefs).execute(a)),
+    makeRunExtensionCodeTool(() => state.cwd, (a) => makeRunCommandTool(() => state.cwd, () => state.prefs).execute(a)),
     ...makeBrowserTools(() => state.prefs, (message, detail) =>
       askPermission(mainWindow, message, detail),
     ),
@@ -4786,6 +4796,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
       const client = await StdioMcpClient.start({
         command: plugin.command,
         args: Array.isArray(plugin.args) ? plugin.args : [],
+        cwd: state.cwd,
         onStderr: (chunk) => console.error(`[plugin ${plugin.name}] ${chunk}`),
       });
       pluginClients.push(client);

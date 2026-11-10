@@ -3223,6 +3223,7 @@ function resumirHerramientas(nombres) {
     { plural: 'used memory', singular: 'used memory', tools: ['memory'] },
     { plural: 'read a skill', singular: 'read a skill', tools: ['skill'] },
     { plural: 'ran a workflow', singular: 'ran a workflow', tools: ['run_workflow'] },
+    { plural: 'ran extension code', singular: 'ran extension code', tools: ['run_extension_code'] },
     { plural: 'scheduled a reminder', singular: 'scheduled a reminder', tools: ['notify_user'] },
   ];
 

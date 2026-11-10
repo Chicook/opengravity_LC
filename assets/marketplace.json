@@ -1,0 +1,34 @@
+[
+  {
+    "id": "filesystem",
+    "name": "Filesystem",
+    "description": "Lee y escribe archivos del workspace. Arranca en el directorio del proyecto.",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+    "env": {}
+  },
+  {
+    "id": "memory",
+    "name": "Memory",
+    "description": "Memoria persistente en un grafo de entidades y relaciones.",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-memory"],
+    "env": {}
+  },
+  {
+    "id": "sequential-thinking",
+    "name": "Sequential Thinking",
+    "description": "Descompone problemas en pasos de razonamiento revisables.",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+    "env": {}
+  },
+  {
+    "id": "everything",
+    "name": "Everything",
+    "description": "Servidor de referencia del protocolo, con herramientas de ejemplo.",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-everything"],
+    "env": {}
+  }
+]

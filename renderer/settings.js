@@ -1513,8 +1513,28 @@
     ];
   }
 
+  /** Catálogo local de MCP: se carga una vez por sesión de ajustes. */
+  let catalogoMcp = null;
+  let catalogoMcpCargando = false;
+
   function renderPlugins() {
     const plugins = prefs.plugins ?? [];
+
+    if (!catalogoMcp && !catalogoMcpCargando && window.api.marketplaceList) {
+      catalogoMcpCargando = true;
+      window.api
+        .marketplaceList()
+        .then((lista) => {
+          catalogoMcp = Array.isArray(lista) ? lista : [];
+        })
+        .catch(() => {
+          catalogoMcp = [];
+        })
+        .finally(() => {
+          catalogoMcpCargando = false;
+          render();
+        });
+    }
 
     const nameInput = el('input', 'text-input');
     nameInput.placeholder = 'filesystem';
@@ -1621,6 +1641,32 @@
 
     const rows = plugins.map(serverRow);
 
+    const instalados = new Set(plugins.map((entrada) => String(entrada.name)));
+    const catalogo = (catalogoMcp ?? []).filter((entrada) => !instalados.has(entrada.name));
+    const catalogoRows = catalogo.map((entrada) =>
+      makeRow({
+        label: entrada.name,
+        desc: `${entrada.description} · ${entrada.command} ${entrada.args.join(' ')}`,
+        control: makeButton({
+          label: 'Instalar',
+          onClick: () => {
+            setPref('plugins', [
+              ...plugins,
+              {
+                id: `mcp-${entrada.id}`,
+                name: entrada.name,
+                command: entrada.command,
+                args: [...entrada.args],
+                env: { ...entrada.env },
+                enabled: true,
+              },
+            ]);
+            render();
+          },
+        }),
+      }),
+    );
+
     const addRow = makeRow({
       label: 'Nuevo servidor',
       desc: 'Nombre, comando, argumentos y variables de entorno opcionales.',
@@ -1636,6 +1682,22 @@
         title: 'Servidores MCP',
         desc: 'Se lanzan por stdio al empezar cada turno y se cierran al terminar. «Probar» arranca el servidor, cuenta sus herramientas y lo cierra.',
         rows: rows.length > 0 ? rows : [makeRow({ label: 'Sin servidores', desc: null, control: null })],
+      }),
+      makeSection({
+        title: 'Marketplace',
+        desc:
+          'Catálogo local de servidores MCP open source. Se instalan como plugins ' +
+          'normales; no hay cuentas, planes ni pagos.',
+        rows:
+          catalogoRows.length > 0
+            ? catalogoRows
+            : [
+                makeRow({
+                  label: catalogoMcp ? 'Todo instalado' : 'Cargando catálogo…',
+                  desc: null,
+                  control: null,
+                }),
+              ],
       }),
       makeSection({ title: 'Añadir', desc: null, rows: [addRow] }),
     ];

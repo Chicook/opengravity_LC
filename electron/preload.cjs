@@ -175,6 +175,7 @@ contextBridge.exposeInMainWorld('api', {
 
   /** Servidores MCP: probar y listar. */
   probeMcp: (server) => ipcRenderer.invoke('mcp:probe', server),
+  marketplaceList: () => ipcRenderer.invoke('marketplace:list'),
   listMcp: () => ipcRenderer.invoke('mcp:list'),
 
   /** Tareas programadas. */
