@@ -2012,12 +2012,18 @@ function pedirNombreDeConversacion(actual) {
 
   return new Promise((resolve) => {
     let resuelto = false;
+    // Escape funciona con el foco fuera del input (Ctrl+N, paleta, etc.).
+    const alPulsarEscape = (evento) => {
+      if (evento.key !== 'Escape') return;
+      evento.preventDefault();
+      cerrar(null);
+    };
     const cerrar = (valor) => {
       if (resuelto) return;
       resuelto = true;
       modal.setAttribute('hidden', '');
+      document.removeEventListener('keydown', alPulsarEscape);
       modal.onclick = null;
-      modal.onkeydown = null;
       input.onkeydown = null;
       confirm.onclick = null;
       resolve(valor);
@@ -2030,6 +2036,7 @@ function pedirNombreDeConversacion(actual) {
 
     input.value = actual;
     modal.removeAttribute('hidden');
+    document.addEventListener('keydown', alPulsarEscape);
     input.focus();
     input.select();
 
@@ -2038,11 +2045,6 @@ function pedirNombreDeConversacion(actual) {
       if (evento.key !== 'Enter') return;
       evento.preventDefault();
       guardar();
-    };
-    modal.onkeydown = (evento) => {
-      if (evento.key !== 'Escape') return;
-      evento.preventDefault();
-      cerrar(null);
     };
     // Backdrop y Cancelar comparten `data-close-rename`: una sola delegación por apertura.
     modal.onclick = (evento) => {
@@ -2053,14 +2055,17 @@ function pedirNombreDeConversacion(actual) {
 
 /** Renombra la conversación activa. */
 async function renameConversation() {
-  if (!ui.activeConversation) return;
+  // El id se captura antes del modal: mientras está abierto la conversación
+  // activa puede cambiar y el rename debe aplicarse a la original.
+  const id = ui.activeConversation;
+  if (!id) return;
 
-  const session = ui.sessions.find((item) => item.id === ui.activeConversation);
+  const session = ui.sessions.find((item) => item.id === id);
   const actual = session?.title ?? '';
   const nuevo = await pedirNombreDeConversacion(actual);
   if (!nuevo) return;
 
-  await window.api.renameSession(ui.activeConversation, nuevo);
+  await window.api.renameSession(id, nuevo);
   await refreshConversations();
   renderPaneTitle();
 }
