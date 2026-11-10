@@ -22,9 +22,14 @@ test('run_extension_code inyecta args y ejecuta el wrapper', async () => {
   });
 
   assert.equal(resultado.content, 'ok');
-  const ruta = comando.match(/"([^"]+\.mjs)"/)?.[1];
-  assert.ok(ruta, 'el comando debe apuntar al script temporal');
-  const script = await readFile(ruta, 'utf8');
-  assert.match(script, /const args = JSON\.parse/);
-  await unlink(ruta).catch(() => {});
+  const rutas = [...comando.matchAll(/"([^"]+\.(?:mjs|json))"/g)].map((m) => m[1]);
+  assert.equal(rutas.length, 2, 'el comando debe apuntar al script y a los args temporales');
+  try {
+    const script = await readFile(rutas[0], 'utf8');
+    assert.match(script, /const args = JSON\.parse/);
+    const args = JSON.parse(await readFile(rutas[1], 'utf8'));
+    assert.deepEqual(args, { valor: 7 });
+  } finally {
+    await Promise.all(rutas.map((p) => unlink(p).catch(() => {})));
+  }
 });
