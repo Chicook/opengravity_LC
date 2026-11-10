@@ -20,6 +20,13 @@ test('el catálogo empaquetado tiene entradas válidas y sin ids repetidos', () 
   }
 });
 
+test('cada servidor fija una versión exacta', () => {
+  for (const entrada of cargarCatalogo()) {
+    const paquete = entrada.args.find((arg) => arg.startsWith('@modelcontextprotocol/'));
+    assert.match(paquete, /@\d+\.\d+\.\d+$/, `sin versión exacta: ${paquete}`);
+  }
+});
+
 test('normalizarEntrada descarta entradas incompletas', () => {
   assert.equal(normalizarEntrada(null), null);
   assert.equal(normalizarEntrada({ id: 'x', name: '', command: 'npx', args: [] }), null);
