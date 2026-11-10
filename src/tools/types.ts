@@ -18,6 +18,8 @@ export interface ToolContext {
   signal?: AbortSignal;
   /** Logger opcional, para trazar qué hace el agente. */
   log?: (message: string) => void;
+  /** Id de la llamada del modelo, para que la UI case el aviso con su fila. */
+  callId?: string;
 }
 
 /** Resultado de una herramienta. */

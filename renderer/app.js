@@ -2820,6 +2820,7 @@ function addToolRow(name, args, callId, target, stepIndex) {
   const row = document.createElement('div');
   row.className = 'work-row is-running';
   row.dataset.tool = name;
+  row.dataset.callId = callId ?? '';
   if (Number.isFinite(stepIndex)) row.dataset.stepIndex = String(stepIndex);
 
   const btn = document.createElement('button');
@@ -2908,17 +2909,18 @@ function scrollToBottom() {
 // ---------------------------------------------------------------------------
 
 /**
- * Última fila de herramienta con ese nombre, para colgarle el veredicto.
- * Se busca por `data-tool`, no por el texto visible: dos llamadas al mismo
- * comando con argumentos distintos comparten etiqueta.
+ * Fila de la herramienta a la que va el veredicto: primero por id de llamada,
+ * que es lo único que distingue dos llamadas simultáneas al mismo comando; si
+ * el evento no trae id, por herramienta.
  */
-function buscarFilaDeHerramienta(nombre) {
+function buscarFilaDeHerramienta(nombre, callId) {
   const filas = [...document.querySelectorAll('.work-row')].map((row) => ({
     tool: row.dataset.tool,
+    callId: row.dataset.callId,
     running: row.classList.contains('is-running'),
     row,
   }));
-  return window.GuardianRow.chooseRow(filas, nombre)?.row ?? null;
+  return window.GuardianRow.chooseRow(filas, nombre, callId)?.row ?? null;
 }
 
 /** Pinta el veredicto del monitor en la fila de la herramienta. */
@@ -2960,13 +2962,13 @@ function handleChatEvent(event) {
 
     case 'guardian_check': {
       // El clasificador con modelo está evaluando esta acción.
-      const fila = buscarFilaDeHerramienta(event.herramienta);
+      const fila = buscarFilaDeHerramienta(event.herramienta, event.callId);
       if (fila) fila.classList.add('is-checking');
       break;
     }
 
     case 'guardian_result': {
-      const fila = buscarFilaDeHerramienta(event.herramienta);
+      const fila = buscarFilaDeHerramienta(event.herramienta, event.callId);
       if (!fila) break;
       fila.classList.remove('is-checking');
 

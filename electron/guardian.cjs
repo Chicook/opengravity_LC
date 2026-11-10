@@ -265,7 +265,7 @@ function conMonitorDeSeguridad(tool, opciones) {
       const yaBloqueada = veredicto.severity >= 5;
 
       if (opciones.clasificar && !rutinaLimpia && !yaBloqueada) {
-        opciones.alClasificar?.({ herramienta: tool.name, fase: 'inicio' });
+        opciones.alClasificar?.({ herramienta: tool.name, fase: 'inicio', callId: ctx?.callId });
 
         const clasificacion = await opciones.clasificar({
           herramienta: tool.name,
@@ -273,7 +273,7 @@ function conMonitorDeSeguridad(tool, opciones) {
           veredictoEstatico: veredicto,
         });
 
-        opciones.alClasificar?.({ herramienta: tool.name, fase: 'fin', clasificacion });
+        opciones.alClasificar?.({ herramienta: tool.name, fase: 'fin', clasificacion, callId: ctx?.callId });
 
         if (clasificacion && Number.isFinite(clasificacion.severity)) {
           const severidad = Math.max(veredicto.severity, clasificacion.severity);

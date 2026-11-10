@@ -4785,18 +4785,19 @@ ipcMain.handle('chat:send', async (event, payload) => {
       ...(clasificarConModelo ? { clasificar: clasificarConModelo } : {}),
       alClasificar: (info) => {
         if (info.fase === 'inicio') {
-          send({ type: 'guardian_check', herramienta: info.herramienta });
+          send({ type: 'guardian_check', herramienta: info.herramienta, callId: info.callId });
         } else if (info.clasificacion) {
           send({
             type: 'guardian_result',
             herramienta: info.herramienta,
+            callId: info.callId,
             severidad: info.clasificacion.severity,
             motivo: info.clasificacion.reason,
             nivel: info.clasificacion.nivel,
             cacheado: info.clasificacion.cacheado,
           });
         } else {
-          send({ type: 'guardian_result', herramienta: info.herramienta, fallo: true });
+          send({ type: 'guardian_result', herramienta: info.herramienta, callId: info.callId, fallo: true });
         }
       },
       confirmar: async (info) => {

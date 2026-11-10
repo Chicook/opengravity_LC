@@ -294,6 +294,7 @@ export async function runAgent(
         result = await Promise.race([
           options.tools.execute(call.name, call.arguments, {
             cwd: ctx.cwd,
+            callId: call.id,
             ...(ctx.signal ? { signal: ctx.signal } : {}),
             ...(ctx.log ? { log: ctx.log } : {}),
           }),
