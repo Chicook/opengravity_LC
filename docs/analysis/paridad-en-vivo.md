@@ -56,3 +56,18 @@ terminal, misma salida y mismos paneles.
   workspaces distintos; para eso hay que abrir el mismo proyecto en ambas.
 - Cuentas, planes, facturación y créditos quedan fuera por la regla del
   proyecto; el marketplace y el sandbox son añadidos de Opengravity.
+
+## Correcciones posteriores
+
+Los puntos 3, 4 y 5 de la tabla quedaron corregidos después de esta prueba:
+
+- **Projects / Not in Project**: navegación con el grupo Projects, los proyectos
+  conocidos, Show All/Show Less y Not in Project. Commit `5d6f888`.
+- **Títulos**: la conversación nueva ya resetea la sesión del motor y el título
+  se pide al modelo después del primer turno; el heurístico queda de respaldo.
+  Commit `ba3fb02`.
+- **Filas de herramienta**: «Ran» + tarjeta con el comando, sin el grupo
+  «Ran commands»; el historial recupera los argumentos del mensaje assistant.
+  Commit `ba3fb02`.
+- El título no llegaba porque el reader SSE no cancelaba el cuerpo al recibir
+  `[DONE]` y dejaba la conexión ocupada. Commit `2cc42d4`.
