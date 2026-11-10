@@ -78,6 +78,7 @@ Deja dos ficheros en `release/`:
 - Panel de resumen con Files, Plugins, Review y Terminal
 - Navegador de turnos, barra de acciones por respuesta, reacciones
 - Comandos `/` y menciones `@` en el composer
+- **Interfaz bilingüe**: inglés y español, con detección del idioma del sistema y selector en Ajustes › Application
 - Búsqueda de conversaciones, sesiones persistentes en JSONL
 
 ## Atajos

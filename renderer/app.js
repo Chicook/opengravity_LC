@@ -3660,6 +3660,13 @@ function applyPrefs(prefs) {
       root.removeProperty(variable);
     }
   }
+
+  if (window.I18n) {
+    if (ui.prefs.uiLanguage === 'Español') ui.prefs.uiLanguage = 'es';
+    if (ui.prefs.uiLanguage === 'English') ui.prefs.uiLanguage = 'en';
+    const idioma = window.I18n.resolveLanguage(ui.prefs.uiLanguage);
+    window.I18n.setLanguage(idioma);
+  }
 }
 
 /** Carga herramientas, skills y estado del control remoto. */

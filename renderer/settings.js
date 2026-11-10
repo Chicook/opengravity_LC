@@ -43,6 +43,7 @@
     sounds: false,
     volume: 100,
     remoteControl: false,
+    uiLanguage: 'auto',
   };
 
   /** Se rellena desde `app.js`. */
@@ -99,7 +100,7 @@
     },
     application: {
       title: 'Application',
-      subtitle: 'Workspace, control remoto y comportamiento de la aplicación.',
+      subtitle: 'Espacio de trabajo, control remoto y comportamiento de la aplicación.',
     },
     google: {
       title: 'Google',
@@ -165,6 +166,7 @@
 
   function makeSelect({ options, value, onChange, wide }) {
     const normalizadas = options.map((o) => (typeof o === 'string' ? { label: o } : o));
+    const valorDe = (opcion) => opcion.value ?? opcion.label;
     const wrap = el('div', wide ? 'dropdown dropdown--wide' : 'dropdown');
 
     const trigger = el('button', 'dropdown__trigger');
@@ -185,13 +187,13 @@
 
     const pintar = () => {
       panel.replaceChildren();
-      rotulo.textContent = normalizadas.find((o) => o.label === seleccionada)?.label ?? '';
+      rotulo.textContent = normalizadas.find((o) => valorDe(o) === seleccionada)?.label ?? '';
 
       for (const opcion of normalizadas) {
         const item = el('button', 'dropdown__item');
         item.type = 'button';
         item.setAttribute('role', 'option');
-        if (opcion.label === seleccionada) {
+        if (valorDe(opcion) === seleccionada) {
           item.classList.add('is-active');
           item.setAttribute('aria-selected', 'true');
         }
@@ -204,18 +206,18 @@
         }
 
         item.append(texto);
-        if (opcion.label === seleccionada) {
+        if (valorDe(opcion) === seleccionada) {
           const check = el('span', 'dropdown__check');
           check.innerHTML = window.Icon('chevronDown', 16);
           item.append(check);
         }
 
         item.addEventListener('click', () => {
-          seleccionada = opcion.label;
+          seleccionada = valorDe(opcion);
           pintar();
           panel.hidden = true;
           trigger.setAttribute('aria-expanded', 'false');
-          onChange(opcion.label);
+          onChange(seleccionada);
         });
 
         panel.append(item);
@@ -1037,6 +1039,30 @@
       makeSection({
         title: 'General',
         rows: [
+          makeRow({
+            label: 'Language',
+            desc: 'Interface language.',
+            control: makeSelect({
+              options: [
+                { value: 'auto', label: 'Auto', description: 'Follows the system language.' },
+                { value: 'en', label: 'English', description: '' },
+                { value: 'es', label: 'Español', description: '' },
+              ],
+              value:
+                prefs.uiLanguage === 'Español'
+                  ? 'es'
+                  : prefs.uiLanguage === 'English'
+                    ? 'en'
+                    : (prefs.uiLanguage ?? 'auto'),
+              onChange: (value) => {
+                setPref('uiLanguage', value);
+                const idioma = window.I18n?.resolveLanguage(value) ?? 'en';
+                window.I18n?.setLanguage(idioma);
+                window.I18n?.translateDom(document);
+                render();
+              },
+            }),
+          }),
           makeRow({
             label: 'Workspace',
             desc: 'Carpeta sobre la que trabaja el agente.',
