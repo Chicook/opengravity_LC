@@ -55,6 +55,10 @@ const testrunner = require('./testrunner.cjs');
 const { AlmacenDeMemoria, makeMemoryTool, bloqueDeMemorias } = require('./memory.cjs');
 const { guardarEnCola } = require('./settings-store.cjs');
 const { descifrarClaves, prepararPrefsParaDisco } = require('./secret-store.cjs');
+const { puedeRenombrarAutomatico } = require('./title-policy.cjs');
+
+/** IDs cuyo título se fijó a mano: la generación automática no los toca. */
+const titulosManuales = new Set();
 
 /**
  * Esquema propio `app://`.
@@ -3128,6 +3132,7 @@ ipcMain.handle('sessions:export', async (_event, id) => {
 
 /** Renombra una conversación. */
 ipcMain.handle('sessions:rename', async (_event, id, title) => {
+  titulosManuales.add(String(id));
   const sessions = await getStore();
   await sessions.rename(id, String(title ?? '').slice(0, 120));
   return { ok: true };
@@ -5271,6 +5276,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
       void generarTituloDeConversacion(providerTitulo, state.model, primerUsuario, ultimoAsistente)
         .then(async (titulo) => {
           if (!titulo) return;
+          if (!puedeRenombrarAutomatico(titulosManuales, sessionId)) return;
           const sessions = await getStore();
           await sessions.rename(sessionId, titulo);
           send({ type: 'session_title', sessionId, title: titulo });

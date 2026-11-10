@@ -598,6 +598,14 @@
               onClick: () => selectSection('google'),
             }),
           }),
+          makeRow({
+            label: 'Developer',
+            desc: 'Herramientas de desarrollo y sandbox avanzado.',
+            control: makeButton({
+              label: 'Abrir',
+              onClick: () => selectSection('developer'),
+            }),
+          }),
         ],
       }),
     ];
