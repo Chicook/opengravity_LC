@@ -43,6 +43,7 @@ const { diffLines, compactDiff } = require('./diff.cjs');
 const { conMonitorDeSeguridad } = require('./guardian.cjs');
 const { conHooks, aplicarHooksDeTexto, aplicarHooksDeRazonamiento } = require('./hooks.cjs');
 const trayectoria = require('./trajectory.cjs');
+const { restoreSnapshots } = require('./checkpoints.cjs');
 const { CicloDePlan, PROMPT_PLANNER, PROMPT_EXECUTOR, HERRAMIENTAS_DE_LECTURA } = require('./plan-mode.cjs');
 const { descubrirSkills, bloqueDeSkills, makeSkillTool } = require('./skills.cjs');
 const { compilarCron, siguienteEjecucion, describirCron } = require('./cron.cjs');
@@ -1942,42 +1943,29 @@ let cambiosDelTurno = [];
 
 /**
  * Restaura los ficheros a su estado en el punto indicado.
- * Se aplican los snapshots del más nuevo al más antiguo, de modo que el
- * resultado final sea el estado del turno más antiguo que se revierte.
+ * Se aplican los snapshots del más nuevo al más antiguo, cada uno con su
+ * propio contenido, de modo que el resultado final sea el estado del turno
+ * más antiguo que se revierte. Los snapshots con fallos se conservan.
  */
 async function restoreCheckpoints(keepCount) {
   const keys = [...turnCheckpoints.keys()]
     .filter((key) => key >= keepCount)
     .sort((a, b) => b - a);
 
-  let restored = 0;
-
-  for (const key of keys) {
-    const snapshot = turnCheckpoints.get(key);
-    if (snapshot) {
-      for (const { absolute, original } of cambiosDelTurno) {
-        try {
-          if (original === null) {
-            await fsp.rm(absolute, { force: true });
-          } else {
-            await fsp.writeFile(absolute, original, 'utf8');
-          }
-          restored += 1;
-        } catch {
-          // si falla un fichero, se sigue con el resto
-        }
-      }
-    }
-    turnCheckpoints.delete(key);
-  }
+  const resultado = await restoreSnapshots({
+    keys,
+    checkpoints: turnCheckpoints,
+    writeFile: fsp.writeFile,
+    rm: fsp.rm,
+  });
+  const { failures } = resultado;
 
   /*
-   * Sin checkpoints en memoria —tras reiniciar la app— se restaura desde la
-   * trayectoria persistida. Antes el revert truncaba los mensajes y devolvía
-   * `restoredFiles: 0`: el usuario veía deshecha la conversación pero los
-   * ficheros seguían modificados, que es el peor resultado posible.
+   * Si no había snapshots en memoria —tras reiniciar la app, el caso normal— y
+   * no hubo fallos, se usa la trayectoria persistida. Con fallos no se toca la
+   * trayectoria: primero se reintenta lo que falló.
    */
-  if (restored === 0 && state.sessionId) {
+  if (resultado.restored === 0 && failures.length === 0 && state.sessionId) {
     try {
       await trayectoria.asegurar(state.sessionId);
       const plan = trayectoria.planDeReversion(state.sessionId, keepCount);
@@ -1989,7 +1977,7 @@ async function restoreCheckpoints(keepCount) {
             } else {
               if (typeof cambio.contenido === 'string') {
                 await fsp.writeFile(cambio.ruta, cambio.contenido, 'utf8');
-                restored += 1;
+                resultado.restored += 1;
               }
             }
           } catch {
@@ -2002,7 +1990,7 @@ async function restoreCheckpoints(keepCount) {
     }
   }
 
-  return restored;
+  return { restored: resultado.restored, failures };
 }
 
 /** Propuestas de diff esperando respuesta del usuario. */
@@ -3458,7 +3446,17 @@ ipcMain.handle('chat:revert', async (_event, keepCount) => {
   }
 
   const keep = Math.max(0, Math.floor(Number(keepCount)));
-  const restored = await restoreCheckpoints(keep);
+  const resultado = await restoreCheckpoints(keep);
+
+  if (resultado.failures.length > 0) {
+    return {
+      ok: false,
+      error: `No se pudieron restaurar ${resultado.failures.length} fichero(s). No se recortó la conversación.`,
+      restoredFiles: resultado.restored,
+      failures: resultado.failures,
+    };
+  }
+
   state.messages = state.messages.slice(0, keep);
 
   if (state.sessionId) {
@@ -3470,7 +3468,7 @@ ipcMain.handle('chat:revert', async (_event, keepCount) => {
     }
   }
 
-  return { ok: true, messages: state.messages.length, restoredFiles: restored };
+  return { ok: true, messages: state.messages.length, restoredFiles: resultado.restored };
 });
 
 /** Cancela la ejecución actual del agente. */
