@@ -1518,16 +1518,17 @@ button {
 
 /* Columna de 768px centrada, como su hilo de conversación */
 .thread__inner {
-  /* Medido en su DOM: la columna de 768px va alineada a la izquierda con 38px
-     de margen, no centrada. Centrada se metía debajo de la tarjeta del panel. */
+  /* Medido en su DOM: la columna de 768px va alineada a la izquierda con 33px
+     de margen (16 del padre + 17), no centrada. Centrada se metía debajo de la
+     tarjeta del panel. */
   width: 100%;
   max-width: 768px;
   /*
-   * Medido en su DOM: la columna arranca en x=295, el mismo borde que el
-   * composer. El padre aporta 16px, así que el resto va como margen y el
-   * contenido empieza en el borde de la caja, no con padding.
+   * Medido en su DOM: la columna arranca en x=289 (33px del panel), el mismo
+   * borde que el composer. El padre aporta 16px, así que el resto va como
+   * margen y el contenido empieza en el borde de la caja, no con padding.
    */
-  margin: 0 0 0 22px;
+  margin: 0 0 0 17px;
   padding-left: 0;
   display: flex;
   flex-direction: column;
@@ -4058,8 +4059,8 @@ button {
   width: 100%;
   max-width: 768px;
   /*
-   * Medido en su DOM: el composer arranca en x=295, el mismo borde que la
-   * columna de mensajes (38px desde el panel), no centrado.
+   * Medido en su DOM: el composer arranca en x=289, el mismo borde que la
+   * columna de mensajes (33px desde el panel), no centrado.
    */
   margin: 0;
   padding: 1px;
@@ -4220,8 +4221,8 @@ button {
 
 .composer {
   flex-shrink: 0;
-  /* Mismo borde izquierdo que la columna de mensajes: 38px del panel. */
-  padding: 0 16px 16px 38px;
+  /* Mismo borde izquierdo que la columna de mensajes: 33px del panel. */
+  padding: 0 16px 16px 33px;
   position: relative;
 }
 
@@ -5518,7 +5519,7 @@ strong .md-code,
 /*
  * Medido: su estado vacío se centra en el ancho completo del contenido
  * (centro 847 en 257→1437). El nuestro vive dentro de la columna de 768px con
- * 38px de margen y se centraba en 676. Se detecta por la presencia del bloque
+ * 33px de margen y se centraba en 676. Se detecta por la presencia del bloque
  * vacío, sin depender de la clase .is-empty.
  */
 .thread__inner:has(> .thread__empty),
@@ -7195,12 +7196,12 @@ span.thread__empty-mark {
 .ask-host {
   position: relative;
   z-index: 20;
-  /* Misma columna que el composer: 768 px desde x=295, no centrada en el
+  /* Misma columna que el composer: 768 px desde x=289, no centrada en el
      content__main. Con el panel Overview abierto, centrar aquí la desplazaba
      170 px a la derecha de los mensajes y del campo de escritura. */
   width: 100%;
   max-width: 768px;
-  margin-left: 38px;
+  margin-left: 33px;
   margin-right: 0;
   padding: 0 0 8px;
 }
