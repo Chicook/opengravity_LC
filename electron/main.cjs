@@ -44,6 +44,7 @@ const { conMonitorDeSeguridad } = require('./guardian.cjs');
 const { conHooks, aplicarHooksDeTexto, aplicarHooksDeRazonamiento } = require('./hooks.cjs');
 const trayectoria = require('./trajectory.cjs');
 const { restoreSnapshots } = require('./checkpoints.cjs');
+const { resetSessionState } = require('./session-state.cjs');
 const { CicloDePlan, PROMPT_PLANNER, PROMPT_EXECUTOR, HERRAMIENTAS_DE_LECTURA } = require('./plan-mode.cjs');
 const { descubrirSkills, bloqueDeSkills, makeSkillTool } = require('./skills.cjs');
 const { compilarCron, siguienteEjecucion, describirCron } = require('./cron.cjs');
@@ -3148,8 +3149,8 @@ ipcMain.handle('sessions:list', async () => {
 /** Empieza una conversación nueva de verdad: resetea el hilo del motor. */
 ipcMain.handle('sessions:new', async () => {
   if (state.busy) return { ok: false, error: 'el agente está trabajando' };
-  state.sessionId = null;
-  state.messages = [];
+  resetSessionState(state, turnCheckpoints, cambiosDelTurno);
+  currentTurnKey = null;
   return { ok: true };
 });
 
