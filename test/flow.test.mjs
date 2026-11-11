@@ -89,6 +89,15 @@ test('si pide login lo dice en vez de fallar por falta de caja', async () => {
   assert.match(r.error, /iniciar sesión/i);
 });
 
+test('si Flow redirige a la pantalla de acceso, no espera al editor', async () => {
+  const login = 'https://accounts.google.com/v3/signin/identifier';
+  const win = ventanaFalsa({ url: login, navegaA: login });
+  const r = await generarEnFlow(win, { prompt: 'un gato' });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /Ajustes > Google/i);
+  assert.match(r.error, /Conectar/i);
+});
+
 test('si no encuentra la caja de prompt lo dice', async () => {
   const r = await generarEnFlow(
     ventanaFalsa({ respuestas: { escribir: { ok: false, error: 'sin-caja' } } }),

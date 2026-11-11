@@ -24,6 +24,20 @@ npm run app
 
 `npm run app` compila el motor TypeScript, empaqueta Monaco y abre la ventana.
 
+## Cuenta de Google y Flow
+
+La generación de imágenes usa **Google Flow** con la sesión del navegador
+integrado. No hay clave de API ni coste adicional:
+
+1. Abre **Ajustes › Google** y pulsa **Conectar**.
+2. Inicia sesión con tu cuenta en la ventana que se abre. Flow se abre al
+   terminar.
+3. Vuelve a la app y pide una imagen con `generate_image`.
+
+La sesión se guarda en la partición persistente del navegador integrado, así
+que solo hay que iniciar sesión una vez. Si no hay cuenta conectada, la
+herramienta devuelve las instrucciones en vez de abrir un login oculto.
+
 ## Crear los ejecutables (Windows)
 
 ```bash

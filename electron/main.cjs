@@ -2730,10 +2730,13 @@ ipcMain.handle('image:as-data-url', async (_event, rutaRelativa) => {
  */
 ipcMain.handle('image:generate', async (_event, payload) => {
   try {
-    const { generarEnFlow, URL_FLOW } = require('./flow.cjs');
+    const { generarEnFlow, URL_FLOW, cuentaGoogleConectada, errorDeLogin } = require('./flow.cjs');
 
     const prompt = String(payload?.prompt ?? '').trim();
     if (prompt.length === 0) return { ok: false, error: 'falta el prompt' };
+
+    const cuenta = await cuentaGoogleConectada();
+    if (!cuenta.conectada) return { ok: false, error: errorDeLogin() };
 
     let navegador = require('./tools-extra.cjs').navegadorIntegrado();
     if (!navegador) {
@@ -2783,23 +2786,14 @@ ipcMain.handle('chrome:disconnect', async () => {
 });
 
 ipcMain.handle('google:status', async () => {
-  const { session } = require('electron');
-  try {
-    const sesion = session.fromPartition('persist:opengravity-browser');
-    const cookies = await sesion.cookies.get({ domain: '.google.com' });
-    // Con la cookie de sesión de Google basta para considerar la cuenta conectada.
-    const conectada = cookies.some((c) => /^(SID|SAPISID|__Secure-1PSID)$/.test(c.name));
-    return { conectada, cookies: cookies.length };
-  } catch (error) {
-    return { conectada: false, cookies: 0, error: String(error) };
-  }
+  return require('./flow.cjs').cuentaGoogleConectada();
 });
 
-/** Abre el navegador integrado para iniciar sesión en Google. */
+/** Abre el navegador integrado en Flow; si no hay sesión, Flow pide el login. */
 ipcMain.handle('google:connect', async () => {
   const { openBuiltInBrowser } = require('./tools-extra.cjs');
   try {
-    await openBuiltInBrowser('https://accounts.google.com/');
+    await openBuiltInBrowser('https://accounts.google.com/ServiceLogin?continue=https://flow.google.com/');
     return { ok: true };
   } catch (error) {
     return { ok: false, error: String(error) };

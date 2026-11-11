@@ -1170,7 +1170,7 @@
      */
     const filaChrome = makeRow({
       label: 'Usar mi Chrome',
-      desc: 'Abre tu Chrome con su sesión ya iniciada, sin volver a meter credenciales.',
+      desc: 'Abre Chrome con tu sesión. Para Flow usa la cuenta de Google de arriba.',
       control: null,
     });
 
@@ -1200,7 +1200,7 @@
 
             const r = await window.api.chromeLaunch?.();
             if (r?.ok) {
-              addNotice?.('Chrome abierto con tu sesión. Ya puedes generar imágenes.', 'ok');
+              addNotice?.('Chrome abierto con tu sesión.', 'ok');
               pintarChrome({ ...estadoChrome, conectado: true });
             } else {
               addNotice?.(r?.error ?? 'No se pudo abrir Chrome.', 'error');
@@ -1219,7 +1219,7 @@
     return [
       makeSection({
         title: 'Cuenta',
-        rows: [filaChrome, fila],
+        rows: [fila, filaChrome],
       }),
       makeSection({
         title: 'Generación de imágenes',
@@ -1234,7 +1234,7 @@
             control: makeButton({
               label: 'Abrir Flow',
               onClick: () => {
-                window.api.browserOpen?.('https://labs.google/fx/tools/flow').catch(() => {});
+                window.api.openBrowser?.('https://flow.google.com/').catch(() => {});
               },
             }),
           }),

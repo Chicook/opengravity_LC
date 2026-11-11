@@ -28,6 +28,44 @@ const ESPERA_IMAGEN_MS = 180_000;
 /** Cada cuánto se comprueba si ya hay imagen, en ms. */
 const INTERVALO_MS = 2_000;
 
+/** Partición persistente donde vive la sesión de Google de la app. */
+const PARTICION_GOOGLE = 'persist:opengravity-browser';
+
+/** Cookies con las que Google marca una sesión iniciada. */
+const COOKIE_SESION = /^(SID|SAPISID|APISID|HSID|SSID|__Secure-3PSID|__Secure-1PSID)$/;
+
+/**
+ * ¿Hay una cuenta de Google conectada en el navegador integrado?
+ *
+ * Se consulta antes de abrir Flow: así un usuario nuevo recibe la instrucción
+ * de conectar la cuenta en vez de una ventana de login abierta por detrás y un
+ * error 25 s después.
+ */
+async function cuentaGoogleConectada() {
+  try {
+    // `electron` solo existe en el proceso principal; se carga aquí para que
+    // los tests de flow.cjs sigan funcionando en Node sin Electron.
+    const { session } = require('electron');
+    const sesion = session.fromPartition(PARTICION_GOOGLE);
+    const cookies = [
+      ...(await sesion.cookies.get({ domain: '.google.com' })),
+      ...(await sesion.cookies.get({ domain: '.accounts.google.com' })),
+    ];
+    return { conectada: cookies.some((c) => COOKIE_SESION.test(c.name)), cookies: cookies.length };
+  } catch (error) {
+    return { conectada: false, cookies: 0, error: String(error) };
+  }
+}
+
+/** Mensaje único para cuando Flow manda a la pantalla de acceso de Google. */
+function errorDeLogin() {
+  return (
+    'Flow pide iniciar sesión. En Ajustes > Google pulsa «Conectar» y entra con tu ' +
+    'cuenta en la ventana que se abre; la sesión queda guardada para las próximas ' +
+    'veces. Después, vuelve a pedir la imagen.'
+  );
+}
+
 /**
  * Ejecuta JS en la página.
  *
@@ -424,6 +462,9 @@ async function entrarAlEditor(win) {
   const estado = await evaluar(
     win,
     `(() => {
+      if (/accounts\\.google\\.com|\\/signin\\b|ServiceLogin/i.test(location.href)) {
+        return { ok: false, error: 'login' };
+      }
       const yaHayEditor = document.querySelectorAll('textarea').length > 0 ||
         document.querySelectorAll('[contenteditable="true"]').length > 0;
       if (yaHayEditor) return { ok: true, yaDentro: true };
@@ -480,11 +521,19 @@ async function entrarAlEditor(win) {
       win,
       `(() => {
         ${BUSCAR_EN_IFRAMES}
+        if (/accounts\\.google\\.com|\\/signin\\b|ServiceLogin/i.test(location.href)) {
+          return { login: true };
+        }
+        const texto = (document.body.innerText || '').replace(/\\s+/g, ' ');
+        if (/(Inicia|Iniciar) sesión|Sign in|Utiliza tu cuenta de Google|Correo electrónico o teléfono/i.test(texto)) {
+          return { login: true };
+        }
         return todos('textarea').length + todos('[contenteditable="true"]').length > 0;
       })()`,
     );
 
     if (listo === true) return { ok: true, via: estado.via ?? 'directo' };
+    if (listo && listo.login) return { ok: false, error: 'login' };
   }
 
   return { ok: false, error: 'entré al proyecto pero la caja de prompt no apareció en 25 s' };
@@ -779,27 +828,35 @@ async function generarEnFlow(win, { prompt, destino, esperaMs, aspectRatio } = {
   if (!win || win.isDestroyed()) return { ok: false, error: 'No hay navegador abierto.' };
 
   // Solo se navega si no se está ya en Flow: recargar perdería el estado.
-  const actual = await urlActual(win);
+  let actual = await urlActual(win);
 
   // Vale tanto la portada nueva como la ruta antigua que redirige a ella.
   if (!/flow\.google\.com|labs\.google\/fx\/tools\/flow/i.test(actual)) {
     await navegar(win, URL_FLOW);
     // La app de Flow tarda en montar; sin esta espera no hay caja de prompt.
     await new Promise((r) => setTimeout(r, 6_000));
+    actual = await urlActual(win);
   }
 
-  // Si pide iniciar sesión, se dice en vez de fallar con «sin caja de prompt».
+  /*
+   * Si no hay sesión, Flow redirige a accounts.google.com. Se comprueba la URL
+   * además del texto: la pantalla usa «Inicia sesión», que no coincidía con
+   * «Iniciar sesión» y dejaba al usuario esperando 25 s delante de un login.
+   */
+  if (/accounts\.google\.com|\/signin\b|ServiceLogin/i.test(actual)) {
+    return { ok: false, error: errorDeLogin() };
+  }
+
   const pideLogin = await evaluar(
     win,
-    `/accounts\\.google\\.com|Sign in|Iniciar sesión/i.test(document.body.innerText || '')`,
+    `(() => {
+      const texto = (document.body.innerText || '').replace(/\\s+/g, ' ');
+      return /(Inicia|Iniciar) sesión|Sign in|Utiliza tu cuenta de Google|Correo electrónico o teléfono/i.test(texto)
+        || /accounts\\.google\\.com|\\/signin\\b|ServiceLogin/i.test(location.href);
+    })()`,
   );
   if (pideLogin) {
-    return {
-      ok: false,
-      error:
-        'Flow pide iniciar sesión. Inicia sesión con tu cuenta de Google en el navegador ' +
-        'integrado y vuelve a intentarlo.',
-    };
+    return { ok: false, error: errorDeLogin() };
   }
 
   /*
@@ -823,6 +880,9 @@ async function generarEnFlow(win, { prompt, destino, esperaMs, aspectRatio } = {
   if (consentimiento?.habia) await new Promise((r) => setTimeout(r, 800));
 
   let entrada = await entrarAlEditor(win);
+  if (!entrada.ok && entrada.error === 'login') {
+    return { ok: false, error: errorDeLogin() };
+  }
   if (!entrada.ok) {
     const d = entrada.diagnostico;
     const extra = d
@@ -965,6 +1025,9 @@ async function generarEnFlow(win, { prompt, destino, esperaMs, aspectRatio } = {
 module.exports = {
   URL_FLOW,
   ESPERA_IMAGEN_MS,
+  PARTICION_GOOGLE,
+  cuentaGoogleConectada,
+  errorDeLogin,
   generarEnFlow,
   escribirPrompt,
   pulsarGenerar,

@@ -1038,11 +1038,20 @@ function makeGenerateImageTool(getCwd) {
       required: ['prompt'],
     },
     async execute(args) {
-      const { generarEnFlow, URL_FLOW } = require('./flow.cjs');
+      const { generarEnFlow, URL_FLOW, cuentaGoogleConectada, errorDeLogin } = require('./flow.cjs');
       const nodePath = require('node:path');
 
       const prompt = String(args?.prompt ?? '').trim();
       if (prompt.length === 0) return { content: 'Falta el parámetro `prompt`.', isError: true };
+
+      const cuenta = await cuentaGoogleConectada();
+      if (!cuenta.conectada) {
+        return {
+          content:
+            errorDeLogin() + '\n\nDespués de iniciar sesión, vuelve a intentar la generación.',
+          isError: true,
+        };
+      }
 
       /*
        * Se abre OCULTO: el usuario no ve ninguna ventana. El navegador existe,
