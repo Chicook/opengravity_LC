@@ -169,6 +169,7 @@
     language = siguiente === 'es' ? 'es' : 'en';
     document.documentElement.lang = language;
     traducirArbol(document.documentElement);
+    document.dispatchEvent(new CustomEvent('i18n:change', { detail: { language } }));
     return language;
   }
 

@@ -1012,14 +1012,14 @@ window.I18N_PATTERNS = [
   { re: /^Trabajó durante (\d+) s$/, toEn: 'Worked for $1s' },
   { re: /^Thought for (\d+)s$/, toEs: 'Pensó durante $1 s' },
   { re: /^Pensó durante (\d+) s$/, toEn: 'Thought for $1s' },
-  { re: /^Ran read (.+)$/, toEs: 'Leyó $1' },
-  { re: /^Leyó (.+)$/, toEn: 'Ran read $1' },
-  { re: /^Ran write (.+)$/, toEs: 'Escribió $1' },
-  { re: /^Escribió (.+)$/, toEn: 'Ran write $1' },
-  { re: /^Ran edit (.+)$/, toEs: 'Editó $1' },
-  { re: /^Editó (.+)$/, toEn: 'Ran edit $1' },
-  { re: /^Ran search for (.+)$/, toEs: 'Buscó $1' },
-  { re: /^Buscó (.+)$/, toEn: 'Ran search for $1' },
+  { re: /^Read (.+)$/, toEs: 'Leyó $1' },
+  { re: /^Leyó (.+)$/, toEn: 'Read $1' },
+  { re: /^Created (.+)$/, toEs: 'Creó $1' },
+  { re: /^Creó (.+)$/, toEn: 'Created $1' },
+  { re: /^Edited (.+)$/, toEs: 'Editó $1' },
+  { re: /^Editó (.+)$/, toEn: 'Edited $1' },
+  { re: /^Searched "(.+)"$/, toEs: 'Buscó "$1"' },
+  { re: /^Buscó "(.+)"$/, toEn: 'Searched "$1"' },
   { re: /^Ran open (.+)$/, toEs: 'Abrió $1' },
   { re: /^Abrió (.+)$/, toEn: 'Ran open $1' },
   { re: /^Ran list files in (.+)$/, toEs: 'Listó los archivos de $1' },
@@ -1099,3 +1099,46 @@ window.I18N_PATTERNS = [
     toEs: 'Servidor de referencia del protocolo, con herramientas de ejemplo. · $2',
   },
 ];
+
+
+window.I18N_STRINGS.push(
+  { en: 'Read file', es: 'Leyó fichero' },
+  { en: 'Created file', es: 'Creó fichero' },
+  { en: 'Edited file', es: 'Editó fichero' },
+  { en: 'Edited several parts of a file', es: 'Editó varias partes de un fichero' },
+  { en: 'Searched', es: 'Buscó' },
+  { en: 'explored', es: 'exploró' },
+  { en: 'explored file', es: 'exploró un fichero' },
+  { en: 'explored files', es: 'exploró ficheros' },
+  { en: 'ran command', es: 'ejecutó un comando' },
+  { en: 'ran commands', es: 'ejecutó comandos' },
+  { en: 'edited file', es: 'editó un fichero' },
+  { en: 'edited files', es: 'editó ficheros' },
+  { en: 'generated image', es: 'generó una imagen' },
+  { en: 'generated images', es: 'generó imágenes' },
+  { en: 'searched the web', es: 'buscó en la web' },
+  { en: 'used the browser', es: 'usó el navegador' },
+  { en: 'delegated a task', es: 'delegó una tarea' },
+  { en: 'delegated tasks', es: 'delegó tareas' },
+  { en: 'presented a plan', es: 'presentó un plan' },
+  { en: 'reviewed the plan', es: 'revisó el plan' },
+  { en: 'asked a question', es: 'hizo una pregunta' },
+  { en: 'used memory', es: 'usó memoria' },
+  { en: 'read a skill', es: 'leyó una skill' },
+  { en: 'ran a workflow', es: 'ejecutó un workflow' },
+  { en: 'ran extension code', es: 'ejecutó código de extensión' },
+  { en: 'scheduled a reminder', es: 'programó un aviso' },
+  { en: 'Created', es: 'Creó' },
+  { en: 'Edited', es: 'Editó' },
+  { en: 'Read', es: 'Leyó' },
+);
+
+
+window.I18N_STRINGS.push(
+  { en: '1 file changed', es: '1 fichero cambiado' },
+);
+
+window.I18N_PATTERNS.push(
+  { re: /^(\d+) files changed$/, toEs: '$1 ficheros cambiados' },
+  { re: /^(\d+) ficheros cambiados$/, toEn: '$1 files changed' },
+);

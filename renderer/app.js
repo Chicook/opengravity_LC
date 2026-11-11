@@ -226,20 +226,20 @@ function friendlyTool(name, args) {
     case 'list_directory':
       return corto && corto !== '.' ? `Ran list files in ${corto}` : 'Ran list files in current directory';
     case 'read_file':
-      return corto ? `Ran read ${corto}` : 'Ran read file';
+      return corto ? `Read ${corto}` : 'Read file';
     case 'run_command':
       // Antigravity separa la etiqueta del comando: «Ran» + la tarjeta con el
       // comando. Meter el comando también en la etiqueta lo duplicaba.
       return 'Ran';
     case 'search_files':
     case 'search_code':
-      return corto ? `Ran search for ${corto}` : 'Ran search';
+      return corto ? `Searched "${corto}"` : 'Searched';
     case 'write_file':
-      return corto ? `Ran write ${corto}` : 'Ran write file';
+      return corto ? `Created ${corto}` : 'Created file';
     case 'edit_file':
-      return corto ? `Ran edit ${corto}` : 'Ran edit file';
+      return corto ? `Edited ${corto}` : 'Edited file';
     case 'multi_replace':
-      return corto ? `Ran edit several parts of ${corto}` : 'Ran edit several parts of a file';
+      return corto ? `Edited ${corto}` : 'Edited several parts of a file';
     case 'run_tests':
       return 'Ran the test suite';
     case 'fetch_url':
@@ -1765,9 +1765,171 @@ function showQuestionCard(payload) {
 }
 
 /**
- * Tarjeta de revisión del turno: «N files changed +X -Y · Review».
- * Equivalente a la que muestra Antigravity bajo la respuesta.
+ * Tarjeta «Changed files» del turno. Reproduce la de Antigravity: cabecera
+ * plegable con el número de ficheros, el total de líneas y el botón Review;
+ * al abrirse, una fila por fichero con su ruta y sus líneas.
  */
+function crearTarjetaCambios(cambios) {
+  const traducir = (texto) => window.I18n?.t(texto) ?? texto;
+  const entradas = Array.isArray(cambios?.entries)
+    ? cambios.entries
+    : (cambios?.paths ?? []).map((ruta) => ({ path: ruta, additions: 0, removals: 0 }));
+  if (!entradas.length) return null;
+
+  const files = entradas.length;
+  const additions = Number.isFinite(cambios.additions)
+    ? cambios.additions
+    : entradas.reduce((total, entrada) => total + (Number(entrada.additions) || 0), 0);
+  const removals = Number.isFinite(cambios.removals)
+    ? cambios.removals
+    : entradas.reduce((total, entrada) => total + (Number(entrada.removals) || 0), 0);
+
+  const card = document.createElement('div');
+  card.className = 'changed-files';
+  card.dataset.testid = 'changed-files-card';
+
+  const header = document.createElement('div');
+  header.className = 'changed-files__header';
+  header.dataset.testid = 'changed-files-card-header';
+  header.setAttribute('role', 'button');
+  header.setAttribute('aria-expanded', 'false');
+  header.tabIndex = 0;
+
+  const izquierda = document.createElement('div');
+  izquierda.className = 'changed-files__left';
+
+  const etiqueta = document.createElement('span');
+  etiqueta.className = 'changed-files__files';
+  etiqueta.textContent = traducir(`${files} file${files === 1 ? '' : 's'} changed`);
+
+  const estadisticas = document.createElement('span');
+  estadisticas.className = 'changed-files__stats';
+  const mas = document.createElement('span');
+  mas.className = 'changed-files__add';
+  mas.textContent = `+${additions}`;
+  const menos = document.createElement('span');
+  menos.className = 'changed-files__del';
+  menos.textContent = `-${removals}`;
+  estadisticas.append(mas, menos);
+
+  const chevron = document.createElement('span');
+  chevron.className = 'changed-files__chevron';
+  chevron.innerHTML = window.Icon('chevron', 14);
+
+  izquierda.append(etiqueta, estadisticas, chevron);
+
+  const review = document.createElement('button');
+  review.type = 'button';
+  review.className = 'changed-files__review';
+  review.dataset.testid = 'changed-files-card-review';
+  const reviewIcono = document.createElement('span');
+  reviewIcono.className = 'changed-files__review-icon';
+  reviewIcono.innerHTML = window.Icon('review', 14);
+  const reviewTexto = document.createElement('span');
+  reviewTexto.textContent = traducir('Review');
+  review.append(reviewIcono, reviewTexto);
+
+  header.append(izquierda, review);
+
+  const bodyWrap = document.createElement('div');
+  bodyWrap.className = 'changed-files__body-wrap';
+  bodyWrap.hidden = true;
+
+  const body = document.createElement('div');
+  body.className = 'changed-files__body';
+
+  for (const entrada of entradas) {
+    const ruta = String(entrada.path ?? '');
+    if (!ruta) continue;
+    const normal = ruta.replace(/\\/g, '/');
+    const nombre = normal.split('/').pop() || normal;
+    const corte = normal.lastIndexOf('/');
+    const directorio = corte > 0 ? normal.slice(0, corte) : '';
+
+    const fila = document.createElement('div');
+    fila.className = 'changed-files__file';
+    fila.dataset.testid = 'changed-files-card-file';
+    fila.dataset.fileUri = `file:///${encodeURI(ruta.replace(/\\/g, '/').replace(/^\/?/, ''))}`;
+    fila.setAttribute('role', 'button');
+    fila.setAttribute('aria-label', `${nombre} ${directorio} +${Number(entrada.additions) || 0} -${Number(entrada.removals) || 0}`.trim());
+    fila.tabIndex = 0;
+
+    const icono = document.createElement('span');
+    icono.className = 'changed-files__file-icon';
+    icono.innerHTML = window.Icon('files', 16);
+
+    const nombreEl = document.createElement('span');
+    nombreEl.className = 'changed-files__file-name';
+    nombreEl.dataset.testid = 'file-title-name';
+    nombreEl.textContent = nombre;
+
+    const dirEl = document.createElement('span');
+    dirEl.className = 'changed-files__file-dir';
+    const dirTexto = document.createElement('span');
+    dirTexto.textContent = directorio;
+    dirEl.append(dirTexto);
+
+    const filaStats = document.createElement('span');
+    filaStats.className = 'changed-files__file-stats';
+    const filaMas = document.createElement('span');
+    filaMas.className = 'changed-files__add';
+    filaMas.textContent = `+${Number(entrada.additions) || 0}`;
+    const filaMenos = document.createElement('span');
+    filaMenos.className = 'changed-files__del';
+    filaMenos.textContent = `-${Number(entrada.removals) || 0}`;
+    filaStats.append(filaMas, filaMenos);
+
+    fila.append(icono, nombreEl, dirEl, filaStats);
+    fila.addEventListener('click', () => void openInEditor(ruta));
+    fila.addEventListener('keydown', (evento) => {
+      if (evento.key === 'Enter' || evento.key === ' ') {
+        evento.preventDefault();
+        void openInEditor(ruta);
+      }
+    });
+    body.append(fila);
+  }
+
+  bodyWrap.append(body);
+
+  let abierto = false;
+  const alternar = () => {
+    abierto = !abierto;
+    header.classList.toggle('is-expanded', abierto);
+    header.setAttribute('aria-expanded', String(abierto));
+    bodyWrap.hidden = !abierto;
+  };
+  header.addEventListener('click', (evento) => {
+    if (evento.target.closest('button')) return;
+    alternar();
+  });
+  header.addEventListener('keydown', (evento) => {
+    if (evento.key === 'Enter' || evento.key === ' ') {
+      evento.preventDefault();
+      alternar();
+    }
+  });
+  review.addEventListener('click', (evento) => {
+    evento.stopPropagation();
+    if (typeof toggleOverview === 'function') {
+      toggleOverview(true, 'auto');
+      selectOverviewView('review');
+    }
+  });
+
+  card.append(header, bodyWrap);
+  return card;
+}
+
+/** Inserta la tarjeta al final del turno, antes del pie de hora y acciones. */
+function insertarTarjetaCambios(card) {
+  const pies = els.threadInner.querySelectorAll('.msg__toolbar');
+  const ultimoPie = pies[pies.length - 1];
+  if (ultimoPie) els.threadInner.insertBefore(card, ultimoPie);
+  else els.threadInner.append(card);
+}
+
+/** Añade la tarjeta del turno recién terminado con los cambios del checkpoint. */
 async function addTurnReviewCard() {
   let cambios;
   try {
@@ -1777,52 +1939,11 @@ async function addTurnReviewCard() {
   }
   if (!cambios || !cambios.files) return;
 
-  const yaHay = document.querySelector('.turn-review');
-  if (yaHay) yaHay.remove();
-
-  const card = document.createElement('button');
-  card.type = 'button';
-  card.className = 'turn-review';
-
-  const izquierda = document.createElement('span');
-  izquierda.className = 'turn-review__left';
-
-  const etiqueta = document.createElement('span');
-  etiqueta.className = 'turn-review__files';
-  etiqueta.textContent = `${cambios.files} file${cambios.files === 1 ? '' : 's'} changed`;
-
-  const mas = document.createElement('span');
-  mas.className = 'turn-review__add';
-  mas.textContent = `+${cambios.additions}`;
-
-  const menos = document.createElement('span');
-  menos.className = 'turn-review__del';
-  menos.textContent = `-${cambios.removals}`;
-
-  izquierda.append(etiqueta, mas, menos);
-
-  const accion = document.createElement('span');
-  accion.className = 'turn-review__action';
-  const icono = document.createElement('span');
-  icono.className = 'turn-review__action-icon';
-  icono.innerHTML = window.Icon('review', 14);
-  const textoAccion = document.createElement('span');
-  textoAccion.textContent = 'Review';
-  accion.append(icono, textoAccion);
-
-  card.append(izquierda, accion);
-  card.addEventListener('click', () => {
-    if (typeof selectOverviewView === 'function') {
-      toggleOverview(true, 'auto');
-      selectOverviewView('review');
-    }
-  });
-
-  // Antes del pie del mensaje: tarjeta, y debajo hora y acciones.
-  const pies = els.threadInner.querySelectorAll('.msg__toolbar');
-  const ultimoPie = pies[pies.length - 1];
-  if (ultimoPie) els.threadInner.insertBefore(card, ultimoPie);
-  else els.threadInner.append(card);
+  const card = crearTarjetaCambios(cambios);
+  if (!card) return;
+  card.dataset.live = '1';
+  document.querySelector('.changed-files[data-live="1"]')?.remove();
+  insertarTarjetaCambios(card);
   scrollToBottom();
 }
 
@@ -2842,16 +2963,22 @@ function ensureToolGroup() {
   const wrapper = ensureWorkWrapper();
 
   /*
-   * Antigravity cuelga las filas «Ran …» directamente del grupo «Worked for»;
-   * un grupo intermedio «Ran commands» añadía una etiqueta que su interfaz no
-   * tiene. El resumen del turno ya es el encabezado.
+   * Antigravity anida un grupo de herramientas dentro de «Worked for» y lo
+   * resume por intención: «Explored, ran commands, edited files». Las filas
+   * de cada llamada viven dentro de ese grupo.
    */
+  const sub = document.createElement('div');
+  sub.className = 'work-group work-group--nested';
+  const inner = crearColapsable('Ran commands', 'tool-group-collapsible');
+  sub.append(inner.header, inner.body);
+  wrapper.body.append(sub);
+
   ui.toolGroup = {
     wrap: wrapper.wrap,
     header: wrapper.header,
     label: wrapper.label,
-    body: wrapper.body,
-    inner: null,
+    body: inner.body,
+    inner: { header: inner.header, label: inner.label, body: inner.body },
     startedAt: wrapper.startedAt,
     rows: new Map(),
   };
@@ -2891,6 +3018,19 @@ function addToolRow(name, args, callId, target, stepIndex) {
   what.className = 'work-row__what';
   what.textContent = etiqueta;
   what.title = etiqueta;
+  const stats = window.ToolSummary?.estadisticasDeCambio(name, args);
+  if (stats) {
+    const caja = document.createElement('span');
+    caja.className = 'work-row__stats';
+    const add = document.createElement('span');
+    add.className = 'work-row__add';
+    add.textContent = `+${stats.additions}`;
+    const del = document.createElement('span');
+    del.className = 'work-row__del';
+    del.textContent = `-${stats.removals}`;
+    caja.append(add, del);
+    what.append(document.createTextNode(' '), caja);
+  }
 
   const chevron = document.createElement('span');
   chevron.className = 'work-row__chevron';
@@ -3270,53 +3410,26 @@ function setBusy(busy) {
   updateSendState();
 }
 
-/**
- * Traduce las herramientas usadas a una frase corta, como la suya:
- * «Explored files, ran commands, edited file».
- *
- * Se agrupa por verbo y se respeta el orden en que aparecieron, para que la frase
- * cuente la historia del turno y no una lista alfabética.
- */
-function resumirHerramientas(nombres) {
-  const VERBOS = [
-    { plural: 'explored files', singular: 'explored file', tools: ['read_file', 'view_code_item', 'list_directory', 'search_files', 'search_code'] },
-    { plural: 'ran commands', singular: 'ran command', tools: ['run_command', 'run_tests', 'command_status', 'manage_task'] },
-    { plural: 'edited files', singular: 'edited file', tools: ['edit_file', 'write_file'] },
-    { plural: 'generated images', singular: 'generated image', tools: ['generate_image'] },
-    { plural: 'searched the web', singular: 'searched the web', tools: ['search_web', 'fetch_url', 'open_url'] },
-    { plural: 'used the browser', singular: 'used the browser', tools: ['browser_open', 'browser_read', 'browser_click', 'browser_eval'] },
-    { plural: 'delegated tasks', singular: 'delegated a task', tools: ['invoke_subagent', 'browser_task', 'define_subagent', 'manage_subagent'] },
-    { plural: 'presented a plan', singular: 'presented a plan', tools: ['present_plan', 'exit_plan_mode'] },
-    { plural: 'reviewed the plan', singular: 'reviewed the plan', tools: ['enter_plan_mode'] },
-    { plural: 'asked a question', singular: 'asked a question', tools: ['ask_user_question'] },
-    { plural: 'used memory', singular: 'used memory', tools: ['memory'] },
-    { plural: 'read a skill', singular: 'read a skill', tools: ['skill'] },
-    { plural: 'ran a workflow', singular: 'ran a workflow', tools: ['run_workflow'] },
-    { plural: 'ran extension code', singular: 'ran extension code', tools: ['run_extension_code'] },
-    { plural: 'scheduled a reminder', singular: 'scheduled a reminder', tools: ['notify_user'] },
-  ];
-
-  // Cuenta por tipo: Antigravity dice «Explored file» con una lectura y
-  // «Explored files» con varias.
-  const cuenta = new Map();
-  for (const nombre of nombres) {
-    const verbo = VERBOS.find((v) => v.tools.includes(nombre));
-    if (!verbo) continue;
-    cuenta.set(verbo, (cuenta.get(verbo) ?? 0) + 1);
-  }
-
-  const vistos = [];
-  for (const [verbo, veces] of cuenta) {
-    vistos.push(veces === 1 ? verbo.singular : verbo.plural);
-  }
-
-  if (vistos.length === 0) return 'Ran commands';
-
-  // Primera en mayúscula, el resto en minúscula, como en su interfaz.
-  const [primera, ...resto] = vistos;
-  const frase = [primera.charAt(0).toUpperCase() + primera.slice(1), ...resto].join(', ');
-  return frase;
+/** Resumen de herramientas por intención, en el módulo testeable. */
+function resumirHerramientas(nombres, traducir) {
+  return window.ToolSummary?.resumirHerramientas(nombres, traducir) ?? 'Ran commands';
 }
+
+/**
+ * Vuelve a pintar los resúmenes de herramientas con el idioma actual.
+ * El texto se genera por categorías, así que no basta con traducir el nodo.
+ */
+function actualizarResumenesHerramientas() {
+  const traducir = (texto) => window.I18n?.t(texto) ?? texto;
+  for (const header of document.querySelectorAll('[data-testid="tool-group-collapsible"][data-tools]')) {
+    const label = header.querySelector('.work-group__label');
+    if (!label) continue;
+    const nombres = header.dataset.tools.split(',').filter(Boolean);
+    label.textContent = resumirHerramientas(nombres, traducir);
+  }
+}
+
+document.addEventListener('i18n:change', actualizarResumenesHerramientas);
 
 /** Cierra el grupo de trabajo con el tiempo total, como Antigravity. */
 function finishToolGroup() {
@@ -3338,7 +3451,9 @@ function finishToolGroup() {
 
   if (group?.inner) {
     const nombres = [...group.rows.values()].map((fila) => fila.name);
-    group.inner.label.textContent = resumirHerramientas(nombres);
+    const traducir = (texto) => window.I18n?.t(texto) ?? texto;
+    group.inner.label.textContent = resumirHerramientas(nombres, traducir);
+    group.inner.header.dataset.tools = nombres.join(',');
     group.inner.header.setAttribute('aria-expanded', 'false');
     group.inner.body.hidden = true;
   }
@@ -3411,27 +3526,69 @@ async function openConversation(id) {
       }
     }
 
+    // El historial guarda las llamadas de escritura, así que la tarjeta de
+    // ficheros cambiados se reconstruye por turno con sus estadísticas.
+    let cambiosPendientes = new Map();
+    const sumarCambio = (llamada) => {
+      const nombre = llamada?.name;
+      if (!['write_file', 'edit_file', 'multi_replace'].includes(nombre)) return;
+      let args = llamada.arguments ?? {};
+      if (typeof args === 'string') {
+        try {
+          args = JSON.parse(args);
+        } catch {
+          return;
+        }
+      }
+      const ruta = args.path ?? args.file_path ?? args.filePath;
+      if (typeof ruta !== 'string' || !ruta) return;
+      const stats = window.ToolSummary?.estadisticasDeCambio(nombre, args) ?? {
+        additions: 0,
+        removals: 0,
+      };
+      const previo = cambiosPendientes.get(ruta) ?? { path: ruta, additions: 0, removals: 0 };
+      previo.additions += stats.additions ?? 0;
+      previo.removals += stats.removals ?? 0;
+      cambiosPendientes.set(ruta, previo);
+    };
+    const vaciarCambios = () => {
+      if (!cambiosPendientes.size) return;
+      const entries = [...cambiosPendientes.values()];
+      const card = crearTarjetaCambios({
+        files: entries.length,
+        additions: entries.reduce((total, e) => total + e.additions, 0),
+        removals: entries.reduce((total, e) => total + e.removals, 0),
+        entries,
+      });
+      if (card) insertarTarjetaCambios(card);
+      cambiosPendientes = new Map();
+    };
+
     let indiceDeMensaje = 0;
     for (const message of loaded.messages) {
       indiceDeMensaje += 1;
       if (message.role === 'user') {
+        vaciarCambios();
         addUserMessage(message.content);
-      } else if (message.role === 'assistant' && message.content) {
-        const wrap = document.createElement('div');
-        wrap.className = 'msg msg--assistant';
-        const bubble = document.createElement('div');
-        bubble.className = 'msg__bubble msg__bubble--md';
-        bubble.innerHTML = window.Markdown.render(message.content);
-        wrap.append(bubble);
-        els.threadInner.append(wrap);
+      } else if (message.role === 'assistant') {
+        for (const llamada of message.toolCalls ?? []) sumarCambio(llamada);
+        if (message.content) {
+          const wrap = document.createElement('div');
+          wrap.className = 'msg msg--assistant';
+          const bubble = document.createElement('div');
+          bubble.className = 'msg__bubble msg__bubble--md';
+          bubble.innerHTML = window.Markdown.render(message.content);
+          wrap.append(bubble);
+          els.threadInner.append(wrap);
 
-        // El pie también en el historial: hora, copiar y votos.
-        const cuando = message.createdAt ?? loaded.meta.updatedAt ?? loaded.meta.createdAt;
-        addMessageToolbar(
-          undefined,
-          message.content,
-          cuando ? relativeTime(cuando) : undefined,
-        );
+          // El pie también en el historial: hora, copiar y votos.
+          const cuando = message.createdAt ?? loaded.meta.updatedAt ?? loaded.meta.createdAt;
+          addMessageToolbar(
+            undefined,
+            message.content,
+            cuando ? relativeTime(cuando) : undefined,
+          );
+        }
       } else if (message.role === 'tool') {
         // Una fila de historial ya está terminada: se pinta con su salida y sin
         // dejarla marcada como «en ejecución».
@@ -3452,6 +3609,8 @@ async function openConversation(id) {
         }
       }
     }
+
+    vaciarCambios();
 
     // Sin esto, una conversación guardada se queda en «Working…» para siempre.
     finishToolGroup();

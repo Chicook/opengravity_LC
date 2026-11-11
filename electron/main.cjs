@@ -3416,6 +3416,7 @@ ipcMain.handle('chat:turn-changes', async () => {
   let additions = 0;
   let removals = 0;
   const paths = [];
+  const entries = [];
 
   for (const { absolute, original } of cambiosDelTurno) {
     let actual = '';
@@ -3429,12 +3430,16 @@ ipcMain.handle('chat:turn-changes', async () => {
     if (antes === actual) continue;
 
     const stats = diffLines(antes, actual);
-    additions += stats.additions ?? 0;
-    removals += stats.removals ?? 0;
-    paths.push(path.relative(state.cwd, absolute) || absolute);
+    const suma = stats.additions ?? 0;
+    const resta = stats.removals ?? 0;
+    additions += suma;
+    removals += resta;
+    const ruta = path.relative(state.cwd, absolute) || absolute;
+    paths.push(ruta);
+    entries.push({ path: ruta, additions: suma, removals: resta });
   }
 
-  return { files: paths.length, additions, removals, paths };
+  return { files: paths.length, additions, removals, paths, entries };
 });
 
 /** Vista previa de lo que deshará `chat:revert`. */

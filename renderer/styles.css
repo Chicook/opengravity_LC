@@ -3641,6 +3641,22 @@ button {
   white-space: nowrap;
 }
 
+/* Estadísticas de fichero creado/editado, como «+203 −0» en su fila. */
+.work-row__stats {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.work-row__add {
+  color: var(--success);
+}
+
+.work-row__del {
+  color: var(--danger);
+}
+
 .work-row__chevron {
   display: grid;
   place-items: center;
@@ -5803,16 +5819,26 @@ span.thread__empty-mark {
   margin: 0 auto;
 }
 
-/* --- Tarjeta de revisión del turno -------------------------------------- */
+/* --- Tarjeta de ficheros cambiados --------------------------------------- */
 
-.turn-review {
+.changed-files {
   display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin: 4px 0 6px;
+  color: var(--secondary-foreground);
+  font-size: 14px;
+  line-height: 20px;
+  user-select: none;
+}
+
+.changed-files__header {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  width: 100%;
+  gap: 4px;
   min-height: 44px;
-  margin: 4px 0 6px;
   padding: 8px 8px 8px 12px;
   border: 1px solid var(--card-border);
   border-radius: 12px;
@@ -5825,53 +5851,179 @@ span.thread__empty-mark {
   transition: background-color 150ms ease-out, color 150ms ease-out;
 }
 
-.turn-review:hover {
+.changed-files__header:hover {
   background-color: var(--muted);
 }
 
-.turn-review__left {
+.changed-files__header.is-expanded {
+  border-radius: 12px 12px 0 0;
+}
+
+.changed-files__left {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-}
-
-.turn-review__files {
-  color: var(--secondary-foreground);
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.turn-review__add {
+.changed-files__files {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--secondary-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.changed-files__stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.changed-files__add {
   color: var(--success);
 }
 
-.turn-review__del {
+.changed-files__del {
   color: var(--danger);
 }
 
-/* Botón «Review» de la cabecera, como el suyo (26 px de alto). */
-.turn-review__action {
+.changed-files__chevron {
   display: inline-flex;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
+  transition: transform 150ms ease-out, color 150ms ease-out;
+}
+
+.changed-files__header.is-expanded .changed-files__chevron {
+  color: var(--secondary-foreground);
+  transform: rotate(90deg);
+}
+
+.changed-files__review {
+  display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 4px;
-  flex-shrink: 0;
   height: 26px;
   padding: 2px 6px;
   border: 1px solid var(--card-border);
   border-radius: 6px;
   background-color: var(--secondary);
   color: var(--secondary-foreground);
+  font-family: inherit;
   font-size: 14px;
   line-height: 20px;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
 }
 
-.turn-review__action-icon {
+.changed-files__review:hover {
+  background-color: var(--muted);
+  color: var(--foreground);
+}
+
+.changed-files__review-icon {
   display: grid;
   place-items: center;
   width: 14px;
   height: 14px;
+  opacity: 0.7;
+}
+
+.changed-files__body-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.changed-files__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 300px;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--card-border);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+}
+
+.changed-files__file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 8px;
+  color: var(--secondary-foreground);
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.changed-files__file:hover,
+.changed-files__file:focus-visible {
+  color: var(--foreground);
+}
+
+.changed-files__file:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.changed-files__file-icon {
+  display: flex;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--muted-foreground);
+}
+
+.changed-files__file-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--secondary-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.changed-files__file:hover .changed-files__file-name {
+  color: var(--foreground);
+}
+
+.changed-files__file-dir {
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+}
+
+.changed-files__file-dir span {
+  direction: ltr;
+  unicode-bidi: embed;
+}
+
+.changed-files__file-stats {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
 }
 
 /* --- Buscar y reemplazar ------------------------------------------------ */
