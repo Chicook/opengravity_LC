@@ -109,11 +109,11 @@
   function estadisticasDeCambio(nombre, args) {
     const a = args ?? {};
     if (nombre === 'write_file') {
-      return { additions: lineCount(a.content ?? a.text ?? ''), removals: 0 };
+      return { additions: lineCount(a.content ?? a.Content ?? a.text ?? ''), removals: 0 };
     }
     if (nombre === 'edit_file') {
-      const antes = a.oldText ?? a.old_string ?? '';
-      const despues = a.newText ?? a.new_string ?? '';
+      const antes = a.oldText ?? a.Target ?? a.target ?? a.old_string ?? a.old_text ?? '';
+      const despues = a.newText ?? a.Replacement ?? a.replacement ?? a.new_string ?? a.new_text ?? '';
       return lineDiffStats(antes, despues);
     }
     if (nombre === 'multi_replace' && Array.isArray(a.edits)) {

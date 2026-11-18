@@ -182,19 +182,23 @@ export async function fetchWithRetry(
   input: string,
   init: RequestInit,
   providerId: string,
-  options: { retries?: number; baseMs?: number; signal?: AbortSignal } = {},
+  options: { retries?: number; baseMs?: number; signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<Response> {
   const retries = options.retries ?? 3;
   const baseMs = options.baseMs ?? 700;
   const signal = options.signal ?? init.signal ?? undefined;
+  const attemptTimeout = options.timeoutMs ?? 45_000;
 
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= retries + 1; attempt += 1) {
     if (signal?.aborted) throw new ProviderError(providerId, undefined, 'petición cancelada');
 
+    const timeoutSignal = AbortSignal.timeout(attemptTimeout);
+    const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+
     try {
-      const response = await fetch(input, init);
+      const response = await fetch(input, { ...init, signal: combinedSignal });
 
       if (response.ok || !RETRYABLE_STATUS.has(response.status) || attempt > retries) {
         return response;
@@ -214,7 +218,7 @@ export async function fetchWithRetry(
 
       await sleep(waitMs);
     } catch (error) {
-      // Errores de red (DNS, conexión cortada): reintentar tiene sentido.
+      // Errores de red o timeout de intento: reintentar tiene sentido salvo cancelación explícita.
       if (signal?.aborted) throw error;
 
       lastError = error;

@@ -1002,7 +1002,8 @@ function makeSearchFilesTool(getCwd) {
       const path = require('node:path');
       const base = ctx?.cwd ?? getCwd();
 
-      const root = path.resolve(base, String(args.path ?? '.'));
+      const rootPath = args.path ?? args.Path ?? '.';
+      const root = path.resolve(base, String(rootPath));
       const maxResults = Math.max(1, Math.min(400, Number(args.maxResults ?? 60)));
       const matchPerLine = args.matchPerLine !== false;
       const includes = Array.isArray(args.includes) ? args.includes.map(String) : [];
@@ -1010,7 +1011,7 @@ function makeSearchFilesTool(getCwd) {
 
       let regex;
       try {
-        const patron = String(args.pattern ?? '');
+        const patron = String(args.pattern ?? args.query ?? args.regex ?? '');
         const cuerpo = args.isRegex === false
           ? patron.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
           : patron;
@@ -1133,10 +1134,10 @@ function makeFileSearchTool(getCwd) {
       const path = require('node:path');
       const base = ctx?.cwd ?? getCwd();
 
-      const consulta = String(args.query ?? '').trim();
+      const consulta = String(args.query ?? args.pattern ?? args.Query ?? '').trim();
       if (consulta.length === 0) return { content: 'Falta la consulta.', isError: true };
 
-      const root = path.resolve(base, String(args.path ?? '.'));
+      const root = path.resolve(base, String(args.path ?? args.Path ?? '.'));
       const maxResults = Math.max(1, Math.min(400, Number(args.maxResults ?? 80)));
       const includes = Array.isArray(args.includes) ? args.includes.map(String) : [];
       const excludes = Array.isArray(args.excludes) ? args.excludes.map(String) : [];
@@ -1239,9 +1240,9 @@ function makeEditFileTool(getCwd) {
       const fsp = require('node:fs/promises');
       const path = require('node:path');
 
-      const relative = String(args.path ?? '');
-      const oldText = String(args.oldText ?? '');
-      const newText = String(args.newText ?? '');
+      const relative = String(args.path ?? args.Path ?? args.filePath ?? args.file_path ?? '');
+      const oldText = String(args.oldText ?? args.Target ?? args.target ?? args.old_string ?? args.old_text ?? args.original ?? '');
+      const newText = String(args.newText ?? args.Replacement ?? args.replacement ?? args.new_string ?? args.new_text ?? args.updated ?? '');
       const absolute = path.resolve(ctx?.cwd ?? getCwd(), relative);
 
       let current;
@@ -1266,11 +1267,31 @@ function makeEditFileTool(getCwd) {
         return { content: 'oldText no puede estar vacío.', isError: true };
       }
 
-      const occurrences = current.split(oldText).length - 1;
+      let effectiveOld = oldText;
+      let effectiveNew = newText;
+      let occurrences = current.split(effectiveOld).length - 1;
+
+      // Normalización de saltos de línea CRLF/LF en Windows
+      if (occurrences === 0 && current.includes('\r\n') && !effectiveOld.includes('\r\n')) {
+        const crlfOld = effectiveOld.replace(/\n/g, '\r\n');
+        if (current.includes(crlfOld)) {
+          effectiveOld = crlfOld;
+          effectiveNew = effectiveNew.replace(/\n/g, '\r\n');
+          occurrences = current.split(effectiveOld).length - 1;
+        }
+      } else if (occurrences === 0 && !current.includes('\r\n') && effectiveOld.includes('\r\n')) {
+        const lfOld = effectiveOld.replace(/\r\n/g, '\n');
+        if (current.includes(lfOld)) {
+          effectiveOld = lfOld;
+          effectiveNew = effectiveNew.replace(/\r\n/g, '\n');
+          occurrences = current.split(effectiveOld).length - 1;
+        }
+      }
+
       if (occurrences === 0) {
         return { content: `oldText no aparece en ${relative}. Léelo con read_file y copia el fragmento exacto.`, isError: true };
       }
-      const allowMultiple = args.allowMultiple === true;
+      const allowMultiple = args.allowMultiple === true || args.AllowMultiple === true;
       if (occurrences > 1 && !allowMultiple) {
         return {
           content: `oldText aparece ${occurrences} veces en ${relative}. Incluye más contexto o usa allowMultiple.`,
@@ -1279,8 +1300,8 @@ function makeEditFileTool(getCwd) {
       }
 
       const siguiente = allowMultiple
-        ? current.split(oldText).join(newText)
-        : current.replace(oldText, newText);
+        ? current.split(effectiveOld).join(effectiveNew)
+        : current.replace(effectiveOld, effectiveNew);
       await fsp.writeFile(absolute, siguiente, 'utf8');
       return {
         content: `Editado ${relative}${occurrences > 1 ? ` (${occurrences} apariciones)` : ''}.`,
@@ -1711,12 +1732,14 @@ function makeRunCommandTool(getCwd, getPrefs) {
     async execute(args, ctx) {
       const { spawn } = require('node:child_process');
 
-      const command = String(args.command ?? '');
+      const rawCmd = args.command ?? args.CommandLine ?? args.cmd ?? '';
+      const command = String(rawCmd);
       if (command.length === 0) {
         return { content: 'Falta el comando.', isError: true };
       }
 
-      const esperaMs = Math.min(10000, Math.max(500, Number(args.waitDurationSeconds ?? 8000)));
+      const esperaRaw = args.waitDurationSeconds ?? (args.WaitMsBeforeAsync ? Math.round(Number(args.WaitMsBeforeAsync) / 1000) : undefined);
+      const esperaMs = Math.min(10000, Math.max(500, Number(esperaRaw ?? 8000)));
       const prefs = typeof getPrefs === 'function' ? getPrefs() : {};
       const restringir = prefs?.restrictToWorkspace === true;
 
@@ -1742,9 +1765,11 @@ function makeRunCommandTool(getCwd, getPrefs) {
       const entorno = sanearEntorno(process.env);
 
       const id = `cmd-${++contadorTareas}`;
+      const taskName = String(args.taskName ?? args.toolSummary ?? args.summary ?? command.slice(0, 40));
+      const isBg = args.isBackground === true || args.IsDaemon === true;
       const tarea = {
         id,
-        nombre: String(args.taskName ?? command.slice(0, 40)),
+        nombre: taskName,
         comando: command,
         cwd,
         stdout: '',
@@ -1753,7 +1778,7 @@ function makeRunCommandTool(getCwd, getPrefs) {
         exitCode: null,
         pid: null,
         inicio: Date.now(),
-        fondo: Boolean(args.isBackground),
+        fondo: isBg,
         child: null,
       };
 

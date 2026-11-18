@@ -496,3 +496,83 @@ test('OpenAI tolera un delta con lista de partes y no escribe [object Object]', 
   assert.equal(texto, 'hola mundo');
   assert.equal(texto.includes('[object Object]'), false);
 });
+
+test('Anthropic agrupa múltiples tool_results consecutivos en un solo turno user', async () => {
+  let cuerpo = null;
+  await conFetch(
+    async (_url, init) => {
+      cuerpo = JSON.parse(init.body);
+      return new Response('data: [DONE]\n\n', { status: 200 });
+    },
+    async () => {
+      const provider = new AnthropicProvider({ apiKey: 'k', baseUrl: 'https://ejemplo.test/v1' });
+      for await (const _chunk of provider.streamGenerate({
+        model: 'claude-sonnet-4-5',
+        messages: [
+          { role: 'user', content: 'analiza estos ficheros' },
+          {
+            role: 'assistant',
+            content: '',
+            toolCalls: [
+              { id: 'c1', name: 'read_file', arguments: { path: 'a.ts' } },
+              { id: 'c2', name: 'read_file', arguments: { path: 'b.ts' } },
+            ],
+          },
+          { role: 'tool', content: 'contenido a', toolCallId: 'c1', name: 'read_file' },
+          { role: 'tool', content: 'contenido b', toolCallId: 'c2', name: 'read_file' },
+        ],
+      })) {
+        // consumir
+      }
+    },
+  );
+
+  assert.equal(cuerpo.messages.length, 3, 'debe haber 3 turnos: user, assistant y user agrupado');
+  const userTurn = cuerpo.messages[2];
+  assert.equal(userTurn.role, 'user');
+  assert.ok(Array.isArray(userTurn.content));
+  assert.equal(userTurn.content.length, 2, 'los 2 tool_results deben ir en el mismo turno');
+  assert.equal(userTurn.content[0].type, 'tool_result');
+  assert.equal(userTurn.content[0].tool_use_id, 'c1');
+  assert.equal(userTurn.content[1].type, 'tool_result');
+  assert.equal(userTurn.content[1].tool_use_id, 'c2');
+});
+
+test('Gemini agrupa múltiples functionResponse en un solo turno user con array parts', async () => {
+  let cuerpo = null;
+  await conFetch(
+    async (_url, init) => {
+      cuerpo = JSON.parse(init.body);
+      return new Response('data: [DONE]\n\n', { status: 200 });
+    },
+    async () => {
+      const provider = new GeminiProvider({ apiKey: 'k', baseUrl: 'https://ejemplo.test/v1beta' });
+      for await (const _chunk of provider.streamGenerate({
+        model: 'gemini-2.5-pro',
+        messages: [
+          { role: 'user', content: 'analiza estos ficheros' },
+          {
+            role: 'assistant',
+            content: '',
+            toolCalls: [
+              { id: 'c1', name: 'read_file', arguments: { path: 'a.ts' } },
+              { id: 'c2', name: 'read_file', arguments: { path: 'b.ts' } },
+            ],
+          },
+          { role: 'tool', content: 'contenido a', toolCallId: 'c1', name: 'read_file' },
+          { role: 'tool', content: 'contenido b', toolCallId: 'c2', name: 'read_file' },
+        ],
+      })) {
+        // consumir
+      }
+    },
+  );
+
+  assert.equal(cuerpo.contents.length, 3, 'debe alternar user -> model -> user');
+  assert.equal(cuerpo.contents[0].role, 'user');
+  assert.equal(cuerpo.contents[1].role, 'model');
+  assert.equal(cuerpo.contents[2].role, 'user');
+  assert.equal(cuerpo.contents[2].parts.length, 2, 'las 2 functionResponse deben ir juntas en parts');
+  assert.ok(cuerpo.contents[2].parts[0].functionResponse);
+  assert.ok(cuerpo.contents[2].parts[1].functionResponse);
+});

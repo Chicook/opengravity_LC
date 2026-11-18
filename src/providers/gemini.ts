@@ -240,60 +240,84 @@ function mapFinishReason(reason: string): FinishReason {
 }
 
 function toGeminiContents(messages: Message[]): unknown[] {
-  const contents: unknown[] = [];
+  const contents: Array<{ role: 'user' | 'model'; parts: unknown[] }> = [];
 
   for (const message of messages) {
     if (message.role === 'system') continue; // va en `systemInstruction`
 
     if (message.role === 'assistant' && message.toolCalls && message.toolCalls.length > 0) {
-      contents.push({
-        role: 'model',
-        parts: [
-          ...(message.content ? [{ text: message.content }] : []),
-          ...message.toolCalls.map((call) => ({
-            functionCall: { name: call.name, args: call.arguments },
-            ...(typeof call.providerMeta?.thoughtSignature === 'string'
-              ? { thoughtSignature: call.providerMeta.thoughtSignature }
-              : {}),
-          })),
-        ],
-      });
+      const parts: unknown[] = [
+        ...(message.content ? [{ text: message.content }] : []),
+        ...message.toolCalls.map((call) => ({
+          functionCall: { name: call.name, args: call.arguments },
+          ...(typeof call.providerMeta?.thoughtSignature === 'string'
+            ? { thoughtSignature: call.providerMeta.thoughtSignature }
+            : {}),
+        })),
+      ];
+
+      const last = contents[contents.length - 1];
+      if (last && last.role === 'model') {
+        last.parts.push(...parts);
+      } else {
+        contents.push({
+          role: 'model',
+          parts,
+        });
+      }
       continue;
     }
 
     if (message.role === 'tool') {
-      contents.push({
-        role: 'user',
-        parts: [
-          {
-            functionResponse: {
-              name: message.name ?? 'tool',
-              response: { result: message.content },
-            },
-          },
-        ],
-      });
+      const responsePart = {
+        functionResponse: {
+          name: message.name ?? 'tool',
+          response: { result: message.content },
+        },
+      };
+
+      const last = contents[contents.length - 1];
+      if (last && last.role === 'user') {
+        last.parts.push(responsePart);
+      } else {
+        contents.push({
+          role: 'user',
+          parts: [responsePart],
+        });
+      }
       continue;
     }
 
     // Mensaje de usuario con imágenes: Gemini usa `inlineData`.
     if (message.role === 'user' && message.images && message.images.length > 0) {
-      contents.push({
-        role: 'user',
-        parts: [
-          { text: message.content },
-          ...message.images.map((image) => ({
-            inlineData: { mimeType: image.mimeType, data: image.data },
-          })),
-        ],
-      });
+      const parts: unknown[] = [
+        ...(message.content ? [{ text: message.content }] : []),
+        ...message.images.map((image) => ({
+          inlineData: { mimeType: image.mimeType, data: image.data },
+        })),
+      ];
+
+      const last = contents[contents.length - 1];
+      if (last && last.role === 'user') {
+        last.parts.push(...parts);
+      } else {
+        contents.push({
+          role: 'user',
+          parts,
+        });
+      }
       continue;
     }
 
-    contents.push({
-      role: message.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: message.content }],
-    });
+    const role = message.role === 'assistant' ? 'model' : 'user';
+    const parts: unknown[] = [{ text: message.content ?? '' }];
+
+    const last = contents[contents.length - 1];
+    if (last && last.role === role) {
+      last.parts.push(...parts);
+    } else {
+      contents.push({ role, parts });
+    }
   }
 
   return contents;

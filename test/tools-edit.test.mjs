@@ -63,3 +63,23 @@ test('edit_file con edits[] aplica varios tramos de una vez', async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('edit_file acepta alias Target y Replacement y tolera CRLF/LF', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'og-edit-'));
+  try {
+    const ruta = join(dir, 'a.txt');
+    await writeFile(ruta, 'primera\r\nsegunda\r\ntercera', 'utf8');
+    const tool = makeEditFileTool(() => dir);
+    const resultado = await tool.execute({
+      Path: 'a.txt',
+      Target: 'segunda\ntercera',
+      Replacement: 'dos\ntres',
+    });
+    assert.equal(resultado.isError, undefined);
+    assert.match(resultado.content, /Editado a\.txt/);
+    const contenido = await readFile(ruta, 'utf8');
+    assert.ok(contenido.includes('dos\r\ntres'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

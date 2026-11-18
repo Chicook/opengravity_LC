@@ -120,12 +120,18 @@
    * El texto de entrada se escapa antes de nada.
    */
   function render(markdown) {
-    const { conMarcas, formulas } = extraerFormulas(String(markdown));
+    const raw = String(markdown ?? '');
+    // Normaliza encabezados pegados a texto previo sin salto de línea (ej: "texto.## Encabezado")
+    const normalizado = raw.replace(/([^\n])\s*(#{1,4}\s+)/g, '$1\n\n$2');
+    const { conMarcas, formulas } = extraerFormulas(normalizado);
     const source = escapeHtml(conMarcas).replace(/\r\n/g, '\n');
     const lines = source.split('\n');
 
     const html = [];
     let index = 0;
+
+    const esSeparadorTabla = (s) =>
+      Boolean(s) && /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)+\|?\s*$/.test(s);
 
     while (index < lines.length) {
       const line = lines[index] ?? '';
@@ -154,17 +160,28 @@
         continue;
       }
 
-      // --- Tabla ---
-      if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|[\s:|-]+\|\s*$/.test(lines[index + 1] ?? '')) {
-        const parseRow = (row) =>
-          row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+      // --- Tabla (GFM: con o sin pipes en los bordes) ---
+      const siguienteLinea = lines[index + 1] ?? '';
+      if (line.includes('|') && esSeparadorTabla(siguienteLinea)) {
+        const parseRow = (row) => {
+          let r = row.trim();
+          if (r.startsWith('|')) r = r.slice(1);
+          if (r.endsWith('|')) r = r.slice(0, -1);
+          return r.split('|').map((cell) => cell.trim());
+        };
 
         const header = parseRow(line);
         index += 2; // cabecera + separador
 
         const rows = [];
-        while (index < lines.length && /^\s*\|.*\|\s*$/.test(lines[index] ?? '')) {
-          rows.push(parseRow(lines[index] ?? ''));
+        while (index < lines.length) {
+          const current = lines[index] ?? '';
+          if (current.trim().length === 0) break;
+          if (!current.includes('|')) break;
+          if (/^\s*```/.test(current) || /^(#{1,4})\s+/.test(current) || /^\s*---+\s*$/.test(current)) break;
+          const cells = parseRow(current);
+          while (cells.length < header.length) cells.push('');
+          rows.push(cells);
           index += 1;
         }
 
@@ -173,7 +190,7 @@
           .map((cells) => `<tr>${cells.map((c) => `<td>${inline(c)}</td>`).join('')}</tr>`)
           .join('')}</tbody>`;
 
-        html.push(`<table class="md-table">${thead}${tbody}</table>`);
+        html.push(`<div class="md-table-scroll"><table class="md-table">${thead}${tbody}</table></div>`);
         continue;
       }
 
@@ -226,6 +243,7 @@
         if (/^\s*[-*+]\s+/.test(current)) break;
         if (/^\s*\d+[.)]\s+/.test(current)) break;
         if (/^\s*---+\s*$/.test(current)) break;
+        if (current.includes('|') && esSeparadorTabla(lines[index + 1] ?? '')) break;
         paragraph.push(inline(current));
         index += 1;
       }
@@ -243,5 +261,11 @@
       );
   }
 
-  window.Markdown = { render };
+  const Markdown = { render };
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Markdown;
+  }
+  if (typeof window !== 'undefined') {
+    window.Markdown = Markdown;
+  }
 })();

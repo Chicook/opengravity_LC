@@ -141,6 +141,8 @@ const ui = {
   remote: { running: false, url: null },
   /** Texto acumulado del mensaje en curso, para re-renderizar el markdown. */
   streamingText: '',
+  /** Indica si se ejecutaron herramientas antes del siguiente trozo de texto en el mismo turno. */
+  huboHerramientasEnTurno: false,
   /** Grupo colapsable "Worked for" de la ejecución en curso. */
   toolGroup: null,
   /** Resumen del turno que envuelve pensamiento y herramientas. */
@@ -250,7 +252,7 @@ function friendlyTool(name, args) {
   const base = TOOL_LABELS[name] ?? String(name).replace(/_/g, ' ');
 
   const detalle =
-    a.path ?? a.TargetFile ?? a.file ?? a.query ?? a.Query ?? a.url ?? a.Url ?? a.command ?? a.CommandLine;
+    a.path ?? a.Path ?? a.filePath ?? a.TargetFile ?? a.file ?? a.pattern ?? a.query ?? a.Query ?? a.url ?? a.Url ?? a.command ?? a.CommandLine;
 
   const corto =
     typeof detalle === 'string' && detalle.length > 0 && detalle.length <= 60 ? detalle : null;
@@ -263,10 +265,18 @@ function friendlyTool(name, args) {
     case 'run_command': {
       /*
        * Su fila es «Ran <frase de la tarea>» («Ran verify date calculation»).
-       * El comando exacto va dentro de la tarjeta; aquí va el `taskName`.
+       * El comando exacto va dentro de la tarjeta; aquí va el `taskName` o el comando.
        */
-      const tarea = typeof a.taskName === 'string' ? a.taskName.trim().slice(0, 60) : '';
-      return tarea ? `Ran ${tarea}` : 'Ran';
+      const tarea = typeof a.taskName === 'string' && a.taskName.trim().length > 0
+        ? a.taskName.trim().slice(0, 60)
+        : (typeof a.toolSummary === 'string' && a.toolSummary.trim().length > 0
+          ? a.toolSummary.trim().slice(0, 60)
+          : (typeof a.command === 'string' && a.command.trim().length > 0
+            ? a.command.trim().slice(0, 60)
+            : (typeof a.CommandLine === 'string' && a.CommandLine.trim().length > 0
+              ? a.CommandLine.trim().slice(0, 60)
+              : '')));
+      return tarea ? `Ran ${tarea}` : 'Ran command';
     }
     case 'search_files':
     case 'file_search':
@@ -3119,7 +3129,7 @@ function ensureReasoningBlock() {
   if (ui.reasoningEl) return ui.reasoningEl;
 
   const wrapper = ensureWorkWrapper();
-  const block = crearColapsable('Thinking', 'thinking-collapsible-trigger');
+  const block = crearColapsable('Thinking…', 'thinking-collapsible-trigger', true);
 
   const text = document.createElement('div');
   text.className = 'reasoning__text';
@@ -3200,7 +3210,8 @@ function ensureToolGroup() {
 /** Qué se escribió en la «terminal» de la tarjeta: el comando, o la llamada. */
 function descripcionDeComando(name, args) {
   const a = args ?? {};
-  const comando = a.command ?? a.CommandLine ?? a.query ?? a.Query ?? a.path ?? a.TargetFile ?? a.url ?? a.Url;
+  const comando =
+    a.command ?? a.CommandLine ?? a.cmd ?? a.query ?? a.Query ?? a.pattern ?? a.path ?? a.Path ?? a.filePath ?? a.TargetFile ?? a.url ?? a.Url;
   if (typeof comando === 'string' && comando.length > 0) return comando.slice(0, 200);
   if (a && Object.keys(a).length > 0) return `${name} ${JSON.stringify(a).slice(0, 160)}`;
   return name;
@@ -3363,6 +3374,15 @@ function handleChatEvent(event) {
       }
       finishReasoningBlock();
       if (!ui.streamingEl) addAssistantMessage();
+
+      // Si hubo herramientas intermedias en este turno, asegurar separación de párrafo limpio
+      if (ui.streamingText.length > 0 && ui.huboHerramientasEnTurno) {
+        if (!ui.streamingText.endsWith('\n\n')) {
+          ui.streamingText = ui.streamingText.trimEnd() + '\n\n';
+        }
+        ui.huboHerramientasEnTurno = false;
+      }
+
       ui.streamingText += event.text;
       renderStreamingMarkdown();
       scrollToBottom();
@@ -3400,6 +3420,7 @@ function handleChatEvent(event) {
     case 'stream_reset': {
       // El proveedor cortó y se reintenta: fuera el texto y el razonamiento parciales.
       ui.streamingText = '';
+      ui.huboHerramientasEnTurno = false;
       if (ui.streamingEl) renderStreamingMarkdown();
       ui.reasoningEl?.wrap.remove();
       ui.reasoningEl = null;
@@ -3492,6 +3513,7 @@ function handleChatEvent(event) {
     }
 
     case 'tool_start': {
+      ui.huboHerramientasEnTurno = true;
       finishReasoningBlock();
 
       /*
@@ -3590,6 +3612,7 @@ function handleChatEvent(event) {
       ui.lastAssistantText = ui.streamingText;
       ui.streamingEl = null;
       ui.streamingText = '';
+      ui.huboHerramientasEnTurno = false;
       finishToolGroup();
       playChime();
       showFinalNotice(event);

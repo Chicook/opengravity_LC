@@ -48,13 +48,14 @@ export const readFileTool = defineTool({
     required: ['path'],
   },
   async execute(args, ctx) {
-    const path = String(args['path'] ?? '');
+    const rawPath = args['path'] ?? args['Path'] ?? args['filePath'] ?? args['file_path'] ?? '';
+    const path = String(rawPath);
     if (path.length === 0) {
       return { content: 'Falta el parámetro `path`.', isError: true };
     }
 
     const absolute = resolvePath(ctx.cwd, path);
-    const maxBytes = Number(args['maxBytes'] ?? 200_000);
+    const maxBytes = Number(args['maxBytes'] ?? args['MaxBytes'] ?? 200_000);
 
     const info = await stat(absolute);
     if (info.isDirectory()) {
@@ -71,15 +72,17 @@ export const readFileTool = defineTool({
      * parte el fichero y se devuelve solo lo pedido, con el total para que sepa
      * cuánto queda.
      */
-    const pideRango = args['startLine'] !== undefined || args['endLine'] !== undefined;
+    const startLineRaw = args['startLine'] ?? args['StartLine'] ?? args['start_line'];
+    const endLineRaw = args['endLine'] ?? args['EndLine'] ?? args['end_line'];
+    const pideRango = startLineRaw !== undefined || endLineRaw !== undefined;
     const numerar = args['lineNumbers'] !== false;
 
     if (pideRango) {
       const lineas = content.split('\n');
       const total = lineas.length;
 
-      const desde = Math.max(1, Math.floor(Number(args['startLine'] ?? 1)));
-      const hasta = Math.min(total, Math.floor(Number(args['endLine'] ?? desde + 199)));
+      const desde = Math.max(1, Math.floor(Number(startLineRaw ?? 1)));
+      const hasta = Math.min(total, Math.floor(Number(endLineRaw ?? desde + 199)));
       if (hasta < desde) {
         return {
           content: `Rango vacío: startLine ${desde} es mayor que endLine ${hasta} (el fichero tiene ${total} líneas).`,
@@ -134,7 +137,8 @@ export const listDirectoryTool = defineTool({
     required: [],
   },
   async execute(args, ctx) {
-    const path = String(args['path'] ?? '.');
+    const rawPath = args['path'] ?? args['Path'] ?? args['dirPath'] ?? args['dir_path'] ?? '.';
+    const path = String(rawPath);
     const absolute = resolvePath(ctx.cwd, path);
 
     const entries = await readdir(absolute, { withFileTypes: true });
@@ -193,8 +197,10 @@ export const writeFileTool = defineTool({
     required: ['path', 'content'],
   },
   async execute(args, ctx) {
-    const path = String(args['path'] ?? '');
-    const content = String(args['content'] ?? '');
+    const rawPath = args['path'] ?? args['Path'] ?? args['filePath'] ?? args['file_path'] ?? '';
+    const rawContent = args['content'] ?? args['Content'] ?? args['text'] ?? '';
+    const path = String(rawPath);
+    const content = String(rawContent);
     if (path.length === 0) {
       return { content: 'Falta el parámetro `path`.', isError: true };
     }
@@ -214,7 +220,8 @@ export const writeFileTool = defineTool({
       () => false,
     );
 
-    if (existe && args['overwrite'] !== true) {
+    const allowOverwrite = args['overwrite'] === true || args['Overwrite'] === true;
+    if (existe && !allowOverwrite) {
       return {
         /*
          * El orden importa: se nombra `multi_replace` PRIMERO y la salida de

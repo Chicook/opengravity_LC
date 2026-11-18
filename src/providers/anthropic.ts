@@ -317,7 +317,7 @@ function mapFinishReason(reason: string): FinishReason {
 }
 
 function toAnthropicMessages(messages: Message[]): unknown[] {
-  const result: unknown[] = [];
+  const result: Array<{ role: string; content: unknown }> = [];
 
   for (const message of messages) {
     if (message.role === 'system') continue; // va en `system`, no aquí
@@ -344,16 +344,25 @@ function toAnthropicMessages(messages: Message[]): unknown[] {
     }
 
     if (message.role === 'tool') {
-      result.push({
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: message.toolCallId ?? '',
-            content: message.content,
-          },
-        ],
-      });
+      const toolBlock = {
+        type: 'tool_result',
+        tool_use_id: message.toolCallId ?? '',
+        content: message.content,
+      };
+
+      const last = result[result.length - 1];
+      if (last && last.role === 'user') {
+        if (Array.isArray(last.content)) {
+          last.content.push(toolBlock);
+        } else if (typeof last.content === 'string') {
+          last.content = [{ type: 'text', text: last.content }, toolBlock];
+        }
+      } else {
+        result.push({
+          role: 'user',
+          content: [toolBlock],
+        });
+      }
       continue;
     }
 
@@ -366,8 +375,34 @@ function toAnthropicMessages(messages: Message[]): unknown[] {
           source: { type: 'base64', media_type: image.mimeType, data: image.data },
         });
       }
-      blocks.push({ type: 'text', text: message.content });
-      result.push({ role: 'user', content: blocks });
+      if (message.content) {
+        blocks.push({ type: 'text', text: message.content });
+      }
+
+      const last = result[result.length - 1];
+      if (last && last.role === 'user') {
+        if (Array.isArray(last.content)) {
+          last.content.push(...blocks);
+        } else if (typeof last.content === 'string') {
+          last.content = [{ type: 'text', text: last.content }, ...blocks];
+        }
+      } else {
+        result.push({ role: 'user', content: blocks });
+      }
+      continue;
+    }
+
+    if (message.role === 'user') {
+      const last = result[result.length - 1];
+      if (last && last.role === 'user') {
+        if (Array.isArray(last.content)) {
+          last.content.push({ type: 'text', text: message.content });
+        } else if (typeof last.content === 'string') {
+          last.content = `${last.content}\n\n${message.content}`;
+        }
+      } else {
+        result.push({ role: 'user', content: message.content });
+      }
       continue;
     }
 

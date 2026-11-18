@@ -273,7 +273,7 @@ export async function runAgent(
     // En un objeto para que TS no estreche el tipo: la asignación ocurre en un cierre.
     const turn: { finishReason: FinishReason } = { finishReason: 'stop' };
 
-    const idleMs = options.streamIdleTimeoutMs ?? 120_000;
+    const idleMs = options.streamIdleTimeoutMs ?? 60_000;
 
     // Un corte a mitad de stream no debe matar el turno: se reintenta una vez.
     for (let intento = 1; intento <= 2; intento += 1) {
@@ -510,8 +510,9 @@ export async function runAgent(
      * seguidos concluyendo lo mismo cuentan como bucle aunque las herramientas
      * hayan devuelto cosas distintas.
      */
-    const conclusion = huellaDeRazonamiento(razonamiento || text);
-    if (conclusion.size >= 3) {
+    const conclusionTexto = razonamiento || (toolCalls.length === 0 ? text : '');
+    const conclusion = huellaDeRazonamiento(conclusionTexto);
+    if (conclusion.size >= 5) {
       // Se compara por parecido, no por igualdad: parafrasear la misma idea
       // cambia las palabras, pero no el conjunto significativo.
       if (ultimaConclusion && similitudDeConjuntos(conclusion, ultimaConclusion) >= 0.5) {
@@ -679,7 +680,9 @@ function similitudDeConjuntos(a: Set<string>, b: Set<string>): number {
   if (a.size === 0 || b.size === 0) return 0;
   let comunes = 0;
   for (const palabra of a) if (b.has(palabra)) comunes += 1;
-  return comunes / Math.min(a.size, b.size);
+  const menor = Math.min(a.size, b.size);
+  if (menor < 4 || comunes < 3) return 0;
+  return comunes / menor;
 }
 
 const PALABRAS_VACIAS = new Set([
