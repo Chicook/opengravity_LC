@@ -41,10 +41,24 @@ function prepararPrefsParaDisco(prefs, previo, safeStorage) {
     return prefsParaDisco;
   }
 
-  // Sin blob nuevo: el viejo solo sirve si es lo único que guarda las claves.
-  if (claves && !actuales.apiKeysEnc) delete prefsParaDisco.apiKeysEnc;
-  // Un mapa vacío no aporta nada al fichero.
-  if (claves && Object.keys(claves).length === 0) delete prefsParaDisco.apiKeys;
+  // Sin claves en memoria no hay nada que decidir: el fichero se deja igual.
+  if (!claves) return prefsParaDisco;
+
+  /*
+   * Sin cifrado disponible no se escriben claves nuevas en claro: se quedan
+   * solo en memoria y el usuario las vuelve a pegar si reinicia. Las que ya
+   * estaban en claro en disco (versión anterior) se conservan tal cual para no
+   * perderlas.
+   */
+  const enClaro = {};
+  for (const [id, valor] of Object.entries(claves)) {
+    if (previo?.apiKeys?.[id] === valor) enClaro[id] = valor;
+  }
+  if (Object.keys(enClaro).length > 0) prefsParaDisco.apiKeys = enClaro;
+  else delete prefsParaDisco.apiKeys;
+
+  // Un blob que ya se descifró en este arranque es viejo: no guarda nada nuevo.
+  if (!actuales.apiKeysEnc) delete prefsParaDisco.apiKeysEnc;
   return prefsParaDisco;
 }
 

@@ -68,6 +68,24 @@ const els = {
 };
 
 /** Estado local de la UI. */
+/**
+ * Niveles de pensamiento, de menos a más esfuerzo.
+ *
+ * La escala es la del motor del agente: cada nivel se traduce al campo que
+ * entiende el proveedor (`reasoning_effort`, presupuesto de tokens o
+ * `thinkingLevel`), así que elegir aquí cambia de verdad cuánto piensa.
+ */
+const ESCALA_DE_ESFUERZO = ['Minimal', 'Low', 'Medium', 'High', 'XHigh', 'Max'];
+
+/** Qué significa cada nivel, para el tooltip. */
+const ETIQUETA_DE_ESFUERZO = {
+  Minimal: 'Respuesta más corta posible',
+  Low: 'Directo, pocos pasos',
+  Medium: 'Equilibrio entre brevedad y rigor',
+  High: 'Razona y verifica antes de responder',
+  XHigh: 'Descompone, contrasta y revisa dos veces',
+  Max: 'Razonamiento máximo: alternativas y verificación',
+};
 const ui = {
   busy: false,
   // Despertares de tareas que llegaron con el turno ocupado.
@@ -79,6 +97,12 @@ const ui = {
   providerId: null,
   model: null,
   cwd: null,
+  /** Proyecto asociado a la conversación actual; null es «No Project». */
+  project: null,
+  /** Proyectos registrados por el proceso principal. */
+  projects: [],
+  /** La conversación actual no está asociada a un proyecto. */
+  noProject: false,
   /** Sesiones cargadas, para filtrar sin volver a consultar. */
   sessions: [],
   /** Texto del buscador de conversaciones. */
@@ -101,8 +125,14 @@ const ui = {
   split: false,
   /** Preferencias activas (contraste, sonido, cola…). */
   prefs: {},
+  /** Nombre de la cuenta del sistema, para el saludo del estado vacío. */
+  userName: '',
+  /** Pensamiento extendido activado en el chat (solo si el modelo lo admite). */
+  thinking: false,
   /** Mensajes pendientes cuando el agente está ocupado. */
   queue: [],
+  /** Cambia en cada apertura de conversación: descarta cargas viejas. */
+  loadToken: 0,
   /** Catálogo de herramientas con su permiso. */
   tools: [],
   /** Catálogo de skills. */
@@ -119,6 +149,8 @@ const ui = {
   touchedFiles: new Map(),
   /** Panel de overview visible. */
   overviewOpen: false,
+  /** Tarjeta de plan pendiente de decisión (aprobarla o escribir para revisar). */
+  planCard: null,
   /** Elemento del indicador de carga en curso. */
   loadingEl: null,
   /** Temporizador del indicador. */
@@ -181,6 +213,7 @@ const TOOL_LABELS = {
   run_tests: 'run tests',
   command_status: 'check command status',
   search_files: 'search in files',
+  file_search: 'find files',
   search_code: 'search code',
   search_web: 'search the web',
   fetch_url: 'fetch URL',
@@ -227,11 +260,16 @@ function friendlyTool(name, args) {
       return corto && corto !== '.' ? `Ran list files in ${corto}` : 'Ran list files in current directory';
     case 'read_file':
       return corto ? `Read ${corto}` : 'Read file';
-    case 'run_command':
-      // Antigravity separa la etiqueta del comando: «Ran» + la tarjeta con el
-      // comando. Meter el comando también en la etiqueta lo duplicaba.
-      return 'Ran';
+    case 'run_command': {
+      /*
+       * Su fila es «Ran <frase de la tarea>» («Ran verify date calculation»).
+       * El comando exacto va dentro de la tarjeta; aquí va el `taskName`.
+       */
+      const tarea = typeof a.taskName === 'string' ? a.taskName.trim().slice(0, 60) : '';
+      return tarea ? `Ran ${tarea}` : 'Ran';
+    }
     case 'search_files':
+    case 'file_search':
     case 'search_code':
       return corto ? `Searched "${corto}"` : 'Searched';
     case 'write_file':
@@ -296,8 +334,12 @@ function renderConversations() {
    * fila, con `padding-left: 30px` (título en x=38). Las demás van en la lista
    * de «Conversations». Se separan por `cwd`.
    */
-  const delProyecto = visible.filter((s) => ui.cwd && s.cwd === ui.cwd);
-  const otras = visible.filter((s) => !ui.cwd || s.cwd !== ui.cwd);
+  const delProyecto = visible.filter(
+    (s) => ui.project && ((s.project ?? s.cwd) === ui.project),
+  );
+  const otras = visible.filter(
+    (s) => !ui.project || (s.project ?? s.cwd) !== ui.project,
+  );
 
   const listaProyecto = document.getElementById('project-conversations');
   if (listaProyecto) listaProyecto.replaceChildren();
@@ -321,7 +363,8 @@ function renderConversations() {
 
     const kebab = document.createElement('button');
     kebab.className = 'conversation__kebab';
-    kebab.textContent = '⋯';
+    // Icono, no el glifo ⋯: el original dibuja un svg de 16 px.
+    kebab.innerHTML = window.Icon('more', 16);
     kebab.title = 'Opciones';
     kebab.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -400,6 +443,279 @@ function openContextMenu(x, y, items) {
 
 function closeContextMenu() {
   els.contextMenu.setAttribute('hidden', '');
+}
+
+/* ===================== Selector de proyecto ===================== */
+
+let projectMenu = null;
+let projectSubmenu = null;
+
+/** Cierra el selector y su submenú. */
+function cerrarProjectMenu() {
+  projectMenu?.remove();
+  projectSubmenu?.remove();
+  projectMenu = null;
+  projectSubmenu = null;
+  document.getElementById('btn-project-selector-inline')?.setAttribute('aria-expanded', 'false');
+}
+
+/** Proyectos registrados, de más reciente a más antiguo. */
+function proyectosRecientes() {
+  return (ui.projects ?? [])
+    .filter((p) => p && typeof p.path === 'string')
+    .map((p) => ({
+      cwd: p.path,
+      name: p.name || nombreProyecto(p.path),
+      updatedAt: Date.parse(p.lastUsed ?? '') || 0,
+    }))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function nombreProyecto(cwd) {
+  const proyecto = (ui.projects ?? []).find((p) => p.path === cwd);
+  return proyecto?.name || basename(cwd) || String(cwd ?? '');
+}
+
+/** Relee la lista persistida de proyectos. */
+async function cargarProyectos() {
+  try {
+    ui.projects = (await window.api.listProjects()) ?? [];
+  } catch {
+    ui.projects = [];
+  }
+}
+
+/** Refleja en la barra y el selector el proyecto activo. */
+function reflejarProyecto(cwd) {
+  ui.cwd = cwd;
+  ui.project = cwd;
+  ui.noProject = false;
+  const nombre = nombreProyecto(cwd);
+  els.projectName.textContent = nombre;
+  if (els.projectPill) els.projectPill.textContent = nombre;
+  actualizarEtiquetaProyecto(nombre);
+  window.SettingsUI?.refresh?.();
+}
+
+/** Refleja un estado «No Project» sin tocar el workspace de las herramientas. */
+function reflejarSinProyecto() {
+  ui.project = null;
+  ui.noProject = true;
+  els.projectName.textContent = 'No Project';
+  if (els.projectPill) els.projectPill.textContent = 'No Project';
+  actualizarEtiquetaProyecto('No Project');
+  window.SettingsUI?.refresh?.();
+}
+
+/** Activa un proyecto reciente sin abrir el diálogo del sistema. */
+async function seleccionarProyecto(cwd) {
+  if (!cwd) return;
+  cerrarProjectMenu();
+  const resultado = await window.api.selectProject(cwd);
+  if (!resultado || resultado.ok === false) {
+    addNotice(resultado?.error ?? 'No se pudo abrir el proyecto.', 'error');
+    return;
+  }
+  ui.cwd = resultado.cwd;
+  reflejarProyecto(resultado.project ?? resultado.cwd);
+  await cargarProyectos();
+  await refreshConversations();
+}
+
+/** «No Project»: no cambia el workspace; solo desasocia la conversación actual. */
+async function seleccionarSinProyecto() {
+  cerrarProjectMenu();
+  const resultado = await window.api.clearProject();
+  if (!resultado || resultado.ok === false) {
+    addNotice(resultado?.error ?? 'No se pudo desasociar el proyecto.', 'error');
+    return;
+  }
+  reflejarSinProyecto();
+  await refreshConversations();
+}
+
+/** Fila de un proyecto dentro de Recent o This Computer. */
+function filaProyecto(proyecto, { primero = false } = {}) {
+  const nombre = proyecto.name || nombreProyecto(proyecto.cwd);
+  const fila = document.createElement('div');
+  fila.className = 'project-menu__item';
+  if (primero) fila.classList.add('is-highlighted');
+  fila.setAttribute('role', 'menuitem');
+  fila.tabIndex = 0;
+  fila.title = proyecto.cwd;
+
+  const icono = document.createElement('span');
+  icono.className = 'project-menu__icon';
+  icono.innerHTML = window.Icon('project', 16);
+  icono.setAttribute('data-project-icon', 'folder');
+
+  const texto = document.createElement('span');
+  texto.className = 'project-menu__label';
+  texto.textContent = nombre;
+  texto.title = nombre;
+
+  const ajustes = document.createElement('button');
+  ajustes.type = 'button';
+  ajustes.className = 'project-menu__gear';
+  ajustes.setAttribute('aria-label', 'Project Settings');
+  ajustes.title = 'Project Settings';
+  ajustes.innerHTML = window.Icon('settings', 14);
+  ajustes.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    await seleccionarProyecto(proyecto.cwd);
+    window.SettingsUI.open('project');
+  });
+
+  fila.append(icono, texto, ajustes);
+  fila.addEventListener('click', () => void seleccionarProyecto(proyecto.cwd));
+  fila.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      void seleccionarProyecto(proyecto.cwd);
+    }
+  });
+  return fila;
+}
+
+/** Fila con icono para las acciones fijas del pie. */
+function filaAccionEtiqueta({ icono, texto, onClick }) {
+  const fila = document.createElement('div');
+  fila.className = 'project-menu__item';
+  fila.setAttribute('role', 'menuitem');
+  fila.tabIndex = 0;
+  const ic = document.createElement('span');
+  ic.className = 'project-menu__icon';
+  ic.innerHTML = window.Icon(icono, 16);
+  const label = document.createElement('span');
+  label.className = 'project-menu__label';
+  label.textContent = texto;
+  fila.append(ic, label);
+  fila.addEventListener('click', onClick);
+  fila.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onClick();
+    }
+  });
+  return fila;
+}
+
+/** Submenú «This Computer» con búsqueda. */
+function abrirThisComputer(menu, ancla) {
+  projectSubmenu?.remove();
+  const submenu = document.createElement('div');
+  submenu.className = 'project-menu project-menu--submenu';
+  submenu.setAttribute('role', 'menu');
+
+  const buscador = document.createElement('label');
+  buscador.className = 'project-menu__search';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Search Projects…';
+  input.setAttribute('aria-label', 'Search Projects…');
+  buscador.append(input);
+
+  const lista = document.createElement('div');
+  lista.className = 'project-menu__list';
+
+  const pintar = () => {
+    const filtro = input.value.trim().toLowerCase();
+    lista.replaceChildren();
+    const proyectos = proyectosRecientes().filter((p) =>
+      (p.name || nombreProyecto(p.cwd)).toLowerCase().includes(filtro),
+    );
+    for (const proyecto of proyectos) lista.append(filaProyecto(proyecto));
+    if (proyectos.length === 0) {
+      const vacio = document.createElement('div');
+      vacio.className = 'project-menu__empty';
+      vacio.textContent = 'Sin proyectos';
+      lista.append(vacio);
+    }
+  };
+  input.addEventListener('input', pintar);
+  pintar();
+
+  submenu.append(buscador, lista);
+  document.body.append(submenu);
+
+  const menuRect = menu.getBoundingClientRect();
+  const anclaRect = ancla.getBoundingClientRect();
+  submenu.style.left = `${Math.min(window.innerWidth - submenu.offsetWidth - 8, menuRect.right - 1)}px`;
+  submenu.style.top = `${Math.max(8, anclaRect.top - 4)}px`;
+  projectSubmenu = submenu;
+  input.focus();
+}
+
+/** Abre el menú del selector de proyecto. */
+function abrirProjectSelector(anchor = document.getElementById('btn-project-selector-inline')) {
+  if (!anchor) return;
+  cerrarProjectMenu();
+  closeContextMenu();
+  anchor.setAttribute('aria-expanded', 'true');
+
+  const menu = document.createElement('div');
+  menu.className = 'project-menu';
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', 'Select project');
+
+  const scroll = document.createElement('div');
+  scroll.className = 'project-menu__list';
+  const recientes = proyectosRecientes();
+
+  if (recientes.length > 0) {
+    const cabecera = document.createElement('div');
+    cabecera.className = 'project-menu__section';
+    cabecera.setAttribute('role', 'presentation');
+    cabecera.textContent = 'Recent';
+    scroll.append(cabecera);
+    recientes.forEach((proyecto, indice) => {
+      scroll.append(filaProyecto(proyecto, { primero: indice === 0 }));
+    });
+  }
+
+  const thisComputer = filaAccionEtiqueta({
+    icono: 'computer',
+    texto: 'This Computer',
+    onClick: (event) => {
+      event.stopPropagation();
+      abrirThisComputer(menu, thisComputer);
+    },
+  });
+  scroll.append(thisComputer);
+
+  const nuevo = filaAccionEtiqueta({
+    icono: 'addProject',
+    texto: 'New Project',
+    onClick: async () => {
+      cerrarProjectMenu();
+      const resultado = await window.api.createProject();
+      if (!resultado) return;
+      if (resultado.ok === false) {
+        addNotice(resultado.error ?? 'No se pudo crear el proyecto.', 'error');
+        return;
+      }
+      ui.cwd = resultado.cwd;
+      await cargarProyectos();
+      reflejarProyecto(resultado.project ?? resultado.cwd);
+      await refreshConversations();
+    },
+  });
+  scroll.append(nuevo);
+
+  const sinProyecto = filaAccionEtiqueta({
+    icono: 'projectOff',
+    texto: 'No Project',
+    onClick: seleccionarSinProyecto,
+  });
+  scroll.append(sinProyecto);
+
+  menu.append(scroll);
+  document.body.append(menu);
+
+  const rect = anchor.getBoundingClientRect();
+  menu.style.left = `${Math.min(window.innerWidth - menu.offsetWidth - 8, rect.left + 2.5)}px`;
+  menu.style.top = `${Math.max(8, rect.top - menu.offsetHeight - 4)}px`;
+  projectMenu = menu;
 }
 
 // ---------------------------------------------------------------------------
@@ -517,12 +833,9 @@ async function runMenuAction(action) {
 async function changeWorkspace() {
   const result = await window.api.openWorkspace();
   if (!result) return;
-  ui.cwd = result.cwd;
-  els.projectName.textContent = basename(result.cwd);
-  if (els.projectPill) els.projectPill.textContent = basename(result.cwd);
-  const inline = document.getElementById('project-inline-label');
-  if (inline) inline.textContent = basename(result.cwd);
-  window.SettingsUI.refresh();
+  await cargarProyectos();
+  reflejarProyecto(result.cwd);
+  await refreshConversations();
 }
 
 // ---------------------------------------------------------------------------
@@ -1146,6 +1459,7 @@ function renderToolOutput(name, content, isError) {
     case 'edit_file':
       return monoBlock(limpio, 'tool-out tool-out--ok');
     case 'search_files':
+    case 'file_search':
     case 'search_code':
       return renderSearchResults(limpio);
     case 'browser_read':
@@ -1208,36 +1522,6 @@ function monoBlock(text, className) {
 }
 
 /** Árbol de directorio: las entradas que acaban en «/» son carpetas. */
-function renderTree(content) {
-  const box = document.createElement('div');
-  box.className = 'tool-tree';
-
-  const lines = content.split('\n').filter((line) => line.trim().length > 0);
-  if (lines.length === 0) {
-    box.append(monoBlock('(vacío)', 'tool-out'));
-    return box;
-  }
-
-  for (const line of lines) {
-    const isDir = line.endsWith('/');
-    const row = document.createElement('div');
-    row.className = 'tool-tree__row';
-
-    const icon = document.createElement('span');
-    icon.className = 'tool-tree__icon';
-    icon.innerHTML = window.Icon(isDir ? 'project' : 'files', 14);
-
-    const label = document.createElement('span');
-    label.className = isDir ? 'tool-tree__name is-dir' : 'tool-tree__name';
-    label.textContent = line.replace(/\/$/, '');
-
-    row.append(icon, label);
-    box.append(row);
-  }
-
-  return box;
-}
-
 /** Salida de terminal: separa stdout y stderr con su color. */
 function renderTerminal(content) {
   const box = document.createElement('pre');
@@ -1359,190 +1643,125 @@ function renderBrowserResult(content) {
   return monoBlock(content, 'tool-out');
 }
 
-/** Deja constancia del plan en el hilo, con la decisión tomada. */
-function addPlanBlock(plan, approved, feedback) {
-  const wrap = document.createElement('div');
-  wrap.className = 'plan-block';
+/**
+ * Tarjeta de plan, en línea en el hilo, como su artefacto.
+ *
+ * Medido en Antigravity 2.32 (artifact-card): 768 px, borde 1, p-2 (8),
+ * my-0.5 (2), rounded-xl (12), gap-1 (4); cabecera con icono de fichero de 16
+ * y la etiqueta «Plan» en pastilla 16/24 medio; resumen en secondary-foreground
+ * con clamp de 3 líneas; botón primario «Proceed» de 28 px (h-7, px-2.5,
+ * rounded-md, gap-1.5) con la pista «Ctrl+↵» a 14 px al 50 %. El documento del
+ * plan se despliega con la cabecera.
+ */
+function showPlanCard(plan) {
+  if (!els.threadInner) return;
 
-  const header = document.createElement('button');
-  header.type = 'button';
-  header.className = 'work-group__header';
-  header.setAttribute('aria-expanded', 'false');
-  header.dataset.testid = 'plan-block';
+  const card = document.createElement('div');
+  card.className = 'artifact-card';
+  card.dataset.testid = 'artifact-card';
 
+  const header = document.createElement('div');
+  header.className = 'artifact-card__header';
+  header.dataset.testid = 'artifact-card-header';
+
+  const title = document.createElement('button');
+  title.type = 'button';
+  title.className = 'artifact-card__title';
+  title.setAttribute('aria-expanded', 'false');
+
+  const icon = document.createElement('span');
+  icon.className = 'artifact-card__icon';
+  icon.innerHTML = window.Icon('files', 16);
   const label = document.createElement('span');
-  label.className = 'work-group__label';
-  label.textContent = approved ? `Plan aprobado · ${plan.steps?.length ?? 0} pasos` : 'Plan rechazado';
+  label.className = 'artifact-card__label';
+  label.textContent = 'Plan';
+  title.append(icon, label);
 
-  const chevron = document.createElement('span');
-  chevron.className = 'work-group__chevron';
-  chevron.innerHTML = window.Icon('chevron', 14);
+  const summary = document.createElement('span');
+  summary.className = 'artifact-card__summary';
+  summary.textContent = plan.title ?? 'Plan';
 
-  header.append(label, chevron);
+  header.append(title, summary);
 
-  const body = document.createElement('div');
-  body.className = 'work-group__body';
-  body.hidden = true;
-
-  const title = document.createElement('div');
-  title.className = 'plan-block__title';
-  title.textContent = plan.title ?? 'Plan';
-  body.append(title);
-
-  const list = document.createElement('ol');
-  list.className = 'plan-block__steps';
+  const steps = document.createElement('ol');
+  steps.className = 'artifact-card__steps';
+  steps.hidden = true;
   for (const step of plan.steps ?? []) {
     const item = document.createElement('li');
     item.textContent = step.title;
     if (step.detail) {
-      const detail = document.createElement('div');
-      detail.className = 'plan__step-detail';
+      const detail = document.createElement('span');
+      detail.className = 'artifact-card__detail';
       detail.textContent = step.detail;
       item.append(detail);
     }
-    list.append(item);
-  }
-  body.append(list);
-
-  if (!approved && feedback) {
-    const note = document.createElement('div');
-    note.className = 'plan-block__feedback';
-    note.textContent = `Motivo: ${feedback}`;
-    body.append(note);
+    steps.append(item);
   }
 
-  header.addEventListener('click', () => {
-    const open = header.getAttribute('aria-expanded') === 'true';
-    header.setAttribute('aria-expanded', String(!open));
-    body.hidden = open;
+  title.addEventListener('click', () => {
+    steps.hidden = !steps.hidden;
+    title.setAttribute('aria-expanded', String(!steps.hidden));
   });
 
-  wrap.classList.toggle('is-rejected', !approved);
-  wrap.append(header, body);
-  els.threadInner.append(wrap);
+  const actions = document.createElement('div');
+  actions.className = 'artifact-card__actions';
+
+  const proceed = document.createElement('button');
+  proceed.type = 'button';
+  proceed.className = 'artifact-card__proceed';
+  proceed.append(document.createTextNode('Proceed'));
+  const hint = document.createElement('span');
+  hint.className = 'artifact-card__hint';
+  hint.textContent = 'Ctrl+↵';
+  proceed.append(hint);
+  actions.append(proceed);
+
+  card.append(header, steps, actions);
+  els.threadInner.append(card);
   scrollToBottom();
-}
 
-/** Muestra la tarjeta de plan y devuelve la decisión del usuario. */
-function showPlanCard(plan) {
-  const modal = document.getElementById('plan-modal');
-  const title = document.getElementById('plan-title');
-  const list = document.getElementById('plan-steps');
-  const feedback = document.getElementById('plan-feedback');
-  if (!modal || !title || !list) return;
-
-  title.textContent = plan.title ?? 'Plan';
-  feedback.value = '';
-  list.replaceChildren();
-
-  /** Lee los pasos tal como están ahora en la tarjeta. */
-  const leerPasos = () =>
-    [...list.querySelectorAll('.plan__step')].map((item) => ({
-      title: item.querySelector('.plan__input')?.value.trim() ?? '',
-      detail: item.querySelector('.plan__detail')?.value.trim() ?? '',
-    })).filter((paso) => paso.title.length > 0);
-
-  /** Crea la fila editable de un paso. */
-  const crearFila = (paso) => {
-    const item = document.createElement('div');
-    item.className = 'plan__step';
-
-    const numero = document.createElement('span');
-    numero.className = 'plan__num';
-
-    const campos = document.createElement('div');
-    campos.className = 'plan__fields';
-
-    const entrada = document.createElement('input');
-    entrada.type = 'text';
-    entrada.className = 'plan__input';
-    entrada.value = paso.title ?? '';
-    entrada.placeholder = 'Qué se hará';
-
-    const detalle = document.createElement('input');
-    detalle.type = 'text';
-    detalle.className = 'plan__detail';
-    detalle.value = paso.detail ?? '';
-    detalle.placeholder = 'Detalle (opcional)';
-
-    campos.append(entrada, detalle);
-
-    const acciones = document.createElement('div');
-    acciones.className = 'plan__row-actions';
-
-    const boton = (texto, titulo, onClick, clase) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = `plan__icon-btn ${clase ?? ''}`.trim();
-      b.title = titulo;
-      b.textContent = texto;
-      b.onclick = onClick;
-      return b;
-    };
-
-    acciones.append(
-      boton('↑', 'Subir', () => {
-        const anterior = item.previousElementSibling;
-        if (anterior) {
-          list.insertBefore(item, anterior);
-          renumerar();
-        }
-      }),
-      boton('↓', 'Bajar', () => {
-        const siguiente = item.nextElementSibling;
-        if (siguiente) {
-          list.insertBefore(siguiente, item);
-          renumerar();
-        }
-      }),
-      boton('✕', 'Quitar este paso', () => {
-        item.remove();
-        renumerar();
-      }, 'is-remove'),
-    );
-
-    item.append(numero, campos, acciones);
-    return item;
+  const alPulsar = (event) => {
+    if (event.ctrlKey && event.key === 'Enter' && ui.planCard?.card === card) {
+      event.preventDefault();
+      terminar(true, '');
+    }
   };
 
-  const renumerar = () => {
-    [...list.querySelectorAll('.plan__step')].forEach((item, indice) => {
-      const numero = item.querySelector('.plan__num');
-      if (numero) numero.textContent = String(indice + 1);
-    });
-  };
-
-  for (const step of plan.steps ?? []) list.append(crearFila(step));
-  renumerar();
-
-  // Añadir un paso nuevo al final.
-  const addBtn = document.getElementById('plan-add-step');
-  if (addBtn) {
-    addBtn.onclick = () => {
-      const fila = crearFila({ title: '', detail: '' });
-      list.append(fila);
-      renumerar();
-      fila.querySelector('.plan__input')?.focus();
-    };
-  }
-
-  modal.removeAttribute('hidden');
-
-  const respond = (approved) => {
-    const pasos = leerPasos();
-    modal.setAttribute('hidden', '');
-    addPlanBlock({ ...plan, steps: pasos }, approved, feedback.value);
+  /** Cierra la tarjeta y entrega la decisión al proceso principal. */
+  const terminar = (approved, feedback) => {
+    actions.remove();
+    if (feedback) {
+      const note = document.createElement('div');
+      note.className = 'artifact-card__feedback';
+      note.textContent = feedback;
+      card.append(note);
+    }
+    card.classList.toggle('is-approved', approved);
+    card.classList.toggle('is-rejected', !approved);
+    document.removeEventListener('keydown', alPulsar);
+    ui.planCard = null;
     window.api
-      .respondPlan({ id: plan.id, approved, feedback: feedback.value, steps: pasos })
+      .respondPlan({ id: plan.id, approved, feedback: feedback ?? '', steps: plan.steps })
       .catch(() => {});
   };
 
-  const approve = document.getElementById('plan-approve');
-  const reject = document.getElementById('plan-reject');
-  approve.onclick = () => respond(true);
-  reject.onclick = () => respond(false);
+  proceed.addEventListener('click', () => terminar(true, ''));
+  document.addEventListener('keydown', alPulsar);
 
-  feedback.focus();
+  ui.planCard = {
+    card,
+    /** Rechazo escribiendo en el composer: el proceso principal resuelve el plan. */
+    rechazar: (texto) => {
+      actions.remove();
+      const note = document.createElement('div');
+      note.className = 'artifact-card__feedback';
+      note.textContent = texto;
+      card.append(note);
+      card.classList.add('is-rejected');
+      document.removeEventListener('keydown', alPulsar);
+      ui.planCard = null;
+    },
+  };
 }
 
 /** Muestra la tarjeta de preguntas y devuelve las respuestas del usuario. */
@@ -2126,10 +2345,22 @@ async function runNewTabAction(action) {
  * renombrar desde la UI. Resuelve con el nombre o `null` si se cancela.
  */
 function pedirNombreDeConversacion(actual) {
+  return pedirNombre(actual, { titulo: 'Renombrar conversación', boton: 'Guardar' });
+}
+
+/** Pide un nombre de símbolo para el rename del LSP propio. */
+function pedirNombreDeSimbolo(actual) {
+  return pedirNombre(actual, { titulo: 'Renombrar símbolo', boton: 'Renombrar' });
+}
+
+function pedirNombre(actual, { titulo = 'Renombrar conversación', boton = 'Guardar' } = {}) {
   const modal = document.getElementById('rename-modal');
   const input = document.getElementById('rename-input');
   const confirm = document.getElementById('rename-confirm');
+  const title = modal?.querySelector('.revert__title');
   if (!modal || !input || !confirm) return Promise.resolve(null);
+  if (title) title.textContent = titulo;
+  confirm.textContent = boton;
 
   return new Promise((resolve) => {
     let resuelto = false;
@@ -2205,7 +2436,15 @@ async function exportConversation() {
   if (!ui.activeConversation) return;
 
   const result = await window.api.exportSession(ui.activeConversation);
-  if (result?.ok) addNotice(`Conversación exportada a ${result.path}`, 'info');
+  if (result?.ok) {
+    // La trayectoria viaja al lado cuando la hay: el receptor ve qué tocó cada paso.
+    addNotice(
+      result.trajectory
+        ? `Conversación exportada a ${result.path} (con su trayectoria)`
+        : `Conversación exportada a ${result.path}`,
+      'info',
+    );
+  }
 }
 
 /** Pinta el título de la conversación en la barra del panel. */
@@ -2456,6 +2695,12 @@ function toggleOverview(force) {
   // El panel vive dentro de una tarjeta flotante: se oculta la tarjeta.
   if (host) host.hidden = !open;
   panel.hidden = false;
+  /*
+   * La tarjeta mide 320 + 8 de margen. En ventanas estrechas se reserva su
+   * hueco para que no tape el hilo ni el composer; la media query decide
+   * cuándo hace falta.
+   */
+  document.querySelector('.content__main')?.classList.toggle('has-overview', open);
   if (toggle) toggle.setAttribute('aria-pressed', String(open));
   if (open) renderOverview();
 }
@@ -2471,33 +2716,7 @@ function renderOverview() {
   void refreshIndexStatus();
   renderFileTree();
 
-  const filesBody = $('overview-files');
   const pluginsBody = $('overview-plugins');
-  const reviewBody = $('overview-review');
-
-  if (filesBody) {
-    filesBody.replaceChildren();
-    if (ui.touchedFiles.size === 0) {
-      filesBody.append(rowText('Sin archivos todavía'));
-    } else {
-      for (const [path, kind] of ui.touchedFiles) {
-        const row = document.createElement('div');
-        row.className = 'overview-item';
-        const name = document.createElement('span');
-        name.className = 'overview-item__name';
-        name.textContent = path;
-        name.title = path;
-        const badge = document.createElement('span');
-        badge.className = kind === 'written' ? 'overview-item__badge is-write' : 'overview-item__badge';
-        badge.textContent = kind === 'written' ? 'editado' : 'leído';
-        row.append(name, badge);
-        row.style.cursor = 'pointer';
-        row.title = `${path} — clic para abrir en el editor`;
-        row.addEventListener('click', () => openInEditor(path));
-        filesBody.append(row);
-      }
-    }
-  }
 
   if (pluginsBody) {
     pluginsBody.replaceChildren();
@@ -2518,14 +2737,6 @@ function renderOverview() {
         pluginsBody.append(row);
       }
     }
-  }
-
-  if (reviewBody) {
-    reviewBody.replaceChildren();
-    const writes = [...ui.touchedFiles.values()].filter((kind) => kind === 'written').length;
-    const preset = ui.prefs.permissionPreset ?? 'Turbo';
-    reviewBody.append(rowText(`Preset: ${preset}`));
-    reviewBody.append(rowText(`${writes} escrituras en esta conversación`));
   }
 }
 
@@ -3186,6 +3397,16 @@ function handleChatEvent(event) {
       break;
     }
 
+    case 'stream_reset': {
+      // El proveedor cortó y se reintenta: fuera el texto y el razonamiento parciales.
+      ui.streamingText = '';
+      if (ui.streamingEl) renderStreamingMarkdown();
+      ui.reasoningEl?.wrap.remove();
+      ui.reasoningEl = null;
+      ui.reasoningText = '';
+      break;
+    }
+
     case 'text_replace': {
       // Los hooks de texto reescribieron la respuesta: se repinta la definitiva.
       if (!ui.streamingEl) break;
@@ -3239,6 +3460,25 @@ function handleChatEvent(event) {
       finishReasoningBlock();
       if (!ui.streamingEl) addAssistantMessage();
       addSystemNote(event.text);
+      scrollToBottom();
+      break;
+    }
+
+    /*
+     * Prompt de sistema del turno (Ajustes › Depuración › Mostrar el prompt).
+     * Va plegado: son varios miles de caracteres y no deben tapar la respuesta.
+     */
+    case 'system_prompt': {
+      const caja = document.createElement('details');
+      caja.className = 'debug-prompt';
+      const resumen = document.createElement('summary');
+      resumen.className = 'debug-prompt__summary';
+      resumen.textContent = `Prompt de sistema · ${String(event.text ?? '').length.toLocaleString()} caracteres`;
+      const cuerpo = document.createElement('pre');
+      cuerpo.className = 'debug-prompt__body';
+      cuerpo.textContent = String(event.text ?? '');
+      caja.append(resumen, cuerpo);
+      els.threadInner.append(caja);
       scrollToBottom();
       break;
     }
@@ -3332,6 +3572,7 @@ function handleChatEvent(event) {
 
     case 'busy':
       setBusy(event.busy);
+      if (!event.busy) drenarCola();
       break;
 
     case 'session_title': {
@@ -3355,14 +3596,9 @@ function handleChatEvent(event) {
       addMessageToolbar(event.keepCount, ui.lastAssistantText ?? '');
       void addTurnReviewCard();
       refreshConversations();
-      // Si había mensajes en cola, se envía el siguiente.
-      if (ui.queue.length > 0) {
-        const next = ui.queue.shift();
-        els.input.value = next;
-        setTimeout(() => {
-          send();
-        }, 60);
-      }
+      // La cola no toca el composer: lo que el usuario esté escribiendo se queda.
+      // El envío real espera a `busy:false`, que llega después de guardar en disco.
+      drenarCola();
       break;
 
     default:
@@ -3444,18 +3680,35 @@ function finishToolGroup() {
   const label = wrapper?.label ?? group.label;
   label.textContent = `Worked for ${seconds}s`;
 
-  // El resumen queda desplegado; los bloques internos ya nacen cerrados.
+  // Medido en 2.32: el turno terminado queda CERRADO («Worked for 1m ›»), con
+  // los bloques internos dentro. Antes se dejaba desplegado y la pared de
+  // filas de pensamiento tapaba la respuesta.
   const header = wrapper?.header ?? group.header;
-  header.setAttribute('aria-expanded', 'true');
-  (wrapper?.wrap ?? group.wrap).classList.remove('is-collapsed');
+  header.setAttribute('aria-expanded', 'false');
+  const cuerpo = wrapper?.body ?? group.body;
+  if (cuerpo) cuerpo.hidden = true;
 
   if (group?.inner) {
-    const nombres = [...group.rows.values()].map((fila) => fila.name);
-    const traducir = (texto) => window.I18n?.t(texto) ?? texto;
-    group.inner.label.textContent = resumirHerramientas(nombres, traducir);
-    group.inner.header.dataset.tools = nombres.join(',');
-    group.inner.header.setAttribute('aria-expanded', 'false');
-    group.inner.body.hidden = true;
+    /*
+     * Con una sola llamada no hay fila de grupo: en 2.32 el «Ran <descripción>»
+     * cuelga directamente del resumen del turno. «Ran commands» solo aparece
+     * cuando hay varias llamadas.
+     */
+    const filas = [...group.inner.body.querySelectorAll('.work-row')];
+    if (filas.length === 1 && wrapper?.body) {
+      const sub = group.inner.header.parentElement;
+      const fila = filas[0];
+      fila.remove();
+      sub?.remove();
+      wrapper.body.append(fila);
+    } else {
+      const nombres = [...group.rows.values()].map((fila) => fila.name);
+      const traducir = (texto) => window.I18n?.t(texto) ?? texto;
+      group.inner.label.textContent = resumirHerramientas(nombres, traducir);
+      group.inner.header.dataset.tools = nombres.join(',');
+      group.inner.header.setAttribute('aria-expanded', 'false');
+      group.inner.body.hidden = true;
+    }
   }
 
   ui.workWrapper = null;
@@ -3470,27 +3723,46 @@ function finishToolGroup() {
 // Envío
 // ---------------------------------------------------------------------------
 
+/** ¿Se puede empezar un turno ahora? Con un plan pendiente, sí: es la revisión. */
+function puedeEnviar() {
+  return !ui.busy || Boolean(ui.planCard);
+}
+
 async function send() {
   const text = els.input.value.trim();
-  if (text.length === 0 || ui.busy) return;
-
-  if (els.threadEmpty) els.threadEmpty.remove();
+  if (text.length === 0 || !puedeEnviar()) return;
 
   els.input.value = '';
   autoGrow();
   updateSendState();
+
+  await sendText(text);
+}
+
+/**
+ * Envía un texto ya decidido. No lee ni escribe el composer: así la cola no
+ * pisa lo que el usuario está escribiendo.
+ */
+async function sendText(texto) {
+  const text = String(texto ?? '').trim();
+  if (text.length === 0 || !puedeEnviar()) return false;
+
+  if (els.threadEmpty) els.threadEmpty.remove();
 
   hideCommandPalette();
   hideMentionPalette();
 
   const mentions = collectMentions(text);
   addUserMessage(text);
+  if (ui.planCard) ui.planCard.rechazar(text);
 
   const result = await window.api.sendPrompt({
     text,
     mentions,
     effort: ui.effort,
     preset: ui.prefs.permissionPreset ?? 'Turbo',
+    // Solo cuenta si el modelo actual lo admite; el proceso principal lo valida otra vez.
+    thinking: ui.thinking === true && modeloAdmitePensamiento(),
   });
   if (!result.ok && result.error) {
     const bubble = addAssistantMessage();
@@ -3499,6 +3771,20 @@ async function send() {
   }
   ui.streamingEl = null;
   ui.streamingText = '';
+  return true;
+}
+
+/** Envía el siguiente mensaje en cola si el turno anterior ya terminó. */
+function drenarCola() {
+  if (ui.busy || ui.queue.length === 0) return;
+  const next = ui.queue.shift();
+  void enviarEncolado(next);
+}
+
+/** Envío de la cola: si no llegó a salir, el mensaje vuelve a la cabeza. */
+async function enviarEncolado(text) {
+  const ok = await sendText(text);
+  if (!ok) ui.queue.unshift(text);
 }
 
 // ---------------------------------------------------------------------------
@@ -3508,10 +3794,23 @@ async function send() {
 async function openConversation(id) {
   // Si la vista de Automations está abierta, se cierra: ocupa el área del hilo.
   closeAutomations();
+  /*
+   * Token de generación: si el usuario abre otra conversación mientras esta
+   * carga, la respuesta lenta ya no repinta encima de la elegida.
+   */
+  const token = ++ui.loadToken;
   try {
     const loaded = await window.api.loadSession(id);
+    if (token !== ui.loadToken) return;
+
     ui.activeConversation = loaded.meta.id;
-  renderPaneTitle();
+    ui.cwd = loaded.meta.cwd ?? ui.cwd;
+    ui.project =
+      loaded.project ??
+      (loaded.meta.project === null ? null : loaded.meta.project ?? loaded.meta.cwd ?? null);
+    if (ui.project) reflejarProyecto(ui.project);
+    else reflejarSinProyecto();
+    renderPaneTitle();
 
     clearThread();
 
@@ -3568,6 +3867,23 @@ async function openConversation(id) {
     for (const message of loaded.messages) {
       indiceDeMensaje += 1;
       if (message.role === 'user') {
+        /*
+         * Los mensajes internos (nudges, avisos de tareas) viajan como `user`
+         * para el modelo, pero no los escribió el usuario. Si se pintan como
+         * burbuja de usuario, el historial parece una conversación ajena.
+         */
+        const texto = String(message.content);
+        // Sesiones antiguas guardaron mensajes internos sin la bandera.
+        const interna =
+          message.internal === true ||
+          /^\[(monitor de ritmo|tarea terminada|revisión de plan|memoria activada)\b/i.test(texto);
+        if (interna) {
+          const nota = document.createElement('div');
+          nota.className = 'system-note';
+          nota.textContent = texto.replace(/^\[monitor de ritmo\]\s*/, '');
+          els.threadInner.append(nota);
+          continue;
+        }
         vaciarCambios();
         addUserMessage(message.content);
       } else if (message.role === 'assistant') {
@@ -3641,11 +3957,12 @@ async function newConversation() {
   const empty = document.createElement('div');
   empty.className = 'thread__empty';
   empty.id = 'thread-empty';
-  // Mismo estado vacío que el del HTML: marca de agua + saludo.
+  // Mismo estado vacío que el del HTML: marca de agua + saludo por nombre.
   empty.innerHTML =
     '<span class="thread__empty-mark"></span>' +
-    '<div class="thread__empty-title">Hola, ¿qué hacemos hoy?</div>';
+    '<div class="thread__empty-title"></div>';
   els.threadInner.append(empty);
+  aplicarSaludo(empty);
 
   els.input.focus();
   refreshConversations();
@@ -3676,12 +3993,30 @@ function updateSendState() {
 // Proveedores y modelo
 // ---------------------------------------------------------------------------
 
-async function loadProviders() {
+async function loadProviders(force = false) {
   try {
-    ui.providers = await window.api.listProviders();
+    const lista = force && window.api.refreshProviders
+      ? await window.api.refreshProviders()
+      : await window.api.listProviders();
+    if (Array.isArray(lista)) ui.providers = lista;
   } catch {
-    ui.providers = [];
+    // sin respuesta nueva: se mantiene lo que ya había
   }
+
+  /*
+   * Si el proveedor actual ya reporta modelos y el guardado no está entre ellos
+   * (nunca se eligió, o desapareció), se elige el primero DE ESE PROVEEDOR.
+   * No se cambia de proveedor ni se toca otro modelo.
+   */
+  const actual = ui.providers.find((provider) => provider.id === ui.providerId);
+  if (actual && actual.models.length > 0) {
+    const vigente = actual.models.some((model) => model.id === ui.model);
+    if (!vigente) {
+      ui.model = actual.models[0].id;
+      window.api.setModel({ provider: ui.providerId, model: ui.model }).catch(() => {});
+    }
+  }
+
   renderModelLabel();
   renderModelPopover();
   window.SettingsUI?.refresh();
@@ -3692,13 +4027,42 @@ function currentProvider() {
 }
 
 function renderModelLabel() {
+  renderThinkingToggle();
+  const provider = currentProvider();
+  const elegido = provider?.models?.find((model) => model.id === ui.model);
+  if (elegido) {
+    els.modelLabel.textContent = elegido.name || elegido.id;
+    return;
+  }
   if (ui.model) {
     els.modelLabel.textContent = ui.model;
     return;
   }
 
-  const provider = currentProvider();
   els.modelLabel.textContent = provider ? `${provider.label} · sin modelo` : 'sin modelo';
+}
+
+/** ¿El modelo seleccionado admite pensamiento extendido explícito? */
+function modeloAdmitePensamiento() {
+  const provider = currentProvider();
+  return Boolean(provider?.models?.find((model) => model.id === ui.model)?.thinking);
+}
+
+/**
+ * Muestra u oculta el botón de pensamiento del chat.
+ *
+ * Nunca cambia de modelo: si el actual no lo admite, el botón desaparece y el
+ * turno se envía sin pensamiento.
+ */
+function renderThinkingToggle() {
+  const boton = $('btn-thinking');
+  if (!boton) return;
+
+  const admite = modeloAdmitePensamiento();
+  if (!admite) ui.thinking = false;
+  boton.hidden = !admite;
+  boton.classList.toggle('is-active', admite && ui.thinking);
+  boton.setAttribute('aria-pressed', String(admite && ui.thinking));
 }
 
 function renderModelPopover() {
@@ -3826,6 +4190,202 @@ function applyPrefs(prefs) {
     const idioma = window.I18n.resolveLanguage(ui.prefs.uiLanguage);
     window.I18n.setLanguage(idioma);
   }
+}
+
+/** Nombre del saludo: el del perfil o, si está vacío, el de la cuenta del sistema. */
+function nombreDeSaludo() {
+  const perfil = String(ui.prefs.profile?.name ?? '').trim();
+  const sistema = String(ui.userName ?? '').trim();
+  const nombre = perfil || sistema;
+  return nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1) : '';
+}
+
+/**
+ * Saludo del estado vacío. Medido en su DOM: «Hey Darío, what should we build
+ * today?», 24/32 con tracking -0.36; en español se mantiene la misma fórmula.
+ */
+function textoDeSaludo() {
+  const nombre = nombreDeSaludo();
+  if (window.I18n?.language === 'es') {
+    return nombre ? `Hola ${nombre}, ¿qué construimos hoy?` : 'Hola, ¿qué construimos hoy?';
+  }
+  return nombre ? `Hey ${nombre}, what should we build today?` : 'Hey, what should we build today?';
+}
+
+/** Pinta el saludo donde exista el estado vacío. */
+function aplicarSaludo(raiz = document) {
+  const titulo = raiz.querySelector?.('.thread__empty-title');
+  if (titulo) titulo.textContent = textoDeSaludo();
+}
+
+/** Cabecera de sección plegable, como la suya. */
+function conectarSeccionPlegable(botonId, listaId) {
+  const boton = $(botonId);
+  const lista = $(listaId);
+  if (!boton || !lista) return;
+
+  boton.addEventListener('click', () => {
+    const plegada = !lista.hidden;
+    lista.hidden = plegada;
+    boton.setAttribute('aria-expanded', String(!plegada));
+    boton.closest('.sidebar__section')?.classList.toggle('is-collapsed', plegada);
+  });
+}
+
+/** Carga una URL en el webview, esperando a que esté listo si hace falta. */
+let navegadorCargar = null;
+/** Pestaña del navegador en la fila superior del panel. */
+let navegadorAbierto = false;
+let navegadorTitulo = '';
+
+/** URL del webview; antes de engancharse, `getURL` lanza y se trata como vacía. */
+function urlDelNavegador(vista) {
+  try {
+    return String(vista.getURL?.() ?? '');
+  } catch {
+    return '';
+  }
+}
+
+/** Cablea el navegador integrado una sola vez. */
+function conectarNavegador() {
+  const vista = document.getElementById('aux-browser-view');
+  if (!vista || navegadorCargar) return;
+
+  const entrada = document.getElementById('aux-browser-input');
+  const atras = document.getElementById('aux-browser-back');
+  const adelante = document.getElementById('aux-browser-forward');
+  const recargar = document.getElementById('aux-browser-reload');
+  const formulario = document.getElementById('aux-browser-form');
+
+  const mostrarUrl = () => {
+    if (!entrada) return;
+    const url = urlDelNavegador(vista);
+    if (!url || url === 'about:blank') return;
+    entrada.value = url.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+    if (atras) atras.disabled = !vista.canGoBack?.();
+    if (adelante) adelante.disabled = !vista.canGoForward?.();
+  };
+
+  /*
+   * El webview no se engancha hasta que el panel es visible; `loadURL` falla
+   * antes. El atributo `src` sí navega en cuanto se engancha, sin condición.
+   */
+  navegadorCargar = (url) => {
+    /*
+     * `setAttribute('src')` no navega si el valor ya estaba (el webview lo
+     * conserva de la primera carga), así que reescribir la misma URL no hacía
+     * nada. `loadURL` navega siempre; antes de engancharse lanza, y ahí sí vale
+     * el atributo.
+     */
+    try {
+      vista.loadURL(url).catch(() => vista.setAttribute('src', url));
+    } catch {
+      vista.setAttribute('src', url);
+    }
+  };
+
+  vista.addEventListener('dom-ready', mostrarUrl);
+  vista.addEventListener('page-title-updated', (event) => {
+    navegadorTitulo = String(event.title ?? '').trim();
+    pintarPestanasTerminal();
+  });
+  for (const evento of ['did-navigate', 'did-navigate-in-page', 'did-stop-loading']) {
+    vista.addEventListener(evento, mostrarUrl);
+  }
+  vista.addEventListener('did-start-loading', () => {
+    if (atras) atras.disabled = !vista.canGoBack?.();
+    if (adelante) adelante.disabled = !vista.canGoForward?.();
+  });
+
+  atras?.addEventListener('click', () => {
+    if (vista.canGoBack?.()) vista.goBack();
+  });
+  adelante?.addEventListener('click', () => {
+    if (vista.canGoForward?.()) vista.goForward();
+  });
+  recargar?.addEventListener('click', () => vista.reload());
+  formulario?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const texto = String(entrada?.value ?? '').trim();
+    if (!texto) return;
+    navegadorCargar?.(/^[a-z][a-z0-9+.-]*:\/\//i.test(texto) ? texto : `https://${texto}`);
+    vista.focus();
+  });
+
+  const botonDescargas = document.getElementById('aux-browser-downloads');
+  const panelDescargas = document.getElementById('aux-browser-downloads-panel');
+  const renderDescargas = (lista = []) => {
+    if (!panelDescargas) return;
+    panelDescargas.replaceChildren();
+
+    if (!Array.isArray(lista) || lista.length === 0) {
+      const vacio = document.createElement('div');
+      vacio.className = 'aux-browser__download-empty';
+      vacio.textContent = 'Sin descargas';
+      panelDescargas.append(vacio);
+      return;
+    }
+
+    for (const descarga of lista) {
+      const fila = document.createElement('button');
+      fila.type = 'button';
+      fila.className = 'aux-browser__download';
+
+      const nombre = document.createElement('span');
+      nombre.textContent = String(descarga.filename ?? 'Descarga');
+
+      const estado = document.createElement('span');
+      estado.className = 'aux-browser__download-state';
+      estado.textContent = String(descarga.state ?? 'progressing');
+
+      fila.append(nombre, estado);
+      fila.addEventListener('click', () => {
+        void window.api.downloadsOpen?.(descarga.id);
+      });
+      panelDescargas.append(fila);
+    }
+  };
+
+  botonDescargas?.addEventListener('click', async () => {
+    if (!panelDescargas) return;
+    panelDescargas.hidden = !panelDescargas.hidden;
+    if (!panelDescargas.hidden) {
+      try {
+        renderDescargas(await window.api.downloadsList?.());
+      } catch {
+        renderDescargas([]);
+      }
+    }
+  });
+
+  try {
+    window.api.onDownloadsUpdate?.(renderDescargas);
+  } catch {
+    // sin puente de descargas se mantiene el rellenado bajo demanda
+  }
+}
+
+/** Muestra el navegador en el panel y carga su página de inicio la primera vez. */
+function abrirNavegadorLateral() {
+  conectarNavegador();
+  const vista = document.getElementById('aux-browser-view');
+  if (!vista) return;
+
+  if (!navegadorAbierto) {
+    navegadorAbierto = true;
+    pintarPestanasTerminal();
+  }
+
+  const actual = urlDelNavegador(vista);
+  if (actual === '' || actual === 'about:blank') navegadorCargar?.('https://www.google.com/');
+}
+
+/** Cierra la pestaña del navegador y vuelve al lanzador. */
+function cerrarNavegador() {
+  navegadorAbierto = false;
+  pintarPestanasTerminal();
+  seleccionarVistaAux('launcher');
 }
 
 /** Carga herramientas, skills y estado del control remoto. */
@@ -4085,10 +4645,10 @@ function ensureMonaco(group = 0) {
 
   instancia.addCommand(monacoApi.KeyMod.CtrlCmd | monacoApi.KeyCode.KeyS, () => saveEditor());
   instancia.addCommand(monacoApi.KeyCode.F12, () => instancia.getAction('editor.action.revealDefinition').run());
-  instancia.addCommand(monacoApi.KeyCode.F2, () => instancia.getAction('editor.action.rename').run());
+  instancia.addCommand(monacoApi.KeyCode.F2, () => void renombrarEditor());
   instancia.addCommand(
     monacoApi.KeyMod.Shift | monacoApi.KeyMod.Alt | monacoApi.KeyCode.KeyF,
-    () => instancia.getAction('editor.action.formatDocument').run(),
+    () => void formatearEditor(),
   );
   instancia.addCommand(monacoApi.KeyMod.CtrlCmd | monacoApi.KeyCode.Space, () =>
     instancia.getAction('editor.action.triggerSuggest').run(),
@@ -4107,6 +4667,16 @@ function ensureMonaco(group = 0) {
 
   ui.editors[group] = instancia;
   if (group === 0) monacoEditor = instancia;
+
+  if (!ui.marcadoresEnganchados) {
+    ui.marcadoresEnganchados = true;
+    monacoApi.editor.onDidChangeMarkers((uris) => {
+      const actual = monacoEditor?.getModel();
+      if (!actual) return;
+      if (!uris.some((uri) => uri.toString() === actual.uri.toString())) return;
+      actualizarMarcadoresMonaco();
+    });
+  }
 
   return instancia;
 }
@@ -4188,14 +4758,22 @@ async function openInEditor(path, linea, columna) {
 
     activateTab(file.path);
 
-    // LSP propio solo para lenguajes que Monaco no cubre.
+    /*
+     * También se abre el LSP para JS/TS: Monaco pinta los marcadores del
+     * worker, pero las acciones de código y el rename del servidor necesitan
+     * el cliente LSP. Si no hay servidor, queda el lenguaje de Monaco.
+     */
     const tab = ui.tabs.find((t) => t.path === file.path);
-    if (tab && !['javascript', 'typescript', 'json', 'css', 'html'].includes(language)) {
+    if (tab) {
       const opened = await window.api.lspOpen({ path: file.path, content: file.content });
-      tab.lsp = opened.ok ? opened.language : 'sin LSP';
-      if (ui.activeTab === file.path) els.editorLsp.textContent = tab.lsp;
-    } else if (tab) {
-      tab.lsp = language;
+      tab.lsp = opened.ok ? opened.language : language;
+      tab.lspUri = opened.ok ? opened.uri : null;
+      tab.diagnostics = opened.ok ? (opened.diagnostics ?? []) : [];
+      if (ui.activeTab === file.path) {
+        ui.diagnostics = tab.diagnostics;
+        els.editorLsp.textContent = tab.lsp;
+        renderDiagnostics();
+      }
     }
   } catch (error) {
     addNotice(`No se pudo abrir ${path}: ${error.message ?? error}`, 'error');
@@ -4210,6 +4788,66 @@ async function openInEditor(path, linea, columna) {
       editor.focus();
     }
   }
+}
+
+/** Formatea con Monaco o con el LSP propio. */
+async function formatearEditor() {
+  const editor = ensureMonaco();
+  const tab = ui.tabs.find((t) => t.path === ui.activeTab);
+  if (!editor || !tab) return;
+
+  if (['javascript', 'typescript', 'json', 'css', 'html'].includes(tab.lsp)) {
+    await editor.getAction('editor.action.formatDocument')?.run();
+    return;
+  }
+
+  const resultado = await window.api.lspFormat({ path: tab.path, content: editor.getValue() });
+  if (!resultado?.ok) {
+    addNotice(resultado?.error ?? 'No se pudo formatear.', 'error');
+    return;
+  }
+  if (!resultado.changed) {
+    addNotice('El formato no cambió.', 'info');
+    return;
+  }
+  editor.setValue(resultado.content);
+  updateEditorState();
+  addNotice('Formateado con el LSP.', 'ok');
+}
+
+/** Renombra con Monaco o con el LSP propio. */
+async function renombrarEditor() {
+  const editor = ensureMonaco();
+  const tab = ui.tabs.find((t) => t.path === ui.activeTab);
+  if (!editor || !tab) return;
+
+  if (['javascript', 'typescript', 'json', 'css', 'html'].includes(tab.lsp)) {
+    await editor.getAction('editor.action.rename')?.run();
+    return;
+  }
+
+  const posicion = editor.getPosition();
+  if (!posicion) return;
+  const nuevo = await pedirNombreDeSimbolo('');
+  if (!nuevo) return;
+
+  const resultado = await window.api.lspRename({
+    path: tab.path,
+    line: posicion.lineNumber - 1,
+    character: posicion.column - 1,
+    newName: nuevo,
+  });
+  if (!resultado?.ok) {
+    addNotice(resultado?.error ?? 'No se pudo renombrar.', 'error');
+    return;
+  }
+
+  const file = await window.api.readFile(tab.path);
+  tab.model.setValue(file.content);
+  tab.original = file.content;
+  ui.editorOriginal = file.content;
+  updateEditorState();
+  addNotice(`Renombrado en ${resultado.files} fichero(s).`, 'ok');
 }
 
 /* ===================== Quick fixes del LSP ===================== */
@@ -4238,9 +4876,15 @@ async function mostrarQuickFixes() {
   const posicion = editor.getPosition();
   if (!posicion) return;
 
+  /*
+   * gopls rechaza un final más allá de la línea. El ancho real evita
+   * "column is beyond end of line" en quick fixes de Go y Rust.
+   */
+  const linea = posicion.lineNumber - 1;
+  const finLinea = Math.max(0, (editor.getModel()?.getLineMaxColumn(posicion.lineNumber) ?? 1) - 1);
   const rango = {
-    start: { line: posicion.lineNumber - 1, character: 0 },
-    end: { line: posicion.lineNumber - 1, character: 999 },
+    start: { line: linea, character: 0 },
+    end: { line: linea, character: finLinea },
   };
 
   let respuesta;
@@ -4307,6 +4951,30 @@ async function mostrarQuickFixes() {
   const alto = menu.getBoundingClientRect().height;
   menu.style.left = `${Math.round(Math.max(8, caja.left - 40))}px`;
   menu.style.top = `${Math.round(Math.min(window.innerHeight - alto - 8, caja.bottom + 6))}px`;
+}
+
+/** Refleja en el estado los errores nativos de Monaco (JS/TS/JSON/CSS/HTML). */
+function actualizarMarcadoresMonaco() {
+  if (!monacoApi || !monacoEditor) return;
+  const model = monacoEditor.getModel();
+  if (!model) return;
+  const tab = ui.tabs.find((t) => t.path === ui.activeTab);
+  if (!tab) return;
+
+  const markers = monacoApi.editor.getModelMarkers({ resource: model.uri });
+  if (markers.length === 0) {
+    if (tab.lsp) els.editorLsp.textContent = tab.lsp;
+    els.editorLsp.classList.remove('has-errors');
+    els.editorLsp.removeAttribute('title');
+    return;
+  }
+
+  els.editorLsp.textContent = `${markers.length} ${markers.length === 1 ? 'problema' : 'problemas'}`;
+  els.editorLsp.classList.add('has-errors');
+  els.editorLsp.title = markers
+    .slice(0, 5)
+    .map((marker) => `L${marker.startLineNumber}: ${marker.message}`)
+    .join('\n');
 }
 
 /** Engancha el indicador de problemas al menú de quick fixes. */
@@ -4534,6 +5202,8 @@ function activateTab(path) {
 
   els.editorPath.textContent = path;
   els.editorLsp.textContent = tab.lsp ?? tab.language;
+  ui.diagnostics = tab.diagnostics ?? [];
+  renderDiagnostics();
   updateEditorState();
   renderEditorTabs();
   editor.focus();
@@ -5452,17 +6122,54 @@ function pintarPestanasTerminal() {
 
   vista.append(iconoVista, etiquetaVista);
   vista.addEventListener('click', () => void abrirPanelLateral('open-file'));
+  if (!document.getElementById('aux-view-open-file')?.hidden) vista.classList.add('is-active');
   barra.append(vista);
+
+  if (navegadorAbierto) {
+    const pestana = document.createElement('div');
+    pestana.className = 'terminal__tab';
+    pestana.dataset.auxView = 'browser';
+    pestana.classList.toggle(
+      'is-active',
+      !document.getElementById('aux-view-browser')?.hidden,
+    );
+
+    const iconoNavegador = document.createElement('span');
+    iconoNavegador.className = 'terminal__tab-icon';
+    iconoNavegador.innerHTML = window.Icon('globe', 14);
+
+    const tituloNavegador = document.createElement('span');
+    tituloNavegador.textContent = navegadorTitulo || 'Google';
+    tituloNavegador.addEventListener('click', () => void abrirPanelLateral('browser'));
+
+    const cerrarNavegadorTab = document.createElement('span');
+    cerrarNavegadorTab.className = 'terminal__tab-close';
+    cerrarNavegadorTab.textContent = '×';
+    cerrarNavegadorTab.title = 'Cerrar pestaña';
+    cerrarNavegadorTab.addEventListener('click', (event) => {
+      event.stopPropagation();
+      cerrarNavegador();
+    });
+
+    pestana.append(iconoNavegador, tituloNavegador, cerrarNavegadorTab);
+    barra.append(pestana);
+  }
 
   for (const [id, entrada] of terminales) {
     const pestana = document.createElement('div');
     pestana.className = 'terminal__tab';
     pestana.dataset.terminal = id;
-    if (id === terminalActiva) pestana.classList.add('is-active');
+    if (id === terminalActiva && !document.getElementById('aux-view-terminal')?.hidden) {
+      pestana.classList.add('is-active');
+    }
 
     const etiqueta = document.createElement('span');
     etiqueta.textContent = entrada.nombre;
-    etiqueta.addEventListener('click', () => activarTerminal(id));
+    etiqueta.addEventListener('click', () => {
+      // Con el navegador delante, activar la terminal no basta: su vista sigue oculta.
+      seleccionarVistaAux('terminal');
+      activarTerminal(id);
+    });
 
     const cerrar = document.createElement('span');
     cerrar.className = 'terminal__tab-close';
@@ -5592,6 +6299,7 @@ async function cerrarTerminal(id) {
   if (terminales.size === 0) {
     els.auxPanel.hidden = true;
     document.querySelector('.body')?.classList.remove('is-terminal-open');
+    document.body.classList.remove('aux--browser');
     const boton = $('toggle-terminal');
     if (boton) boton.setAttribute('aria-pressed', 'false');
   }
@@ -5729,8 +6437,14 @@ function seleccionarVistaAux(nombre) {
    * vista abierta; en el lanzador quedan solo los iconos del panel, como el suyo.
    */
   const esTerminal = nombre === 'terminal';
+  const esNavegador = nombre === 'browser';
+  /*
+   * Su panel se ensancha al abrir el navegador (medido: 786 px). El límite de
+   * 320 px deja sitio al hilo en ventanas estrechas.
+   */
+  document.body.classList.toggle('aux--browser', esNavegador);
   const tabs = document.getElementById('terminal-tabs');
-  if (tabs) tabs.hidden = !esTerminal;
+  if (tabs) tabs.hidden = !(esTerminal || esNavegador);
 
   const add = document.getElementById('terminal-add');
   if (add) add.hidden = !esTerminal;
@@ -5756,6 +6470,7 @@ function seleccionarVistaAux(nombre) {
 
   if (nombre === 'review') void renderAuxReview();
   if (nombre === 'open-file') renderAuxOpenFile();
+  if (nombre === 'browser') abrirNavegadorLateral();
 }
 
 /** Abre el panel lateral en una vista concreta. */
@@ -5770,6 +6485,15 @@ async function abrirPanelLateral(vista) {
   seleccionarVistaAux(vista ?? 'launcher');
 
   if (vista === 'terminal') {
+    /*
+     * Abrir la vista desde el lanzador debe mostrar el mismo terminal que
+     * `toggleTerminal`. Antes el contenedor xterm quedaba oculto y solo se veía
+     * la terminal legacy.
+     */
+    const hayXterm = Boolean(window.XtermApp);
+    if (els.terminalXterm) els.terminalXterm.hidden = !hayXterm;
+    if (els.terminalLegacy) els.terminalLegacy.hidden = hayXterm;
+
     if (terminales.size === 0) {
       const entrada = crearTerminal();
       if (entrada) {
@@ -5994,6 +6718,8 @@ async function stopAgent() {
 
 /** Encola un mensaje o interrumpe la ejecución, según la preferencia. */
 async function submitOrQueue() {
+  // Con un plan pendiente, el mensaje es la revisión: va directo al turno.
+  if (ui.planCard) return send();
   if (!ui.busy) return send();
 
   if (ui.prefs.queuedMessages === 'Send Immediately') {
@@ -6020,6 +6746,23 @@ async function boot() {
   initSearchPanel();
   initQuickFixes();
 
+  window.api.onLspDiagnostics?.(({ uri, diagnostics }) => {
+    const normalizarUri = (valor) =>
+      String(valor ?? '').replace(
+        /^file:\/\/\/([A-Za-z])(%3A|:)/i,
+        (_todo, letra) => `file:///${String(letra).toLowerCase()}:`,
+      );
+    const tab = ui.tabs.find(
+      (entrada) => normalizarUri(entrada.lspUri) === normalizarUri(uri),
+    );
+    if (!tab) return;
+    tab.diagnostics = diagnostics ?? [];
+    if (tab.path === ui.activeTab) {
+      ui.diagnostics = tab.diagnostics;
+      renderDiagnostics();
+    }
+  });
+
   let state = null;
   try {
     state = await window.api.getState();
@@ -6029,13 +6772,20 @@ async function boot() {
 
   if (state) {
     ui.cwd = state.cwd ?? null;
+    ui.project = state.project ?? null;
+    ui.projects = Array.isArray(state.projects) ? state.projects : [];
     ui.providerId = state.providerId ?? null;
     ui.model = state.model ?? null;
+    ui.userName = state.userName ?? '';
 
-    els.projectName.textContent = state.cwd ? basename(state.cwd) : 'No Project';
-    if (els.projectPill) els.projectPill.textContent = state.cwd ? basename(state.cwd) : 'No Project';
-    const inline = document.getElementById('project-inline-label');
-    if (inline) inline.textContent = state.cwd ? basename(state.cwd) : 'No Project';
+    if (ui.project) {
+      const nombre = nombreProyecto(ui.project);
+      els.projectName.textContent = nombre;
+      if (els.projectPill) els.projectPill.textContent = nombre;
+      actualizarEtiquetaProyecto(nombre);
+    } else {
+      reflejarSinProyecto();
+    }
     ui.activeConversation = state.sessionId ?? null;
   }
 
@@ -6054,6 +6804,24 @@ async function boot() {
   }
 
   window.api.onChatEvent(handleChatEvent);
+
+  // El saludo depende del perfil y del idioma; se repinta con ambos.
+  aplicarSaludo();
+  document.addEventListener('i18n:change', () => aplicarSaludo());
+
+  // Cabeceras plegables de la barra lateral (Projects y Conversations).
+  conectarSeccionPlegable('btn-toggle-projects', 'project-list');
+  conectarSeccionPlegable('btn-toggle-conversations', 'conversation-list');
+
+  // El webview existe desde el arranque: se cablea antes de abrir la vista.
+  conectarNavegador();
+
+  // Pensamiento extendido: botón del chat, solo para modelos que lo admiten.
+  $('btn-thinking')?.addEventListener('click', () => {
+    ui.thinking = !ui.thinking;
+    renderThinkingToggle();
+  });
+  renderThinkingToggle();
 
 
   // Selector de modelo
@@ -6085,7 +6853,8 @@ async function boot() {
     }),
     addNotice: (msg, type) => addNotice(msg, type),
     onSelectModel: (providerId, modelId) => selectModel(providerId, modelId),
-    reloadProviders: () => loadProviders(),
+    reloadProviders: () => loadProviders(true),
+    refreshProviders: () => loadProviders(true),
     onPrefChange: (_key, _value, all) => applyPrefs(all),
     exportActiveConversation: () => exportConversation(),
     openSearch: () => toggleSearch(true),
@@ -6125,6 +6894,7 @@ async function boot() {
     if (event.key !== 'Escape') return;
     hideModelPopover();
     closeContextMenu();
+    cerrarProjectMenu();
     closePalette();
     document.getElementById('revert-modal')?.setAttribute('hidden', '');
     closeScheduled();
@@ -6135,6 +6905,11 @@ async function boot() {
 
   els.form.addEventListener('submit', (event) => {
     event.preventDefault();
+    // Con un plan pendiente el botón envía la revisión, no detiene el turno.
+    if (ui.planCard) {
+      submitOrQueue();
+      return;
+    }
     if (ui.busy) {
       stopAgent();
       return;
@@ -6223,10 +6998,11 @@ async function boot() {
 
   els.effortLabel?.addEventListener('click', (event) => {
     event.stopPropagation();
-    const levels = ['Low', 'Medium', 'High'];
-    const next = levels[(levels.indexOf(ui.effort) + 1) % levels.length];
+    const indice = ESCALA_DE_ESFUERZO.indexOf(ui.effort);
+    const next = ESCALA_DE_ESFUERZO[(indice + 1) % ESCALA_DE_ESFUERZO.length];
     ui.effort = next;
     els.effortLabel.textContent = next;
+    els.effortLabel.title = ETIQUETA_DE_ESFUERZO[next] ?? '';
     window.api.setPrefs({ effort: next }).catch(() => {});
   });
 
@@ -6280,6 +7056,9 @@ async function boot() {
   document.addEventListener('click', (event) => {
     if (els.contextMenu.contains(event.target)) return;
     closeContextMenu();
+    if (!event.target.closest?.('.project-menu') && !event.target.closest?.('#btn-project-selector-inline')) {
+      cerrarProjectMenu();
+    }
     if (!event.target.closest || !event.target.closest('.menu')) closeMenus();
   });
 
@@ -6363,19 +7142,16 @@ async function boot() {
   // Selector de proyecto dentro del composer (estado vacío).
   document.getElementById('btn-project-selector-inline')?.addEventListener('click', (event) => {
     event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
-    openContextMenu(rect.left, rect.top - 8, [
-      { label: 'Abrir carpeta…', onClick: changeWorkspace },
-      { label: 'Ajustes del workspace', onClick: () => window.SettingsUI.open('application') },
-    ]);
+    if (projectMenu) {
+      cerrarProjectMenu();
+      return;
+    }
+    abrirProjectSelector(event.currentTarget);
   });
 
   els.btnProjectSelector?.addEventListener('click', (event) => {
     event.stopPropagation();
-    openContextMenu(els.btnProjectSelector.getBoundingClientRect().left, 44, [
-      { label: 'Abrir carpeta…', onClick: changeWorkspace },
-      { label: 'Ajustes del workspace', onClick: () => window.SettingsUI.open('application') },
-    ]);
+    abrirProjectSelector(els.btnProjectSelector);
   });
   document.getElementById('btn-permissions')?.addEventListener('click', () => {
     window.SettingsUI.open('general');
@@ -6438,11 +7214,6 @@ async function boot() {
       document.getElementById('revert-modal')?.setAttribute('hidden', '');
     });
   }
-
-  // Controles de ventana propios (la ventana es frameless).
-  document.getElementById('win-minimize')?.addEventListener('click', () => window.api.minimize());
-  document.getElementById('win-maximize')?.addEventListener('click', () => window.api.toggleMaximize());
-  document.getElementById('win-close')?.addEventListener('click', () => window.api.closeWindow());
 
   document.getElementById('announce-close')?.addEventListener('click', hideAnnouncement);
 
@@ -6596,6 +7367,15 @@ async function boot() {
   for (const el of document.querySelectorAll('[data-close-git-diff]')) {
     el.addEventListener('click', closeGitDiff);
   }
+  // Escape cierra el diff como cualquier otro diálogo; antes solo cerraba la ✕.
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    const modal = $('git-diff-modal');
+    if (modal && !modal.hasAttribute('hidden')) {
+      event.preventDefault();
+      closeGitDiff();
+    }
+  });
   const indexBtn = $('index-build');
   if (indexBtn) indexBtn.addEventListener('click', rebuildIndex);
   const warmBtn = $('index-warm');
@@ -6664,6 +7444,14 @@ function basename(path) {
   if (!path) return 'No Project';
   const parts = String(path).split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] ?? path;
+}
+
+/** Etiqueta del selector de proyecto, también para lectores de pantalla. */
+function actualizarEtiquetaProyecto(texto) {
+  const inline = document.getElementById('project-inline-label');
+  if (inline) inline.textContent = texto;
+  const trigger = document.getElementById('btn-project-selector-inline');
+  if (trigger) trigger.setAttribute('aria-label', `Select project, current: ${texto}`);
 }
 
 boot();

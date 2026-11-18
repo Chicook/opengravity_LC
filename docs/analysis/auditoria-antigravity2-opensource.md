@@ -71,7 +71,7 @@ OpenGravity replica la totalidad de herramientas nativas expuestas al modelo:
   # fail 0
   ```
 * **CSS & Design Tokens**: 
-  * Verificado en `test/tokens-css.test.mjs`: sin variables autorreferentes, sin literales oscuros sin contraparte clara, preservando paridad exacta con el DOM medido de Antigravity (`docs/antigravity/estilos.css`).
+  * Verificado en `test/tokens-css.test.mjs`: sin variables autorreferentes, sin literales oscuros sin contraparte clara. Los valores salen de `docs/design-tokens.md`, medidos y transcritos; no queda ningún fichero de estilo del producto original en el repositorio.
 * **Telemetría y Costes**:
   * 0 llamadas a endpoints de suscripción o métricas propietarias.
   * 100% de los datos y trayectorias residen localmente en el disco del usuario.

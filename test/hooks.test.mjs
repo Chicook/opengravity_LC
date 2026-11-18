@@ -62,6 +62,18 @@ describe('absolutizarRutas', () => {
     );
   });
 
+  test('con el sandbox activo permite una raíz añadida', () => {
+    const cwd = path.resolve('workspace');
+    const extra = path.resolve(cwd, '..', 'otra-raiz');
+    const dentro = path.join(extra, 'nota.txt');
+    assert.throws(
+      () => absolutizarRutas('read_file', { path: dentro }, () => cwd, true),
+      /fuera del workspace/,
+    );
+    const { args } = absolutizarRutas('read_file', { path: dentro }, () => cwd, true, () => [extra]);
+    assert.equal(args.path, dentro);
+  });
+
   test('con el sandbox activo deja pasar rutas internas', () => {
     const cwd = path.resolve('workspace');
     const dentro = path.join(cwd, 'src', 'a.ts');

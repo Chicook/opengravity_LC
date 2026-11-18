@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('api', {
 
   /** Catálogo completo de proveedores con sus modelos. */
   listProviders: () => ipcRenderer.invoke('providers:list'),
+  refreshProviders: () => ipcRenderer.invoke('providers:refresh'),
 
   /** Preferencias de la interfaz. */
   getPrefs: () => ipcRenderer.invoke('prefs:get'),
@@ -22,6 +23,14 @@ contextBridge.exposeInMainWorld('api', {
 
   /** Abre un diálogo para elegir carpeta de trabajo. */
   openWorkspace: () => ipcRenderer.invoke('workspace:open'),
+  /** Activa una carpeta ya conocida, sin diálogo. */
+  setWorkspace: (target) => ipcRenderer.invoke('workspace:set', target),
+  /** Proyectos registrados y acciones de proyecto. */
+  listProjects: () => ipcRenderer.invoke('projects:list'),
+  selectProject: (target) => ipcRenderer.invoke('project:select', target),
+  createProject: (target) => ipcRenderer.invoke('project:create', target),
+  removeProject: (target) => ipcRenderer.invoke('project:remove', target),
+  clearProject: () => ipcRenderer.invoke('project:none'),
   openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
   openImageDialog: () => ipcRenderer.invoke('dialog:open-image'),
   relativePath: (target) => ipcRenderer.invoke('fs:relative', target),
@@ -139,6 +148,16 @@ contextBridge.exposeInMainWorld('api', {
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   openBrowser: (url) => ipcRenderer.invoke('browser:open', url),
   browserEvaluate: (script) => ipcRenderer.invoke('browser:evaluate', script),
+  getDownloadDir: () => ipcRenderer.invoke('app:downloads-dir'),
+  chooseDownloadDir: () => ipcRenderer.invoke('app:choose-download-dir'),
+  downloadsList: () => ipcRenderer.invoke('downloads:list'),
+  downloadsOpen: (id) => ipcRenderer.invoke('downloads:open', id),
+  onDownloadsUpdate: (callback) => {
+    const handler = (_event, lista) => callback(lista);
+    ipcRenderer.on('downloads:update', handler);
+    return () => ipcRenderer.removeListener('downloads:update', handler);
+  },
+  clearBrowserHistory: () => ipcRenderer.invoke('browser:clear-history'),
 
   // --- Control remoto ---
   remoteStatus: () => ipcRenderer.invoke('remote:status'),
@@ -209,9 +228,6 @@ contextBridge.exposeInMainWorld('api', {
   imageAsDataUrl: (ruta) => ipcRenderer.invoke('image:as-data-url', ruta),
 
   /** Usar el Chrome del usuario, con su sesión ya iniciada. */
-  chromeStatus: () => ipcRenderer.invoke('chrome:status'),
-  chromeLaunch: () => ipcRenderer.invoke('chrome:launch'),
-  chromeDisconnect: () => ipcRenderer.invoke('chrome:disconnect'),
 
   googleStatus: () => ipcRenderer.invoke('google:status'),
   googleConnect: () => ipcRenderer.invoke('google:connect'),

@@ -27,8 +27,8 @@ que Opengravity implementa hoy.
 | `write_file` | `write_file` | ✅ |
 | `edit_file` | `edit_file` | ✅ |
 | `multi_replace` | `multi_replace` | ✅ |
-| `edit_notebook` | — | ❌ **falta** |
-| `run_extension_code` | — | ❌ falta |
+| `edit_notebook` | `edit_notebook` | ✅ |
+| `run_extension_code` | `run_extension_code` | ✅ |
 
 ### Ejecución
 
@@ -54,7 +54,7 @@ que Opengravity implementa hoy.
 | `ask_user_question` | `ask_user_question` | ✅ |
 | `notify_user` (cron, jitter, cancelOn) | `notify_user` | ✅ |
 | `present_plan` | `present_plan` | ✅ |
-| `generate_image` | — | ❌ falta |
+| `generate_image` | `generate_image` | ✅ |
 
 ### Plan y skills
 
@@ -66,8 +66,17 @@ que Opengravity implementa hoy.
 
 ## Huecos concretos, por orden de impacto
 
-1. **`edit_notebook`** — celdas de Jupyter.
-2. **`generate_image`** — generación de imágenes.
+**Ninguno en el inventario de herramientas: el catálogo está completo.**
+
+Esta sección decía antes que faltaban `edit_notebook` y `generate_image`, y el
+resumen de abajo contaba `run_extension_code` como exclusión. Las tres cosas están
+implementadas y registradas para el agente (`electron/main.cjs`: `makeEditNotebookTool`
+y `makeGenerateImageTool` en el catálogo; `electron/tools-extra.cjs:1291`:
+`run_extension_code`), así que el texto anterior estaba desfasado y se corrige aquí.
+
+Lo que sí queda fuera de alcance es la **cuenta de Google** que usa
+`generate_image`: la herramienta existe, pero depende de que el usuario conecte su
+sesión, y se apoya en una interfaz web ajena que puede cambiar sin aviso.
 
 `send_message` se implementó después: bandeja por subagente en `subagents.cjs`,
 recogida entre pasos mediante el hook `mensajeDeSistema` que ya existía.
@@ -96,9 +105,10 @@ Documentados en `docs/analysis/agente-cascade.md`; todos implementados:
 
 ## Conclusión
 
-**El motor está completo**: los once mecanismos que hacen especial a Antigravity
-están replicados y con pruebas. Lo que falta es **inventario de herramientas**,
-no arquitectura: quedan `edit_notebook` y `generate_image`.
+**El motor está completo** y el inventario de herramientas también: los once
+mecanismos que hacen especial a Antigravity están replicados y con pruebas, y las
+herramientas que este informe daba por ausentes (`edit_notebook`,
+`generate_image`, `run_extension_code`) están implementadas.
 `multi_replace`, `send_message` y `codebase_search` (como `search_code`) ya están.
 
 ## Actualización (2026-11-10)

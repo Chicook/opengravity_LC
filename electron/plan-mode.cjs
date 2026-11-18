@@ -8,33 +8,31 @@
 // Las plantillas de los mensajes son las del binario (offset 59 633 897), adaptadas
 // al español y sin los placeholders de rol.
 
-/** Pasos que solo leen: se permiten en modo planner. */
+/**
+ * Pasos que SOLO leen: se permiten en modo planner.
+ *
+ * Todo lo que escribe, ejecuta comandos o interactúa con una sesión (formularios
+ * del navegador, stdin de una tarea en segundo plano) queda fuera: con esas
+ * herramientas, un plan inyectado ejecutaría código antes de que el usuario
+ * apruebe nada.
+ */
 const HERRAMIENTAS_DE_LECTURA = new Set([
   'read_file',
   'view_code_item',
   'list_directory',
   'search_files',
+  'file_search',
   'search_code',
   'search_web',
   'fetch_url',
   'browser_read',
-  'browser_open',
-  'browser_click',
-  'browser_eval',
   'browser_navigate',
   'browser_snapshot',
-  'browser_fill',
-  'browser_type',
-  'browser_press',
-  'browser_select',
   'browser_scroll',
-  'browser_hover',
   'browser_wait',
-  'browser_batch',
   'editor_current_file',
   'editor_visible_text',
   'command_status',
-  'manage_task',
   'memory',
   'skill',
   'ask_user_question',
@@ -136,7 +134,11 @@ class CicloDePlan {
 
   /** ¿Toca devolver el control? */
   revisionVencida() {
-    return this.fase === 'ejecutando' && this.invocaciones >= this.cada;
+    return (
+      this.fase === 'ejecutando' &&
+      this.invocaciones >= this.cada &&
+      this.revisiones < this.maxRevisiones
+    );
   }
 
   /** Texto a inyectar antes del siguiente paso, si hay algo que decir. */

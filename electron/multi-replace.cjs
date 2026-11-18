@@ -51,6 +51,13 @@ function aplicarReemplazos(textoOriginal, trozos) {
 
   let texto = textoOriginal;
   let aplicados = 0;
+  /*
+   * Los números de línea que manda el modelo suelen ser los del fichero que
+   * leyó, no los del resultado de la edición anterior. Si un trozo previo
+   * añadió o quitó líneas, se prueba también el rango desplazado; así el
+   * segundo cambio no falla por un desfase que el modelo no puede ver.
+   */
+  let desplazamientoLineas = 0;
 
   for (let i = 0; i < trozos.length; i += 1) {
     const trozo = trozos[i] ?? {};
@@ -71,25 +78,45 @@ function aplicarReemplazos(textoOriginal, trozos) {
       return { error: `El trozo ${i + 1} tiene un rango inválido (${desde}-${hasta}).`, indice: i };
     }
 
-    const { inicio, fin } = textoDelRango(texto, desde, hasta);
-    const ventana = texto.slice(inicio, fin);
+    const candidatos = [{ desde, hasta }];
+    if (desplazamientoLineas !== 0) {
+      const desdeAjustado = Math.max(1, desde + desplazamientoLineas);
+      const hastaAjustado = Math.max(desdeAjustado, hasta + desplazamientoLineas);
+      if (desdeAjustado !== desde || hastaAjustado !== hasta) {
+        candidatos.push({ desde: desdeAjustado, hasta: hastaAjustado });
+      }
+    }
 
-    const primera = ventana.indexOf(objetivo);
-    if (primera === -1) {
+    let elegido = null;
+    let ambiguo = false;
+    for (const rango of candidatos) {
+      const { inicio, fin } = textoDelRango(texto, rango.desde, rango.hasta);
+      const ventana = texto.slice(inicio, fin);
+      const primera = ventana.indexOf(objetivo);
+      if (primera === -1) continue;
+      if (ventana.indexOf(objetivo, primera + 1) !== -1) {
+        ambiguo = true;
+        continue;
+      }
+      elegido = { inicio, primera, desde: rango.desde, hasta: rango.hasta };
+      break;
+    }
+
+    if (!elegido) {
       return {
-        error: `El trozo ${i + 1} no encuentra su \`targetContent\` entre las líneas ${desde} y ${hasta}.`,
+        error: ambiguo
+          ? `El trozo ${i + 1} encuentra su \`targetContent\` más de una vez. Amplía el contexto.`
+          : `El trozo ${i + 1} no encuentra su \`targetContent\` entre las líneas ${desde} y ${hasta}` +
+            (desplazamientoLineas !== 0 ? ' ni con el rango desplazado.' : '.'),
         indice: i,
       };
     }
-    if (ventana.indexOf(objetivo, primera + 1) !== -1) {
-      return {
-        error: `El trozo ${i + 1} encuentra su \`targetContent\` más de una vez entre las líneas ${desde} y ${hasta}. Amplía el contexto.`,
-        indice: i,
-      };
-    }
 
-    const absoluto = inicio + primera;
+    const absoluto = elegido.inicio + elegido.primera;
     texto = texto.slice(0, absoluto) + reemplazo + texto.slice(absoluto + objetivo.length);
+    const lineasObjetivo = objetivo.split('\n').length;
+    const lineasReemplazo = reemplazo.length === 0 ? 0 : reemplazo.split('\n').length;
+    desplazamientoLineas += lineasReemplazo - lineasObjetivo;
     aplicados += 1;
   }
 

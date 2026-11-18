@@ -9,7 +9,7 @@
  */
 
 import { build } from 'esbuild';
-import { rm, copyFile, mkdir } from 'node:fs/promises';
+import { rm, copyFile, mkdir, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -65,4 +65,21 @@ await copyFile(
   join(projectRoot, 'renderer', 'xterm', 'xterm.css'),
 );
 
-console.log('Monaco y xterm empaquetados en renderer/');
+/*
+ * KaTeX: las fórmulas del markdown. Se copia su bundle y sus fuentes (la hoja
+ * las referencia por ruta relativa) a renderer/katex.
+ */
+const katexSrc = join(projectRoot, 'node_modules', 'katex', 'dist');
+const katexOut = join(projectRoot, 'renderer', 'katex');
+await rm(katexOut, { recursive: true, force: true });
+await mkdir(join(katexOut, 'fonts'), { recursive: true });
+await copyFile(join(katexSrc, 'katex.min.js'), join(katexOut, 'katex.min.js'));
+await copyFile(join(katexSrc, 'katex.min.css'), join(katexOut, 'katex.min.css'));
+// Su licencia viaja con el código: se distribuye dentro del paquete.
+await copyFile(join(projectRoot, 'node_modules', 'katex', 'LICENSE'), join(katexOut, 'LICENSE'));
+const fuentes = await readdir(join(katexSrc, 'fonts'));
+for (const fuente of fuentes) {
+  await copyFile(join(katexSrc, 'fonts', fuente), join(katexOut, 'fonts', fuente));
+}
+
+console.log('Monaco, xterm y KaTeX empaquetados en renderer/');

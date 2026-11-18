@@ -16,12 +16,57 @@ a mano en ningún sitio.
 | `gemini` | `GET {baseUrl}/models?key=<clave>` | clave en query |
 | `ollama` | `GET {baseUrl}/api/tags` | sin clave |
 
-Si el endpoint falla o no existe, se usa una lista curada como respaldo
-(Anthropic y Gemini) para que la UI nunca se quede vacía.
+La lista curada (Anthropic y Gemini) solo se usa cuando **no hay clave**: con
+clave, un 401 o un fallo de red se propaga y la UI lo muestra. Antes se
+silenciaba y el proveedor aparecía como disponible aunque luego fallara al
+chatear.
+
+### Detección en la app
+
+- Cuentan tanto las claves guardadas en Ajustes como las variables de entorno.
+- Todos los proveedores se consultan **en paralelo** y cada listado tiene un
+  timeout de 12 s (`LIST_TIMEOUT_MS`): uno que no responde no bloquea al resto.
+- El resultado se cachea 20 s; «Detectar de nuevo» en Ajustes › Models fuerza
+  una consulta nueva.
+- OpenCode Zen y Go comparten la clave guardada: pegarla en uno deja el otro
+  disponible automáticamente.
+- El nombre que devuelve el endpoint (`name`) es el que se muestra; el `id` es
+  lo que se guarda y se envía.
+
+## Pensamiento extendido
+
+El botón **Think/Pensar** vive en el composer y solo aparece si el modelo
+seleccionado lo admite; nunca cambia de modelo ni lo activa en otro.
+
+- **Anthropic** (Claude 3.7+/4/5): `thinking: { type: "enabled", budget_tokens:
+  4096 }`, con `max_tokens` por encima y `temperature: 1` (lo exige la API).
+- **Gemini 2.5+**: `thinkingConfig.includeThoughts` y `thinkingBudget: 4096`.
+  En modelos anteriores no se envía el campo.
+- **OpenAI-compatibles**: no se ofrece el botón. Los que emiten
+  `reasoning_content` (DeepSeek, etc.) ya lo hacen solos sin configuración y sin
+  coste adicional elegido por nosotros.
+
+El proceso principal valida otra vez el modelo antes de enviar el presupuesto:
+si no coincide, el turno va sin pensamiento. Los subagentes y el planner no lo
+usan.
+
+### Razonamiento mostrado
+
+- El razonamiento del proveedor (`reasoning_content`, `thinking_delta`, `thought`)
+  se pinta en el bloque «Pensó durante Ns», cerrado por defecto. Al abrirlo se ve
+  entero: no hay tope de altura ni scroll interno.
+- Un reintento de stream descarta lo parcial (`stream_reset`): ni el texto ni el
+  razonamiento del intento fallido se quedan pegados al reintento.
+- La longitud la decide el modelo. Medido con Beam Free y la misma pregunta:
+  0,5k–3,6k caracteres según la llamada. No se envía `reasoning_effort`: probado
+  contra su pasarela, `high`/`max` acortan el razonamiento y `reasoning:{effort}`
+  devuelve 400.
+- El razonamiento no se guarda en el historial JSONL: al reabrir una conversación
+  antigua no se reconstruyen los bloques de pensamiento.
 
 ## Catálogo
 
-### Locales (sin clave)
+### Locales (clave opcional)
 
 | id | Nombre | Endpoint | Nota |
 |---|---|---|---|
@@ -29,6 +74,16 @@ Si el endpoint falla o no existe, se usa una lista curada como respaldo
 | `lmstudio` | LM Studio | `http://127.0.0.1:1234/v1` | Servidor local |
 | `vllm` | vLLM | `http://127.0.0.1:8000/v1` | Servidor local |
 | `llamacpp` | llama.cpp | `http://127.0.0.1:8080/v1` | `llama-server` |
+
+Los tres OpenAI-compatibles son `selfHosted`: en Ajustes › Models se puede
+cambiar la URL (si el servidor usa otro puerto) y pegar un token, que se envía
+como `Authorization: Bearer <token>`. El token es **opcional**: sin él se
+consulta y se chatea igual. Ollama no usa token y no muestra esos campos.
+
+LM Studio 0.4 o posterior permite exigirlo: Developer › Server Settings ›
+Require Authentication, y los tokens se crean en Manage Tokens. Si esa opción
+está activa, sin token el listado devuelve 401 y el proveedor aparece como no
+disponible con el error del servidor.
 
 ### En la nube
 

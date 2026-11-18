@@ -6,6 +6,14 @@
 import { ProviderError } from './types.js';
 
 /**
+ * Tiempo máximo para listar modelos.
+ *
+ * La detección recorre proveedores en serie: uno que no responde no puede
+ * dejar la lista de modelos (y los ajustes) esperando para siempre.
+ */
+export const LIST_TIMEOUT_MS = 12_000;
+
+/**
  * Lee un cuerpo `text/event-stream` y entrega cada evento `data:` ya parseado.
  *
  * OpenAI, Anthropic y Gemini usan SSE. En vez de repetir el parser en cada
@@ -26,13 +34,17 @@ export async function* readSSE(
 
       buffer += decoder.decode(value, { stream: true });
 
-      // Los eventos SSE se separan por línea en blanco.
-      let boundary = buffer.indexOf('\n\n');
-      while (boundary !== -1) {
-        const rawEvent = buffer.slice(0, boundary);
-        buffer = buffer.slice(boundary + 2);
+      /*
+       * Los eventos SSE se separan por línea en blanco. El estándar permite
+       * CRLF, y hay pasarelas que lo usan: buscar solo `\n\n` dejaba el turno
+       * sin eventos o con un bloque ilegible.
+       */
+      let separador = /\r?\n\r?\n/.exec(buffer);
+      while (separador) {
+        const rawEvent = buffer.slice(0, separador.index);
+        buffer = buffer.slice(separador.index + separador[0].length);
 
-        for (const line of rawEvent.split('\n')) {
+        for (const line of rawEvent.split(/\r?\n/)) {
           const trimmed = line.trimStart();
           if (!trimmed.startsWith('data:')) continue;
 
@@ -43,7 +55,7 @@ export async function* readSSE(
           yield payload;
         }
 
-        boundary = buffer.indexOf('\n\n');
+        separador = /\r?\n\r?\n/.exec(buffer);
       }
     }
   } finally {
@@ -222,3 +234,36 @@ export const DEFAULT_BASE_URLS = {
   anthropic: 'https://api.anthropic.com/v1',
   gemini: 'https://generativelanguage.googleapis.com/v1beta',
 } as const;
+
+/**
+ * Texto de un delta, sea cual sea la forma en que llegue.
+ *
+ * La API de OpenAI define `content` como cadena, pero varias pasarelas
+ * compatibles mandan una lista de partes (`[{ type: 'text', text: '…' }]`) y
+ * algunos modelos mandan un objeto. Concatenar eso tal cual producía el literal
+ * «[object Object]» en el hilo, así que se normaliza aquí, en el borde.
+ */
+export function textoDeDelta(valor: unknown): string {
+  if (typeof valor === 'string') return valor;
+  if (Array.isArray(valor)) {
+    let texto = '';
+    for (const parte of valor) {
+      if (typeof parte === 'string') {
+        texto += parte;
+        continue;
+      }
+      if (parte && typeof parte === 'object') {
+        const registro = parte as { text?: unknown; content?: unknown };
+        if (typeof registro.text === 'string') texto += registro.text;
+        else if (typeof registro.content === 'string') texto += registro.content;
+      }
+    }
+    return texto;
+  }
+  if (valor && typeof valor === 'object') {
+    const registro = valor as { text?: unknown; content?: unknown };
+    if (typeof registro.text === 'string') return registro.text;
+    if (typeof registro.content === 'string') return registro.content;
+  }
+  return '';
+}

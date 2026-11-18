@@ -58,6 +58,7 @@ export class JsonlSessionStore implements SessionStore {
       provider: init.provider,
       model: init.model,
       cwd: init.cwd,
+      project: init.project === undefined ? init.cwd : init.project,
       messageCount: 0,
     };
 
@@ -174,6 +175,16 @@ export class JsonlSessionStore implements SessionStore {
     await this.writeIndex(index);
   }
 
+  /** Cambia el proyecto de una sesión sin tocar sus mensajes. */
+  async setProject(id: string, project: string | null): Promise<void> {
+    const index = await this.readIndex();
+    const meta = index.find((entry) => entry.id === id);
+    if (!meta) return;
+    meta.project = project;
+    meta.updatedAt = new Date().toISOString();
+    await this.writeIndex(index);
+  }
+
   async delete(id: string): Promise<void> {
     const index = await this.readIndex();
     const remaining = index.filter((entry) => entry.id !== id);
@@ -190,12 +201,82 @@ export class JsonlSessionStore implements SessionStore {
     return sessions[0];
   }
 
+  /**
+   * Ruta del fichero de una sesión.
+   *
+   * El id se comprueba antes de montar la ruta: sin esto un id manipulado
+   * (`../../algo`) haría que `delete` o `rewrite` escribieran o borraran fuera de
+   * la carpeta de sesiones. Los ids los genera la app, así que un id con
+   * separadores o `..` solo puede venir de fuera: se rechaza.
+   */
   private sessionPath(id: string): string {
-    return join(this.sessionsDir, `${id}.jsonl`);
+    const limpio = String(id ?? '');
+    if (!/^[A-Za-z0-9._-]+$/.test(limpio) || limpio === '.' || limpio === '..') {
+      throw new Error(`id de sesión no válido: ${limpio}`);
+    }
+    return join(this.sessionsDir, `${limpio}.jsonl`);
   }
 
   private async ensureDirs(): Promise<void> {
     await mkdir(this.sessionsDir, { recursive: true });
+  }
+
+  /**
+   * Repara sesiones guardadas con el contenido como `{ texto, encontrados }`.
+   *
+   * Una versión del redactor de secretos devolvía un objeto y se persistió tal
+   * cual: al reabrir el hilo, cada mensaje se pintaba como `[object Object]`.
+   * El texto sigue dentro (`texto`), así que se recupera y se reescribe el
+   * fichero solo si hubo algo que arreglar. Idempotente: se puede llamar en
+   * cada arranque sin coste cuando ya está limpio.
+   */
+  async repararContenidoObjeto(): Promise<{ ficheros: number; mensajes: number }> {
+    await this.ensureDirs();
+    let ficheros = 0;
+    let mensajes = 0;
+
+    const nombres = await readdir(this.sessionsDir).catch(() => [] as string[]);
+    for (const nombre of nombres) {
+      if (!nombre.endsWith('.jsonl')) continue;
+      const ruta = join(this.sessionsDir, nombre);
+      const crudo = await readFile(ruta, 'utf8').catch(() => null);
+      if (crudo === null) continue;
+
+      let tocado = 0;
+      const lineas = crudo.split('\n').map((linea) => {
+        const limpia = linea.trim();
+        if (limpia.length === 0) return linea;
+
+        let registro: StoredLine;
+        try {
+          registro = JSON.parse(limpia) as StoredLine;
+        } catch {
+          return linea;
+        }
+
+        const contenido: unknown = registro?.message?.content;
+        if (contenido === null || typeof contenido !== 'object' || Array.isArray(contenido)) {
+          return linea;
+        }
+        if (!('texto' in contenido)) return linea;
+        const texto = contenido.texto;
+        if (typeof texto !== 'string') return linea;
+
+        registro.message.content = texto;
+        tocado += 1;
+        return JSON.stringify(registro);
+      });
+
+      if (tocado === 0) continue;
+
+      const temporal = `${ruta}.tmp`;
+      await writeFile(temporal, lineas.join('\n'), 'utf8');
+      await rename(temporal, ruta);
+      ficheros += 1;
+      mensajes += tocado;
+    }
+
+    return { ficheros, mensajes };
   }
 
   private async readIndex(): Promise<SessionMeta[]> {
@@ -279,8 +360,9 @@ const VACIAS = new Set([
  * queda con las significativas. Es gratis e inmediato, y mucho mejor que
  * volcar 80 caracteres del prompt.
  */
-function titleFrom(content: string): string {
-  const limpio = content.replace(/\s+/g, ' ').trim();
+function titleFrom(contenido: unknown): string {
+  // Tolerante: un contenido que no sea texto no puede tumbar el guardado.
+  const limpio = String(contenido ?? '').replace(/\s+/g, ' ').trim();
   if (limpio.length === 0) return 'Nueva conversación';
 
   // Quitar relleno inicial, encadenado (p. ej. «Hola, por favor puedes…»).

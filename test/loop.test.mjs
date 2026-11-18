@@ -622,3 +622,224 @@ describe('eventos', () => {
     }
   });
 });
+
+test('un reintento descarta el texto parcial y avisa a la UI', async () => {
+  let llamada = 0;
+  const proveedor = {
+    id: 'falso',
+    async *streamGenerate() {
+      llamada += 1;
+      if (llamada === 1) {
+        yield { type: 'reasoning', text: 'razonamiento parcial' };
+        yield { type: 'text', text: 'texto parcial' };
+        throw new Error('corte de red');
+      }
+      yield { type: 'reasoning', text: 'razonamiento bueno' };
+      yield { type: 'text', text: 'respuesta buena' };
+      yield { type: 'done', finishReason: 'stop' };
+    },
+  };
+
+  const eventos = [];
+  const resultado = await runAgent(
+    {
+      provider: proveedor,
+      model: 'falso',
+      tools: new ToolRegistry(),
+      onEvent: (evento) => eventos.push(evento.type),
+    },
+    'hola',
+  );
+
+  assert.equal(resultado.text, 'respuesta buena');
+  assert.ok(eventos.includes('stream_reset'), 'la UI debe poder limpiar lo parcial');
+});
+
+test('un 404 de modelo no se reintenta', async () => {
+  let llamadas = 0;
+  const proveedor = {
+    id: 'falso',
+    async *streamGenerate() {
+      llamadas += 1;
+      throw new Error('HTTP 404: model not found');
+    },
+  };
+
+  await assert.rejects(
+    runAgent({ provider: proveedor, model: 'inexistente', tools: new ToolRegistry() }, 'hola'),
+    /404/,
+  );
+  assert.equal(llamadas, 1);
+});
+
+test('los argumentos de una herramienta cuentan en el presupuesto de contexto', async () => {
+  /*
+   * Antes solo se sumaba `content`: el `write_file` de un fichero grande viaja
+   * en `toolCalls`, así que el recorte nunca se activaba y el proveedor
+   * rechazaba el turno por tamaño.
+   */
+  let llamada = 0;
+  const proveedor = {
+    id: 'falso',
+    async *streamGenerate(req) {
+      if (String(req.system ?? '').startsWith('Resume')) {
+        yield { type: 'text', text: 'resumen' };
+        yield { type: 'done', finishReason: 'stop' };
+        return;
+      }
+      llamada += 1;
+      if (llamada === 1) {
+        yield {
+          type: 'tool_call',
+          call: { id: 'c1', name: 'write_file', arguments: { content: 'x'.repeat(5000) } },
+        };
+        yield { type: 'done', finishReason: 'tool_calls' };
+        return;
+      }
+      yield { type: 'text', text: 'listo' };
+      yield { type: 'done', finishReason: 'stop' };
+    },
+  };
+
+  const herramientas = new ToolRegistry().register({
+    name: 'write_file',
+    description: 'escribe',
+    parameters: { type: 'object', properties: { content: { type: 'string' } } },
+    async execute() {
+      return { content: 'ok' };
+    },
+  });
+
+  const eventos = [];
+  await runAgent(
+    {
+      provider: proveedor,
+      model: 'falso',
+      tools: herramientas,
+      maxContextChars: 1000,
+      onEvent: (evento) => eventos.push(evento.type),
+    },
+    'hola',
+  );
+
+  assert.ok(eventos.includes('compacting'), 'el turno debe compactar antes del segundo paso');
+});
+
+test('un corte por longitud no ejecuta herramientas incompletas', async () => {
+  let ejecutada = false;
+  const herramientas = new ToolRegistry().register({
+    name: 'write_file',
+    description: 'escribe',
+    parameters: { type: 'object', properties: { path: { type: 'string' } } },
+    async execute() {
+      ejecutada = true;
+      return { content: 'escrito' };
+    },
+  });
+
+  // Argumentos vacíos + finishReason 'length': es lo que el adaptador produce
+  // cuando el modelo se corta a mitad de la llamada.
+  const proveedor = proveedorFalso(() => [
+    { type: 'tool_call', call: { id: 'c1', name: 'write_file', arguments: {} } },
+    { type: 'done', finishReason: 'length' },
+  ]);
+
+  const eventos = [];
+  const resultado = await runAgent(
+    { provider: proveedor, model: 'falso', tools: herramientas, onEvent: (e) => eventos.push(e) },
+    'escribe el fichero',
+  );
+
+  assert.equal(ejecutada, false, 'la herramienta truncada no debe ejecutarse');
+  assert.equal(resultado.reason, 'stop');
+  assert.ok(
+    eventos.some((e) => e.type === 'system_step' && e.text.includes('cortó por longitud')),
+    'la UI debe saber que se cortó',
+  );
+});
+
+test('un mensaje de usuario gigante se recorta pero no se pierde', async () => {
+  let recibido = null;
+  const proveedor = {
+    id: 'falso',
+    async *streamGenerate(req) {
+      // Copia: el bucle sigue usando el array después de esta llamada.
+      recibido = req.messages.map((m) => ({ ...m }));
+      yield { type: 'text', text: 'ok' };
+      yield { type: 'done', finishReason: 'stop' };
+    },
+  };
+
+  const pegado = 'A'.repeat(20_000) + 'COLA-FINAL';
+  const resultado = await runAgent(
+    { provider: proveedor, model: 'falso', tools: new ToolRegistry(), maxContextChars: 1000 },
+    pegado,
+  );
+
+  const enviado = recibido[0];
+  assert.ok(
+    enviado.content.includes('[recortado por contexto'),
+    'el mensaje debe recortarse para caber',
+  );
+  assert.ok(enviado.content.endsWith('COLA-FINAL'), 'se conserva la cola del mensaje');
+  assert.ok(enviado.content.length < pegado.length);
+  assert.equal(resultado.appended[0].content, pegado, 'en disco se guarda el mensaje completo');
+});
+
+test('las imágenes adjuntas se sueltan cuando no caben en el presupuesto', async () => {
+  let recibido = null;
+  const proveedor = {
+    id: 'falso',
+    async *streamGenerate(req) {
+      recibido = req.messages.map((m) => ({ ...m }));
+      yield { type: 'text', text: 'ok' };
+      yield { type: 'done', finishReason: 'stop' };
+    },
+  };
+
+  await runAgent(
+    {
+      provider: proveedor,
+      model: 'falso',
+      tools: new ToolRegistry(),
+      maxContextChars: 1000,
+      images: [{ mimeType: 'image/png', data: 'x'.repeat(50_000) }],
+    },
+    '¿qué ves?',
+  );
+
+  assert.equal(recibido[0].images, undefined, 'la imagen no debe viajar si no cabe');
+});
+
+test('lo que se guarda en disco es lo del turno, aunque el historial se compacte', async () => {
+  // El proveedor resume cuando se le pide compactar y responde al turno normal.
+  const proveedor = {
+    id: 'falso',
+    async *streamGenerate(req) {
+      if (String(req.system ?? '').startsWith('Resume')) {
+        yield { type: 'text', text: 'resumen' };
+        yield { type: 'done', finishReason: 'stop' };
+        return;
+      }
+      yield { type: 'text', text: 'hecho' };
+      yield { type: 'done', finishReason: 'stop' };
+    },
+  };
+
+  const resultado = await runAgent(
+    {
+      provider: proveedor,
+      model: 'falso',
+      tools: new ToolRegistry(),
+      maxContextChars: 800,
+      initialMessages: Array.from({ length: 20 }, (_, i) => ({
+        role: 'user',
+        content: `mensaje ${i} ${'z'.repeat(200)}`,
+      })),
+    },
+    'PROMPT-NUEVO-DEL-USUARIO',
+  );
+
+  assert.equal(resultado.appended[0].content, 'PROMPT-NUEVO-DEL-USUARIO');
+  assert.ok(resultado.appended.length >= 2, 'el turno del asistente también se guarda');
+});

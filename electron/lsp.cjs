@@ -14,6 +14,55 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
+/**
+ * En Windows los lanzadores npm (`pyright-langserver`, `typescript-language-server`)
+ * son `.cmd`: `spawn` no los ejecuta sin un shell. Se resuelve el shim y se
+ * lanza con `cmd.exe`, citando cada argumento.
+ */
+function resolverShimWindows(comando) {
+  if (process.platform !== 'win32') return null;
+  const texto = String(comando);
+
+  if (path.isAbsolute(texto)) {
+    return /\.(cmd|bat)$/i.test(texto) ? texto : null;
+  }
+
+  const extensiones = ['.cmd', '.bat', '.exe', ''];
+  for (const carpeta of String(process.env.PATH ?? '').split(path.delimiter)) {
+    for (const extension of extensiones) {
+      const candidato = path.join(carpeta, `${texto}${extension}`);
+      if (!require('node:fs').existsSync(candidato)) continue;
+      return /\.(cmd|bat)$/i.test(candidato) ? candidato : null;
+    }
+  }
+  return null;
+}
+
+/** Cita un argumento para `cmd.exe /c`; las rutas con espacios son lo normal. */
+function citarParaCmd(argumento) {
+  const texto = String(argumento);
+  return /[\s"&|<>^()%!]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+}
+
+/** Arranca el servidor, atravesando el shim `.cmd` cuando haga falta. */
+function lanzarServidor(comando, argumentos, cwd) {
+  const shim = resolverShimWindows(comando);
+  if (shim) {
+    const linea = [shim, ...argumentos].map(citarParaCmd).join(' ');
+    return spawn(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', linea], {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+      windowsVerbatimArguments: true,
+    });
+  }
+  return spawn(comando, argumentos, {
+    cwd,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+}
+
 /** Comandos por defecto según el lenguaje. El usuario puede sobrescribirlos. */
 const DEFAULT_SERVERS = {
   typescript: { command: 'typescript-language-server', args: ['--stdio'] },
@@ -56,6 +105,17 @@ function lspLanguageId(language) {
   return language === 'javascript' ? 'javascript' : language;
 }
 
+/**
+ * Pyright publica `file:///c%3A/...` y Node genera `file:///C:/...`. Los mapas
+ * de diagnósticos tienen que usar la misma clave o el editor se queda a cero.
+ */
+function normalizarUri(uri) {
+  return String(uri).replace(
+    /^file:\/\/\/([A-Za-z])(%3A|:)/i,
+    (_todo, letra) => `file:///${String(letra).toLowerCase()}:`,
+  );
+}
+
 class LspClient {
   constructor(options) {
     this.language = options.language;
@@ -74,11 +134,7 @@ class LspClient {
   /** Arranca el servidor y completa el handshake. */
   async start() {
     const { command, args } = this.serverCommand;
-    this.child = spawn(command, args, {
-      cwd: this.rootPath,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
+    this.child = lanzarServidor(command, args, this.rootPath);
 
     this.child.stdout.on('data', (chunk) => this.consume(chunk));
     this.child.stderr.on('data', (chunk) => this.onLog(String(chunk).slice(0, 400)));
@@ -119,9 +175,11 @@ class LspClient {
           },
           publishDiagnostics: {},
         },
-        workspace: { workspaceFolders: false },
+        workspace: { configuration: true, workspaceFolders: true },
       },
-      workspaceFolders: null,
+      workspaceFolders: [
+        { uri: rootUri, name: path.basename(this.rootPath) },
+      ],
     });
 
     this.ready = true;
@@ -139,7 +197,10 @@ class LspClient {
 
   /** Abre un documento si no estaba abierto. */
   didOpen(uri, text) {
-    if (this.opened.has(uri)) return;
+    if (this.opened.has(uri)) {
+      this.didChange(uri, text);
+      return;
+    }
     this.opened.set(uri, 1);
     this.notify('textDocument/didOpen', {
       textDocument: {
@@ -196,7 +257,7 @@ class LspClient {
 
   /** Diagnósticos conocidos de un fichero. */
   diagnosticsFor(uri) {
-    return this.diagnostics.get(uri) ?? [];
+    return this.diagnostics.get(normalizarUri(uri)) ?? this.diagnostics.get(uri) ?? [];
   }
 
   /** Envía una petición y espera respuesta. */
@@ -282,14 +343,31 @@ class LspClient {
 
     if (message.method === 'textDocument/publishDiagnostics') {
       const { uri, diagnostics } = message.params ?? {};
-      this.diagnostics.set(uri, diagnostics ?? []);
+      this.diagnostics.set(normalizarUri(uri), diagnostics ?? []);
       this.onDiagnostics(uri, diagnostics ?? []);
       return;
     }
 
-    // Peticiones del servidor que no atendemos: responder null para no bloquear.
+    /*
+     * Peticiones del servidor. Pyright y rust-analyzer piden configuración al
+     * arrancar; devolver null a secas puede dejarlos sin analizar el documento.
+     */
     if (message.id !== undefined && message.method) {
-      this.send({ jsonrpc: '2.0', id: message.id, result: null });
+      let result = null;
+      if (message.method === 'workspace/configuration') {
+        const items = Array.isArray(message.params?.items) ? message.params.items : [];
+        result = items.map(() => ({}));
+      } else if (message.method === 'workspace/workspaceFolders') {
+        result = [
+          {
+            uri: pathToFileURL(this.rootPath).href,
+            name: path.basename(this.rootPath),
+          },
+        ];
+      } else if (message.method === 'window/showMessageRequest') {
+        result = null;
+      }
+      this.send({ jsonrpc: '2.0', id: message.id, result });
     }
   }
 
@@ -318,4 +396,11 @@ class LspClient {
   }
 }
 
-module.exports = { LspClient, languageForPath, DEFAULT_SERVERS };
+module.exports = {
+  normalizarUri,
+  LspClient,
+  languageForPath,
+  DEFAULT_SERVERS,
+  resolverShimWindows,
+  citarParaCmd,
+};

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/readme-header.png" alt="Opengravity — IDE open source con agentes para cualquier modelo" width="100%">
+</p>
+
 # Opengravity
 
 IDE de escritorio con agentes **multi-proveedor**: la misma experiencia de
@@ -54,12 +58,56 @@ Deja dos ficheros en `release/`:
 útil para comprobar el contenido sin instalar. Los ejecutables no se versionan:
 `release/` está en `.gitignore`.
 
+Antes de repartir el resultado, `npm run verify:release` comprueba que los
+ejecutables lleven dentro el código de hoy (comparando bytes, no fechas), que
+las fuentes vayan con su licencia y deja las **huellas SHA-256** en
+`release/SHA256SUMS.txt`. **Qué falta todavía y por qué: ver
+[`docs/estado.md`](docs/estado.md).**
+
+### Descargar sin sustos (y sin pagar un certificado)
+
+Los ejecutables **no van firmados**: un certificado Authenticode cuesta dinero
+cada año y este proyecto es libre. Windows mostrará «editor desconocido» al
+instalar; es lo esperado, no un error. Lo que sí puedes hacer es comprobar que
+el fichero que bajaste es el que se publicó:
+
+```powershell
+# 1) Huella del fichero descargado
+Get-FileHash "Opengravity Setup 0.1.0.exe" -Algorithm SHA256
+
+# 2) Compárala con la que se publicó junto a la release
+Get-Content SHA256SUMS.txt
+
+# 3) Si coincide, quita la marca de «descargado de internet»
+Unblock-File "Opengravity Setup 0.1.0.exe"
+```
+
+Si la huella no coincide, no lo instales: no es el fichero publicado. Y si
+prefieres no instalar nada, siempre puedes compilar desde el código
+(`npm run dist`) y comparar.
+
 ## Qué incluye
 
 ### Agente
 
 - **22 proveedores** de modelo con autodetección de modelos y claves pegables
-  desde Ajustes (ver `docs/proveedores.md`)
+  desde Ajustes (ver `docs/proveedores.md`); detección en paralelo con timeout,
+  refresco manual y claves compartidas entre OpenCode Zen y Go
+- **Reglas del workspace**: `AGENTS.md` y `.agents/rules/*.md` entran al prompt
+  de sistema con presupuesto propio (20 000 tokens por defecto)
+- **Perfiles de trabajo** (`Interface Layout`): *Knowledge Work* responde como
+  documento (informe, resumen, plan) y *Software Engineering* lee, edita y
+  verifica código. Cambia el bloque de instrucciones del prompt
+  (`electron/personas.cjs`), igual con un modelo local que con uno de la nube.
+  No restringe herramientas: medido en el original, tampoco lo hace
+- **Pensamiento extendido** con un botón en el chat que solo aparece si el
+  modelo actual lo admite (Claude 3.7+/4/5 y Gemini 2.5+); no cambia de modelo
+  ni lo activa en otros
+- **Subagentes en paralelo con espera máxima**: varias ramas a la vez, cada una en su
+  worktree si escribe, y lo que no llega al presupuesto se cancela y se fusiona el
+  resto (Ajustes › Ejecución › *Subagent wait*)
+- **Memoria por patrón de fichero**: una memoria puede declarar `globs` y entra sola
+  cuando el agente escribe en un fichero que encaja, en vez de repetirla cada turno
 - Catálogo de herramientas abierto: lectura/escritura de código y cuadernos,
   búsqueda, terminal en segundo plano, MCP, memoria, skills, subagentes (en
   paralelo y anidados de solo lectura con presupuesto), planes,
@@ -83,7 +131,26 @@ Deja dos ficheros en `release/`:
 - **Monaco** con tema oscuro propio y resaltado por lenguaje
 - **LSP**: completado, diagnósticos, ir a definición, renombrar, formatear
   (TypeScript/JavaScript incluido en el proyecto; python/go/rust configurables)
+- **Selector de proyecto**: recientes, This Computer con búsqueda, New Project
+  y No Project; la conversación guarda su proyecto aparte del workspace.
 - Pestañas, estado de guardado, `Ctrl+S`
+
+#### Servidores LSP
+
+La app no empaqueta servidores externos. Para Python, Go y Rust hay que tenerlos
+instalados y visibles:
+
+- **Go**: `go` y `gopls`. La app añade al `PATH` las rutas estándar, `GOROOT`,
+  `GOPATH/bin`, `GOBIN` y los SDK de `%USERPROFILE%\sdk`. Para una instalación
+  arbitraria, define `GOROOT`, añade su carpeta `bin` al `PATH` o fija la ruta
+  en **Ajustes › Developer › Go**.
+- **Python**: `pylsp` o `pyright-langserver`. La app prefiere el primero; si no
+  hay ninguno, muestra un error al abrir un `.py`.
+- **Rust**: `rust-analyzer` en el `PATH`.
+
+No se escanean discos en busca de estos binarios: una ruta que no esté en el
+entorno o en las rutas anteriores no se detecta. `lspServers` permite fijar el
+comando y los argumentos de cada servidor.
 
 ### Resto del IDE
 
@@ -155,6 +222,89 @@ npm run dev -- --mcp-command npx --mcp-arg -y \
   --mcp-arg @modelcontextprotocol/server-filesystem --mcp-arg . --tools
 npm run dev -- --list-sessions
 ```
+
+### Headless (estilo `agy -p`)
+
+```bash
+# Respuesta limpia por stdout; diagnósticos por stderr.
+npm run dev -- -p "¿qué hace src/agent/loop.ts?" --output-format text
+
+# Un sobre JSON con conversación, estado y tokens.
+npm run dev -- -p "resume el proyecto" --output-format json
+
+# NDJSON: init → step_update → result.
+npm run dev -- -p "busca los TODO" --output-format stream-json
+
+# Conversación persistente por stdin: un result por prompt.
+printf '%s\n' \
+  '{"event":"user","message":{"content":"¿qué hace src/agent/loop.ts?"}}' \
+  '{"event":"user","message":{"content":"resume lo anterior"}}' \
+  | npm run dev -- --input-format stream-json --output-format stream-json
+
+# Continuar la última conversación.
+npm run dev -- -p "ahora arregla el primero" -c
+
+# Cambiar esfuerzo/modo y permitir escrituras en headless.
+npm run dev -- -p "arregla el test" --effort high --mode accept-edits
+npm run dev -- -p "ejecuta los tests" --sandbox --mode auto
+```
+
+### TUI
+
+Sin encargo y con una terminal interactiva, `npm run dev` abre la TUI de chat
+a pantalla completa:
+
+```bash
+npm run dev
+```
+
+La TUI completa acepta `/model`, `/mode`, `/tools`, `/clear`, `/help` y `/exit`.
+Para volver a la TUI de línea con todos los comandos de sesión:
+
+```bash
+OPENGRAVITY_LINE_TUI=1 npm run dev
+```
+
+En la **TUI de línea**:
+
+- `/model <id>` cambia de modelo; `/tools` lista el catálogo.
+- `/mode default|accept-edits|auto|plan` cambia permisos en caliente.
+- `/permissions`, `/mcp`, `/skills`, `/agents`, `/context` y `/config` muestran el estado.
+- `/panel` abre una TUI de paneles a pantalla completa (Estado, Sesiones, Herramientas, Skills, Agentes, Permisos y MCP); `←/→` cambia de pestaña, `↑/↓` desplaza y `q` sale.
+- `/diff`, `/resume`, `/rename`, `/fork`, `/rewind` y `/open` trabajan sobre el workspace;
+  `/rewind` restaura los ficheros tocados por las herramientas de edición y, en
+  repos git, los cambios de `run_command` (no binarios, ignorados ni fuera de git).
+- `/btw` hace una pregunta lateral sin tocar el hilo; `/swarm` y `/teamwork` lanzan
+  tres subagentes; `/plan` y `/goal` orientan el turno.
+- `/help` y `/exit`.
+- Las acciones sensibles piden confirmación `[y/N]`; `plan` es solo lectura.
+- Las claves cifradas de la app (`apiKeysEnc`) se descifran con `safeStorage` al
+  arrancar el CLI; no hace falta volver a escribirlas.
+
+### Permisos y ajustes
+
+El CLI lee el mismo `settings.json` que la app (`%APPDATA%/Opengravity` en
+Windows, `~/.config/Opengravity` en Linux, `~/Library/Application Support/Opengravity`
+en macOS). Los flags explícitos mandan. `--sandbox` confina las herramientas al
+workspace y `--add-dir` añade raíces adicionales.
+
+En headless no hay prompt: una acción que requiere aprobación se rechaza. Usa
+`--dangerously-skip-permissions`, un modo más amplio (`accept-edits`, `auto`
+con `--sandbox`) o reglas en `settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": ["command(git)", "command(regex:^npm run (build|lint|test))"],
+    "deny": ["write_file(.env)"]
+  }
+}
+```
+
+El catálogo incluye edición, búsqueda, comandos en segundo plano, tests,
+workflows, memoria, skills, `invoke_subagent` y `present_plan`; navegador y Flow
+necesitan Electron y no se registran en el CLI. `--json-schema` valida el JSON
+con Ajv, no solo lo parsea.
 
 ## Licencia
 

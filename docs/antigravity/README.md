@@ -1,45 +1,49 @@
-# Referencia de la interfaz de Antigravity
+# Medidas de la interfaz — notas propias
 
-Material extraído de Antigravity para replicar su interfaz **exactamente**. Es la
-fuente de consulta: antes de inventar un valor, se busca aquí y se confirma en su
-DOM en ejecución.
+Este directorio ya **no** contiene ficheros copiados de Antigravity. Antes había
+aquí su hoja de estilos completa (411 KB), su árbol DOM (181 KB) y su lista de
+canales internos, extraídos de la aplicación en ejecución y de su `app.asar`.
+Ese material es del producto de Google y no se puede redistribuir bajo una
+licencia MIT, así que se retiró del repositorio.
 
-## Ficheros
+Lo que queda es lo que sí es del proyecto: **números medidos** (colores, tamaños,
+espaciados) transcritos a mano. Los valores están en
+[`../design-tokens.md`](../design-tokens.md), que es la referencia que usa hoy el
+código, y se aplican en `renderer/styles.css`.
 
-| Fichero | Qué es | Tamaño |
+## Qué se retiró y por qué
+
+| Se retiró | Qué era | Por qué no se puede quedar |
 |---|---|---|
-| `estilos.css` | **Todas** sus hojas de estilo, 3 664 reglas de 14 hojas | 411 KB |
-| `dom.html` | El árbol completo de la app (`.agy-shell`) con todas sus clases | 181 KB |
-| `ipc.md` | Los 57 canales IPC de su proceso principal | — |
+| `estilos.css` | sus 3 664 reglas en 14 hojas | es su CSS, literal |
+| `dom.html` | su árbol de interfaz completo | es su marcado, literal |
+| `ajustes.html`, `chat-pasos.html` | capturas de sus pantallas | es su marcado, literal |
+| `ipc.md` | la lista de sus 57 canales internos | es su contrato interno |
+| `chat-estructura.md`, `ajustes-secciones.md` | sus clases y textos, copiados | texto y nombres suyos |
+| `assets/fonts/GoogleSans*.woff2` | las cinco fuentes de Google Sans | **no se retiraron: son SIL OFL**, ver abajo |
 
-## De dónde sale cada cosa
+## Cómo se mide ahora
 
-- **`estilos.css` y `dom.html`**: de la app en ejecución por CDP
-  (`--remote-debugging-port=9223`). Se recorren `document.styleSheets` y
-  `cssRules` y se serializa `outerHTML`. Son los valores reales, con las reglas
-  que ganan.
-- **`ipc.md`**: de `app.asar` con `npx @electron/asar extract`. Son ficheros de
-  texto empaquetados, no código compilado.
+Sin abrir el producto original y sin copiar ficheros suyos:
 
-## Lo que NO está en `app.asar`
+1. **Del propio producto**, solo lo que publica abiertamente (documentación,
+   capturas públicas) y solo para anotar decisiones de diseño.
+2. **Del proyecto**: `docs/design-tokens.md` y `renderer/styles.css` son la
+   fuente de verdad. Si un valor no está ahí, se decide con criterio propio y se
+   anota el porqué en el mismo fichero.
+3. **Pruebas**: `test/tokens-css.test.mjs` fija que no haya variables
+   autorreferentes, ni tokens con erratas, ni colores oscuros sueltos sin su
+   pareja del tema claro. Esa es la garantía real, no la comparación con su CSS.
 
-Su interfaz **no** vive ahí: el asar contiene el proceso principal (5 MB:
-`ipcHandlers.js`, `hostBridgeServer.js`, `guestDialogController.js`…) y la UI la
-sirve su servidor local (`https://127.0.0.1:64869/`). Por eso lo visual se saca
-del DOM en ejecución y no del paquete.
+## Tipografía
 
-Su `resources/bin/language_server.exe` (179 MB, Go compilado) es otra cosa: ese
-sí exige ingeniería inversa de verdad y ya está documentado en
-`docs/analysis/agente-cascade.md`.
+La interfaz usa **Google Sans**, **Google Sans Code** y **Google Sans Flex**,
+servidas desde `assets/fonts/`, más **Inter** de reserva. Son las mismas que carga
+Antigravity y **no son propietarias**: cada fichero declara dentro la SIL Open Font
+License 1.1. Lo comprobé leyendo la tabla de nombres de cada `.woff2`, no por
+suposición; el detalle y la atribución están en
+[`../fuentes-licencias.md`](../fuentes-licencias.md).
 
-## Cómo usarlo
-
-1. **Antes de escribir CSS nuevo**, buscar la regla en `estilos.css`:
-   ```
-   grep -n "terminal__tab\|\.tab-pill" docs/antigravity/estilos.css
-   ```
-2. **Para ver cómo está montado un elemento**, buscar su clase en `dom.html`.
-3. **Para confirmar un valor computado** —el que realmente se pinta— medir en su
-   DOM en ejecución. El CSS dice la regla; el DOM dice cuál gana.
-
-Las capturas de pantalla sirven para detectar que algo difiere, nunca para medir.
+Al contrario que el CSS y el DOM copiados, que sí eran material suyo y se
+retiraron, una fuente bajo OFL se puede redistribuir dentro de un producto: es
+justo lo que la licencia permite.

@@ -119,7 +119,7 @@ const REGLAS = [
     senal: 'L',
     nombre: 'quitar autenticación o validación',
     severidad: 6,
-    re: /\b(skip[_-]?auth|disable[_-]?auth|no[_-]?auth|bypass[_-]?auth|skipAuth|verifyAuth\s*=\s*false)\b/i,
+    re: /\b(skip|disable|no|bypass)[\s_-]?auth\b|\bskipAuth\b|verifyAuth\s*=\s*false/i,
   },
   {
     senal: 'L',
@@ -156,6 +156,19 @@ const CLAVES_INSPECCION = [
   'absolutePath',
   'url',
   'cwd',
+  // Ediciones: antes solo se miraba `content` (write_file), así que un
+  // edit_file con `it.skip` o una desactivación de auth pasaba sin señal.
+  'oldText',
+  'newText',
+  'targetContent',
+  'replacementContent',
+  // Delegación y avisos: la señal I (delegar para evadir) vive en el prompt.
+  'prompt',
+  'message',
+  'systemPrompt',
+  'description',
+  'question',
+  'label',
 ];
 
 /** Extrae el texto relevante de los argumentos de una herramienta. */
@@ -193,7 +206,11 @@ function textoDeArgs(args) {
  * @returns {{ severity: number, decision: 'allow'|'ask'|'deny', signals: string[], reason: string }}
  */
 function evaluarAccion({ toolName, args, razonamiento }) {
-  const esComando = toolName === 'run_command' || toolName === 'manage_task';
+  const esComando =
+    toolName === 'run_command' ||
+    toolName === 'manage_task' ||
+    toolName === 'run_workflow' ||
+    toolName === 'run_extension_code';
   const texto = textoDeArgs(args);
   const pensamiento = String(razonamiento ?? '');
 

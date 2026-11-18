@@ -174,6 +174,53 @@ Estaba como overlay centrado y **no era eso**: en su app es una tarjeta en líne
 anclada sobre el composer, de 768 px, radio 20, con opciones numeradas de 30 px,
 «Other (write your answer)» como última opción y `Submit ⏎`. Rehecha entera.
 
+## Actualización (2026-11-11) — medido contra Antigravity 2.31.0
+
+Se volvió a medir su DOM en vivo (CDP 9223, ventana 1424×892) y se corrigieron
+los deltas que seguían abiertos: sidebar, estado vacío, vista Browser y la
+navegación de Ajustes.
+
+### Barra lateral
+
+| Medida | Antigravity 2.31 | Antes | Ahora |
+|---|---|---|---|
+| Iconos superiores | logo x=8; toggles 50/82/114/146 | x=0; 42/74/106/138 | **x=8; 50/82/114/146** |
+| Navegación | y=75 | y=87 (margen de 12 px) | **y=75** |
+| Separador | y=195 | y=207 | **y=195** |
+| Cabecera de sección | x=8 w=240, título x=16, iconos 198/222 | x=0 w=256, título x=8, iconos 206/230 | **igual a 2.31** |
+| Fila de proyecto | icono 16 en x=16, etiqueta x=38 | etiqueta x=16, sin icono | **icono + x=38** |
+| Fila anidada | x=8 w=240, título x=38, hora x=224, kebab 24 en x=220 | x=16 w=224, título x=46, hora x=216, kebab 20 | **igual a 2.31** |
+| Chevron de sección | girado 90°, solo al pasar por encima | no existía | **añadido y plegable** |
+
+### Estado vacío
+
+- Marca de agua de 112×112 con opacidad 0.15 (0.2 en claro), y separador
+  `clamp(72px, -66px + 32vh, 264px)`: la marca queda en y=321 (su y=318 con
+  ventana 8 px más baja).
+- Título 24/32, weight 350, tracking −0.36 px, con el nombre del perfil:
+  «Hey Darío, what should we build today?». El nombre sale del perfil local o,
+  si está vacío, de la cuenta del sistema.
+
+### Vista Browser del panel
+
+- Barra de 40 px: atrás, adelante y recargar (24×24, gap 4) y pastilla de URL
+  de 28 px; el input empieza en x=+125 del panel, igual que su `browser-url-bar`.
+- `<webview>` con la partición `persist:opengravity-browser` y pestaña propia en
+  la fila superior, con icono, título y cierre.
+- Pendiente: su panel se ensancha a 786 px al abrir el navegador; el nuestro
+  mantiene 592. Su barra de URL lleva además el botón de descargas.
+
+### Ajustes
+
+- Navegación: General, Application, Appearance, Shortcuts, Notifications,
+  Models, **Browser**, Projects, Not in Project, Conversations; Give Feedback en
+  el pie. Cabecera «Settings» de 14 px recuperada y pasos de 30 px.
+- Sección **Browser** nueva con Built-in Browser (Open Links In, Download
+  Location con carpeta real y Change…, Browsing History con Clear) y Browser
+  Subagent (Browser Actuation Rules). Las descargas del webview se guardan en esa
+  carpeta.
+- «Models & Usage» como título de la sección.
+
 ## Lo que este porcentaje no mide
 
 - **Modelo**: excluido por encargo. La calidad de respuesta depende del proveedor

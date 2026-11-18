@@ -47,18 +47,33 @@ Píldoras y botones circulares: `9999px`.
 | Elemento | Valor |
 |---|---|
 | Ancho de barra lateral | `256px` (redimensionable, con sash de 8px) |
-| Alto de barra de título | `40px` |
+| Alto de barra de título | `35px` (medido con `getBoundingClientRect`) |
 | Ancho del cluster estático | `182px` |
 | Ancho máximo del hilo | `max(30vw, 48rem)` |
 | Separador lateral | `1px` sólido `--border` |
+| Hoja del panel | `1175×817` en `(257,75)`, radio `12px`, `--background`, con `8px` de aire a la derecha y abajo |
+| Barra del panel | `40px`, de borde a borde, **encima** de la hoja |
+| Composer (vacío) | `768×118` en `x=461`; 24 px hasta el borde de la hoja |
+| Composer (con hilo) | `768×82` en `x=293`; 16 px hasta el borde de la hoja |
+| Columna del hilo | `840px` con la tarjeta Overview abierta; `752px` de texto |
+| Tarjeta Overview | `320×166`, a 12 px del borde superior derecho de la hoja |
+| Ajustes | `1024×720` centrado en `(208,90)`, radio 24 (igual en ambos) |
+| Tarjetas de Interface Layout | `305×114` (original `306×112`), rejilla de 2 con gap `12`, relleno `14`, radio `12`; la elegida con el primario al 10 % |
+
+Estas filas se midieron con `Emulation.setDeviceMetricsOverride` a 1440×900 en
+las dos aplicaciones y `getBoundingClientRect` sobre el DOM real, no sobre
+capturas.
 
 ## Tipografía
 
-- Familia: pila del sistema (`system-ui`, `-apple-system`, `Segoe UI`, Roboto).
-- Cuerpo: `13px`.
+- Familia: **Google Sans** (interfaz) y **Google Sans Code** (código), servidas desde
+  `assets/fonts/`; detrás quedan `system-ui`/`Segoe UI` e `Inter` como reserva.
+  Las cinco son SIL OFL, comprobado en la tabla de nombres de cada `.woff2`
+  (ver [`fuentes-licencias.md`](fuentes-licencias.md)).
+- Cuerpo: `14px` con `line-height: 20px` (medido: el original trabaja sobre 14 px).
 - Etiquetas de sección: `11px`, mayúsculas, `letter-spacing: 0.04em`, peso 600.
 - Botones de barra de título y píldoras: `12px`.
-- Código y nombres de herramienta: `ui-monospace, 'Cascadia Code', Consolas`.
+- Código y nombres de herramienta: `'Google Sans Code', ui-monospace, Consolas`.
 
 ## Estructura de la interfaz
 
@@ -133,12 +148,10 @@ compartido: etiqueta + descripción a la izquierda, control a la derecha.
 
 ## Ficheros de referencia
 
-Los assets originales capturados están fuera del repositorio, en
-`C:\Users\Usuario\Desktop\antigravity-ui\`:
+Los valores de este documento se midieron a mano y se transcribieron aquí. **No
+se copió ningún fichero del producto original**: ni sus hojas de estilo, ni su
+DOM, ni sus capturas. Ese material se retiró del repositorio por licencia (ver
+`docs/antigravity/README.md`).
 
-- `dom.html` — DOM completo de la UI (60 KB)
-- `jetbox.css` — hoja de estilos del sistema de diseño (95 KB)
-- `compiled_tailwind.css` — utilidades compiladas (263 KB)
-- `index.html` — shell HTML original
-
-Se conservan solo como evidencia del análisis. El repositorio no los incluye.
+Si hace falta un valor nuevo, se decide con criterio propio, se anota aquí con su
+motivo y se aplica en `renderer/styles.css`.

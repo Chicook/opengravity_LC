@@ -15,10 +15,26 @@ import type {
   ImagePart,
   Message,
   ModelProvider,
+  ThinkingBlock,
   ToolCall,
 } from '../providers/types.js';
 import type { ToolContext } from '../tools/types.js';
+import { ventanaDeModelo } from './contexto.js';
 import type { ToolRegistry } from '../tools/registry.js';
+
+/**
+ * Un 4xx de configuración no se arregla repitiendo la misma petición: solo se
+ * reintentan cortes de red, timeouts, 429 y 5xx.
+ */
+function esErrorPermanente(error: unknown): boolean {
+  const texto = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  if (/\b(429|500|502|503|504|529)\b/.test(texto)) return false;
+  return (
+    /\b(400|401|403|404|405|422)\b/.test(texto) ||
+    /unauthorized|forbidden|invalid api key|authentication|permission denied|permiso denegado/.test(texto) ||
+    /(model|modelo).*(not found|no existe|does not exist|unknown|invalid|unsupported|not available)/.test(texto)
+  );
+}
 
 export interface AgentOptions {
   provider: ModelProvider;
@@ -36,10 +52,17 @@ export interface AgentOptions {
   images?: ImagePart[];
   /** Tope de caracteres por resultado de herramienta. Por defecto 16 000. */
   maxToolChars?: number;
-  /** Presupuesto de caracteres para todo el historial. Por defecto 400 000. */
+  /** Presupuesto de caracteres para todo el historial. Por defecto sale del modelo. */
   maxContextChars?: number;
+  /**
+   * Ventana real del modelo en tokens. Se usa para el presupuesto y para
+   * configurar el servidor local (`num_ctx`). Si falta, se deduce del id.
+   */
+  contextWindow?: number;
   /** Tiempo máximo por herramienta, en ms. Por defecto 120 000. */
   toolTimeoutMs?: number;
+  /** Tiempo máximo sin recibir un chunk del proveedor. Por defecto 120 000. */
+  streamIdleTimeoutMs?: number;
   /**
    * Pasos consecutivos sin evidencia nueva antes de inyectar una nota de ritmo.
    * 0 desactiva el monitor. Por defecto 3.
@@ -64,6 +87,18 @@ export interface AgentOptions {
   mensajeDeSistema?: (estado: { paso: number }) => string | null;
   /** Caché de prompt en el proveedor. Desactivada por defecto (cambia el coste). */
   cachePrompt?: boolean;
+  /**
+   * Presupuesto de pensamiento extendido en tokens (Claude y Gemini 2.5+).
+   * `0` o ausente deja el comportamiento por defecto del modelo.
+   */
+  /**
+   * Nivel de pensamiento elegido en el composer: minimal, low, medium, high,
+   * xhigh o max. Se traduce por proveedor con `ajustesDePensamiento`.
+   */
+  nivelDePensamiento?: string;
+  thinkingBudget?: number;
+  reasoningEffort?: string;
+  thinkingLevel?: string;
   /** Observador de eventos, para conectar la UI o el log. */
   onEvent?: (event: AgentEvent) => void;
 }
@@ -72,6 +107,8 @@ export interface AgentOptions {
 export type AgentEvent =
   | { type: 'text'; text: string }
   | { type: 'reasoning'; text: string }
+  /** El proveedor cortó el stream y se reintenta: la UI debe limpiar lo parcial. */
+  | { type: 'stream_reset' }
   | { type: 'tool_start'; call: ToolCall }
   | { type: 'tool_end'; call: ToolCall; content: string; isError: boolean; command?: string }
   | { type: 'step'; index: number }
@@ -87,6 +124,12 @@ export interface AgentResult {
   text: string;
   /** Historial completo, incluidos los turnos de herramienta. */
   messages: Message[];
+  /**
+   * Solo lo que añadió este turno, sin recortes ni compactación. Es lo que se
+   * guarda en disco: `messages` puede haber perdido mensajes por presupuesto,
+   * así que cortarlo por posición deja fuera el prompt del usuario.
+   */
+  appended: Message[];
   steps: number;
   reason: 'stop' | 'max_steps' | 'error';
 }
@@ -108,14 +151,25 @@ export async function runAgent(
   ctx: Omit<ToolContext, 'signal'> & { signal?: AbortSignal } = { cwd: process.cwd() },
 ): Promise<AgentResult> {
   const maxSteps = options.maxSteps ?? 12;
-  let messages: Message[] = [
-    ...(options.initialMessages ?? []),
-    {
-      role: 'user',
-      content: userInput,
-      ...(options.images && options.images.length > 0 ? { images: options.images } : {}),
-    },
-  ];
+  /*
+   * Las definiciones de herramienta viajan en cada petición y también ocupan
+   * ventana. Se serializan una vez: el registro no cambia durante el turno.
+   */
+  const toolDefinitions = options.tools.definitions();
+  const overheadChars =
+    (options.system?.length ?? 0) + JSON.stringify(toolDefinitions).length;
+  /** Lo que añade este turno, intacto: es lo que se guarda en disco. */
+  const appended: Message[] = [];
+  const add = (message: Message): void => {
+    messages.push(message);
+    appended.push(message);
+  };
+  let messages: Message[] = [...(options.initialMessages ?? [])];
+  add({
+    role: 'user',
+    content: userInput,
+    ...(options.images && options.images.length > 0 ? { images: options.images } : {}),
+  });
   let finalText = '';
   let steps = 0;
   let totalInput = 0;
@@ -152,21 +206,28 @@ export async function runAgent(
       maxSteps - steps <= 1 &&
       !messages.some((m) => m.content === options.mensajeFinalObligatorio)
     ) {
-      messages.push({ role: 'user', content: options.mensajeFinalObligatorio });
+      add({ role: 'user', content: options.mensajeFinalObligatorio, internal: true });
       options.onEvent?.({ type: 'system_step', text: options.mensajeFinalObligatorio });
     }
 
     // Mensaje de sistema inyectado (peticiones de revisión del plan).
     const inyectado = options.mensajeDeSistema?.({ paso: steps });
     if (inyectado) {
-      messages.push({ role: 'user', content: inyectado });
+      add({ role: 'user', content: inyectado, internal: true });
       options.onEvent?.({ type: 'system_step', text: inyectado });
     }
 
     // Ajusta el historial al presupuesto antes de cada llamada.
     // Primero intenta resumir con el modelo; si no puede, recorta caracteres.
-    const budget = options.maxContextChars ?? DEFAULT_MAX_CONTEXT_CHARS;
-    const usados = messages.reduce((sum, m) => sum + m.content.length, 0);
+    const budget =
+      options.maxContextChars ??
+      presupuestoPorDefecto({
+        providerId: options.provider?.id ?? '',
+        modelId: options.model,
+        contextWindow: options.contextWindow,
+        overheadChars,
+      });
+    const usados = messages.reduce((sum, m) => sum + pesoDeMensaje(m), 0);
 
     if (usados > budget) {
       options.onEvent?.({ type: 'compacting' });
@@ -177,13 +238,14 @@ export async function runAgent(
         budget,
         ctx.signal,
       );
-      messages = resumido ?? fitContext(messages, budget);
+      messages = fitContext(resumido ?? messages, budget);
     }
 
     const request: GenerateRequest = {
       model: options.model,
       messages,
-      tools: options.tools.definitions(),
+      tools: toolDefinitions,
+      ...(options.contextWindow ? { contextWindow: options.contextWindow } : {}),
       ...(options.system !== undefined ? { system: options.system } : {}),
       ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
       ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
@@ -194,9 +256,15 @@ export async function runAgent(
        * reutilización y saldría más caro.
        */
       cachePrompt: options.cachePrompt !== false && step > 0,
+      ...(options.thinkingBudget && options.thinkingBudget > 0
+        ? { thinkingBudget: options.thinkingBudget }
+        : {}),
+      ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+      ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
     };
 
     const toolCalls: ToolCall[] = [];
+    const thinkingBlocks: ThinkingBlock[] = [];
     let text = '';
     // Razonamiento del paso: sirve para detectar bucles de conclusión repetida.
     let razonamiento = '';
@@ -205,10 +273,29 @@ export async function runAgent(
     // En un objeto para que TS no estreche el tipo: la asignación ocurre en un cierre.
     const turn: { finishReason: FinishReason } = { finishReason: 'stop' };
 
+    const idleMs = options.streamIdleTimeoutMs ?? 120_000;
+
     // Un corte a mitad de stream no debe matar el turno: se reintenta una vez.
     for (let intento = 1; intento <= 2; intento += 1) {
+      const controlador = new AbortController();
+      let temporizador: NodeJS.Timeout | undefined;
+      let expirado = false;
+      const abortar = () => controlador.abort();
+      ctx.signal?.addEventListener('abort', abortar, { once: true });
+      if (ctx.signal?.aborted) controlador.abort();
+      const renovar = () => {
+        clearTimeout(temporizador);
+        temporizador = setTimeout(() => {
+          expirado = true;
+          controlador.abort();
+        }, idleMs);
+        temporizador.unref?.();
+      };
+      renovar();
+
       try {
-        for await (const chunk of options.provider.streamGenerate(request, ctx.signal)) {
+        for await (const chunk of options.provider.streamGenerate(request, controlador.signal)) {
+          renovar();
           handleChunk(chunk, {
             onText: (delta) => {
               text += delta;
@@ -218,6 +305,7 @@ export async function runAgent(
               razonamiento += delta;
               options.onEvent?.({ type: 'reasoning', text: delta });
             },
+            onThinkingBlock: (block) => thinkingBlocks.push(block),
             onToolCall: (call) => toolCalls.push(call),
             onDone: (reason) => {
               turn.finishReason = reason;
@@ -231,13 +319,24 @@ export async function runAgent(
         break;
       } catch (error) {
         if (ctx.signal?.aborted) throw error;
-        if (intento === 2) throw error;
+        if (expirado) {
+          throw new Error(
+            `El proveedor dejó de enviar datos durante ${Math.round(idleMs / 1000)} s.`,
+          );
+        }
+        if (intento === 2 || esErrorPermanente(error)) throw error;
 
         // Se descarta lo parcial: el reintento vuelve a emitir desde el inicio.
         text = '';
+        razonamiento = '';
         toolCalls.length = 0;
+        thinkingBlocks.length = 0;
+        options.onEvent?.({ type: 'stream_reset' });
         options.onEvent?.({ type: 'step', index: steps });
-        await new Promise((resolve) => setTimeout(resolve, 400));
+        await new Promise<void>((resolve) => setTimeout(resolve, 400));
+      } finally {
+        clearTimeout(temporizador);
+        ctx.signal?.removeEventListener('abort', abortar);
       }
     }
 
@@ -245,16 +344,40 @@ export async function runAgent(
     totalInput += turnInput;
     totalOutput += turnOutput;
 
+    /*
+     * Corte por longitud: los argumentos de las herramientas llegan a medias, así
+     * que ejecutarlas sería correrlas con `{}` y gastar el turno en errores que el
+     * modelo no puede diagnosticar. Se para y se le dice al usuario.
+     */
+    if (toolCalls.length > 0 && turn.finishReason === 'length') {
+      const aviso = text.trim().length > 0 ? text : 'La respuesta del modelo se cortó por longitud.';
+      add({ role: 'assistant', content: aviso });
+      options.onEvent?.({
+        type: 'system_step',
+        text: 'La respuesta se cortó por longitud: no se ejecutaron las herramientas incompletas.',
+      });
+      options.onEvent?.({ type: 'usage', inputTokens: totalInput, outputTokens: totalOutput });
+      options.onEvent?.({ type: 'done', reason: 'stop', steps, text: aviso });
+      return { text: aviso, messages, appended, steps, reason: 'stop' };
+    }
+
     // Sin herramientas: el agente ha terminado su respuesta.
     if (toolCalls.length === 0 || turn.finishReason !== 'tool_calls') {
-      messages.push({ role: 'assistant', content: text });
+      add({ role: 'assistant', content: text });
       options.onEvent?.({ type: 'usage', inputTokens: totalInput, outputTokens: totalOutput });
       options.onEvent?.({ type: 'done', reason: 'stop', steps, text });
-      return { text, messages, steps, reason: 'stop' };
+      return { text, messages, appended, steps, reason: 'stop' };
     }
 
     // Con herramientas: se registra el turno del asistente y se ejecutan.
-    messages.push({ role: 'assistant', content: text, toolCalls });
+    // Los bloques de pensamiento viajan con él: Anthropic los exige al
+    // devolver el `tool_result` y Gemini 3 su firma.
+    add({
+      role: 'assistant',
+      content: text,
+      toolCalls,
+      ...(thinkingBlocks.length > 0 ? { thinkingBlocks } : {}),
+    });
 
     const maxToolChars = options.maxToolChars ?? DEFAULT_MAX_TOOL_CHARS;
 
@@ -356,7 +479,7 @@ export async function runAgent(
         ...(result.command ? { command: result.command } : {}),
       });
 
-      messages.push({
+      add({
         role: 'tool',
         content: result.content,
         toolCallId: result.call.id,
@@ -411,7 +534,7 @@ export async function runAgent(
       avisosDeConclusion += 1;
       const nota = notaDeConclusionRepetida();
       options.onEvent?.({ type: 'nudge', text: nota, stepsWithoutEvidence: nudgeAfter });
-      messages.push({ role: 'user', content: nota });
+      add({ role: 'user', content: nota, internal: true });
     }
 
     if (nudgeAfter > 0 && conclusionRepetida >= nudgeAfter * 2) {
@@ -423,7 +546,7 @@ export async function runAgent(
         options.onEvent?.({ type: 'text', text: cierre });
         options.onEvent?.({ type: 'usage', inputTokens: totalInput, outputTokens: totalOutput });
         options.onEvent?.({ type: 'done', reason: 'stop', steps, text: cierre });
-        return { text: cierre, messages, steps, reason: 'stop' };
+        return { text: cierre, messages, appended, steps, reason: 'stop' };
       }
     }
 
@@ -443,15 +566,26 @@ export async function runAgent(
 
         // Va como mensaje de usuario porque no todos los proveedores aceptan un
         // mensaje de sistema a mitad de conversación.
-        messages.push({ role: 'user', content: nota });
+        add({ role: 'user', content: nota, internal: true });
       }
     }
   }
 
   options.onEvent?.({ type: 'usage', inputTokens: totalInput, outputTokens: totalOutput });
   options.onEvent?.({ type: 'done', reason: 'max_steps', steps, text: finalText });
-  return { text: finalText, messages, steps, reason: 'max_steps' };
+  return { text: finalText, messages, appended, steps, reason: 'max_steps' };
 }
+
+/** Herramientas donde un resultado corto idéntico aún puede ser progreso. */
+const TOOLS_CON_PROGRESO: Record<string, true> = {
+  run_command: true,
+  run_workflow: true,
+  run_extension_code: true,
+  write_file: true,
+  edit_file: true,
+  multi_replace: true,
+  edit_notebook: true,
+};
 
 /**
  * Herramientas que no se pueden lanzar en paralelo con seguridad.
@@ -483,15 +617,13 @@ function hashTexto(texto: string): string {
 }
 
 /** Huella de la evidencia que aporta una llamada: qué pidió y qué obtuvo. */
-function huellaDeEvidencia(_call: ToolCall, contenido: string): string {
+function huellaDeEvidencia(call: ToolCall, contenido: string): string {
   /*
-   * La huella es la INFORMACIÓN, no la llamada.
-   *
-   * Antes incluía nombre y argumentos, así que el mismo resultado obtenido con
-   * una variación de los argumentos contaba como evidencia nueva. Medido en una
-   * sesión real: el agente repitió 25 veces «los tests pasan, pero el usuario
-   * dice que fallan» llamando a herramientas con argumentos ligeramente
-   * distintos y recibiendo siempre lo mismo, y el monitor no se disparó ni una vez.
+   * La huella es la INFORMACIÓN, no la llamada. Pero cuando la información es
+   * trivial (`exit code: 0`, «Editado x») la llamada es lo único que distingue
+   * progreso de repetición: tres comandos distintos sin salida no son un
+   * estancamiento. En resultados largos se ignora la llamada para que una
+   * variación de argumentos con el mismo texto siga contando como repetición.
    */
   /*
    * Se quita el aviso de hooks antes de hashear: los hooks añaden
@@ -500,7 +632,17 @@ function huellaDeEvidencia(_call: ToolCall, contenido: string): string {
    * nunca, así que el monitor no veía jamás una repetición.
    */
   const limpio = contenido.replace(/\n*\[hooks\][^\n]*/g, '').trim();
-  return hashTexto(limpio);
+  /*
+   * En lecturas, un resultado corto repetido es estancamiento aunque cambien
+   * los argumentos. En comandos y escrituras, un resultado corto idéntico
+   * («exit code: 0», «Editado») sí puede ser progreso: la orden es lo que
+   * distingue un comando de otro.
+   */
+  const porLaLlamada = TOOLS_CON_PROGRESO[call.name] === true;
+  const detalle = porLaLlamada && limpio.length < 200
+    ? `${call.name}|${JSON.stringify(call.arguments)}|`
+    : '';
+  return hashTexto(`${detalle}${limpio}`);
 }
 
 /**
@@ -572,8 +714,24 @@ function notaDeRitmo(pasos: number): string {
 /** Tope por defecto de caracteres en un resultado de herramienta. */
 const DEFAULT_MAX_TOOL_CHARS = 16_000;
 
-/** Presupuesto por defecto de caracteres para el historial completo. */
-const DEFAULT_MAX_CONTEXT_CHARS = 400_000;
+/**
+ * Presupuesto por defecto de caracteres para el historial completo.
+ *
+ * Sale de la ventana del modelo, no de una constante. Se descuentan el prompt
+ * de sistema y las definiciones de herramienta, que también viajan en la
+ * petición: sin eso, un modelo de 8k recibía un presupuesto que no cabía ni
+ * con el historial vacío. Se deja un 15% para la respuesta.
+ */
+function presupuestoPorDefecto(options: {
+  providerId?: string;
+  modelId?: string;
+  contextWindow?: number;
+  overheadChars?: number;
+}): number {
+  const tokens = options.contextWindow ?? ventanaDeModelo(options);
+  const disponibles = Math.floor(tokens * 4 * 0.85) - (options.overheadChars ?? 0);
+  return Math.max(2_000, disponibles);
+}
 
 /** Tiempo máximo por defecto de una herramienta antes de darla por colgada. */
 const DEFAULT_TOOL_TIMEOUT_MS = 120_000;
@@ -594,23 +752,50 @@ async function compactHistory(
   budget: number,
   signal?: AbortSignal,
 ): Promise<Message[] | null> {
-  // Punto de corte: preferible un `user` (empieza turno), pero un turno largo
-  // con muchas herramientas no tiene ninguno, así que también vale un
-  // `assistant` con tool calls: sus resultados van justo detrás y el par
-  // queda completo en la cola.
-  let cut = -1;
+  /*
+   * Se resume aproximadamente la mitad más antigua, no solo el primer turno.
+   * Así una conversación larga no paga un resumen nuevo en cada paso ni
+   * produce un «resumen del resumen» que pierde decisiones.
+   */
+  const objetivo = Math.max(0, budget * 0.5);
+  let acumulado = 0;
+  let candidato = messages.length;
+  for (let i = messages.length - 1; i >= 1; i -= 1) {
+    const mensaje = messages[i];
+    if (!mensaje) continue;
+    acumulado += pesoDeMensaje(mensaje);
+    if (acumulado >= objetivo) {
+      candidato = i;
+      break;
+    }
+  }
 
-  for (let i = 1; i < messages.length; i += 1) {
+  /*
+   * Punto de corte: preferible un `user` (empieza turno), pero un turno largo
+   * con muchas herramientas no tiene ninguno, así que también vale un
+   * `assistant` con tool calls: sus resultados van justo detrás y el par
+   * queda completo en la cola.
+   */
+  let cut = -1;
+  for (let i = Math.max(1, candidato); i < messages.length; i += 1) {
     if (messages[i]?.role === 'user') {
       cut = i;
       break;
     }
   }
-
   if (cut < 0) {
-    for (let i = 2; i < messages.length; i += 1) {
+    for (let i = Math.max(2, candidato); i < messages.length; i += 1) {
       const message = messages[i];
       if (message?.role === 'assistant' && (message.toolCalls?.length ?? 0) > 0) {
+        cut = i;
+        break;
+      }
+    }
+  }
+  // Si el objetivo cae después del último corte posible, se resume lo que hay.
+  if (cut < 0) {
+    for (let i = 1; i < messages.length; i += 1) {
+      if (messages[i]?.role === 'user') {
         cut = i;
         break;
       }
@@ -670,28 +855,66 @@ function clampToolResult(content: string, max: number): string {
 }
 
 /**
+ * Peso de un mensaje en el presupuesto de contexto.
+ *
+ * El texto es lo que más pesa, pero no lo único: el `write_file` de un fichero
+ * grande viaja en `toolCalls` (el mensaje del asistente no tiene texto) y las
+ * imágenes van en base64. Contando solo `content`, el recorte nunca se
+ * activaba y el proveedor rechazaba el turno por tamaño.
+ */
+function pesoDeMensaje(message: Message): number {
+  let total = message.content.length;
+  if (message.toolCalls && message.toolCalls.length > 0) {
+    total += JSON.stringify(message.toolCalls).length;
+  }
+  for (const block of message.thinkingBlocks ?? []) total += block.thinking.length;
+  for (const image of message.images ?? []) total += image.data.length;
+  return total;
+}
+
+/**
  * Ajusta el historial al presupuesto de contexto.
  *
  * Recorta el contenido de los resultados de herramienta más antiguos en lugar
  * de borrar mensajes: así se conserva el emparejamiento `tool_call` ↔
- * `tool_result`, que los proveedores exigen.
+ * `tool_result`, que los proveedores exigen. Si aun así no cabe, recorta el
+ * mensaje de usuario por los extremos (nunca lo elimina: sin él, la petición
+ * no tiene sentido) y suelta las imágenes adjuntas.
  */
 function fitContext(messages: Message[], budget: number): Message[] {
-  const total = messages.reduce((sum, m) => sum + m.content.length, 0);
+  const total = messages.reduce((sum, m) => sum + pesoDeMensaje(m), 0);
   if (total <= budget) return messages;
 
-  // Se trabaja de atrás hacia delante: lo reciente se conserva intacto.
+  // Se trabaja de atrás hacia adelante: lo reciente se conserva intacto.
   const out = messages.map((m) => ({ ...m }));
   let used = 0;
 
   for (let i = out.length - 1; i >= 0; i -= 1) {
     const message = out[i];
     if (!message) continue;
-    used += message.content.length;
+    used += pesoDeMensaje(message);
 
     if (used <= budget) continue;
 
-    // Los mensajes de usuario y el prompt de sistema no se tocan.
+    // Un usuario pegado (un log, un volcado) se queda con cabeza y cola: el
+    // proveedor rechaza la petición entera si no cabe, y se pierde el turno.
+    if (message.role === 'user') {
+      const keep = Math.max(400, Math.floor(budget / 4));
+      if (message.content.length > keep) {
+        const cola = Math.floor(keep / 4);
+        const rest = message.content.length - keep - cola;
+        message.content =
+          `${message.content.slice(0, keep)}\n[recortado por contexto: ${rest} caracteres]\n` +
+          message.content.slice(-cola);
+        used -= rest;
+      }
+      if (message.images && message.images.length > 0) {
+        for (const image of message.images) used -= image.data.length;
+        delete message.images;
+      }
+      continue;
+    }
+
     if (message.role !== 'tool' && message.role !== 'assistant') continue;
     if (message.content.length <= 300) continue;
 
@@ -708,6 +931,7 @@ interface ChunkHandlers {
   onUsage: (input: number, output: number) => void;
   onText: (text: string) => void;
   onReasoning: (text: string) => void;
+  onThinkingBlock: (block: ThinkingBlock) => void;
   onToolCall: (call: ToolCall) => void;
   onDone: (reason: 'stop' | 'tool_calls' | 'length' | 'error') => void;
 }
@@ -719,6 +943,9 @@ function handleChunk(chunk: Chunk, handlers: ChunkHandlers): void {
       break;
     case 'reasoning':
       handlers.onReasoning(chunk.text);
+      break;
+    case 'thinking_block':
+      handlers.onThinkingBlock(chunk.block);
       break;
     case 'tool_call':
       handlers.onToolCall(chunk.call);

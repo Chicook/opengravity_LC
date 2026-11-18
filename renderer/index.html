@@ -10,6 +10,7 @@
     <title>Opengravity</title>
     <link rel="stylesheet" href="xterm/xterm.css" />
     <link rel="stylesheet" href="monaco/monaco.css" />
+    <link rel="stylesheet" href="katex/katex.min.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -69,17 +70,6 @@
 
         <div class="titlebar__spacer"></div>
 
-        <div class="window-controls">
-          <button class="window-control" id="win-minimize" aria-label="Minimize">
-            <svg viewBox="0 0 10 10" width="10" height="10"><path d="M0 5h10" stroke="currentColor" stroke-width="1" /></svg>
-          </button>
-          <button class="window-control" id="win-maximize" aria-label="Maximize">
-            <svg viewBox="0 0 10 10" width="10" height="10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" /></svg>
-          </button>
-          <button class="window-control window-control--close" id="win-close" aria-label="Close">
-            <svg viewBox="0 0 10 10" width="10" height="10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" stroke-width="1" /></svg>
-          </button>
-        </div>
 
         <div class="titlebar__announce" id="titlebar-announce" hidden>
           <span class="announce__icon" data-icon="overview"></span>
@@ -143,7 +133,15 @@
           <!-- Separador medido: 240x1 a x=8, antes de «Projects» -->
           <div class="sidebar__separator" role="separator"></div>
           <div class="sidebar__section">
-            <span class="sidebar__section-title">Projects</span>
+            <button
+              type="button"
+              class="sidebar__section-title"
+              id="btn-toggle-projects"
+              aria-expanded="true"
+            >
+              <span>Projects</span>
+              <span class="sidebar__section-chevron" data-icon="chevronDown"></span>
+            </button>
             <button class="sidebar__section-add" id="btn-display-options" aria-label="Display Options">
               <span data-icon="filter"></span>
             </button>
@@ -151,8 +149,9 @@
               <span data-icon="addProject"></span>
             </button>
           </div>
-          <div class="sidebar__list" id="project-list" style="flex: 0 0 auto; max-height: 120px">
-            <div class="conversation" id="current-project">
+          <div class="sidebar__list" id="project-list" style="flex: 0 1 auto; max-height: 45%">
+            <div class="conversation conversation--project" id="current-project">
+              <span class="conversation__icon" data-icon="project"></span>
               <span class="conversation__title" id="project-name">No Project</span>
             </div>
             <!-- Conversaciones del proyecto, anidadas bajo su fila (padding-left 30px) -->
@@ -160,7 +159,15 @@
           </div>
 
           <div class="sidebar__section">
-            <span class="sidebar__section-title">Conversations</span>
+            <button
+              type="button"
+              class="sidebar__section-title"
+              id="btn-toggle-conversations"
+              aria-expanded="true"
+            >
+              <span>Conversations</span>
+              <span class="sidebar__section-chevron" data-icon="chevronDown"></span>
+            </button>
             <button class="sidebar__section-add" id="btn-new-conversation-4" aria-label="New Conversation">
               <span data-icon="plus"></span>
             </button>
@@ -244,6 +251,8 @@
               </div>
             </div>
 
+            <!-- Hoja del panel: el original la recorta sobre el armazón a partir de aquí (8 px de aire, radio 12). -->
+            <div class="sheet">
             <div class="thread-wrap">
               <nav class="nav-rail" id="conversation-navigator" aria-label="Turnos" hidden></nav>
 
@@ -251,7 +260,7 @@
                 <div class="thread__inner" id="thread-inner">
                   <div class="thread__empty" id="thread-empty">
                     <svg class="thread__empty-mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1536 1024"><g fill="currentColor"><path d="M1117.0 319.4C1116.7 318.9 1115.7 319.1 1115.3 318.7C1114.5 317.8 1106.3 283.6 1104.3 278.3C1084.2 225.3 1040.4 227.3 995.1 215.7C1008.7 211.5 1023.5 210.0 1037.4 206.0C1084.1 192.5 1099.6 165.2 1110.1 120.2C1113.0 108.0 1114.5 95.1 1117.7 83.3C1117.9 83.8 1118.9 83.5 1119.2 84.0C1120.5 85.5 1128.0 127.8 1130.1 134.6C1141.9 174.9 1163.6 196.5 1204.8 206.1C1216.2 208.8 1228.5 210.1 1239.0 214.0C1190.2 223.8 1150.3 227.0 1129.1 279.4C1123.8 292.4 1121.9 306.6 1117.0 319.4Z"/><path d="M357.1 555.5C358.3 531.4 357.6 507.7 362.8 484.1C385.4 381.5 451.7 286.6 540.5 230.2C565.9 214.0 593.0 201.5 621.1 190.8C646.2 181.2 674.1 175.5 700.6 172.6C706.6 171.9 712.6 172.2 718.5 171.4C741.7 168.5 767.1 169.9 790.1 173.4C798.0 174.6 805.9 175.4 813.8 176.6C883.1 187.3 953.5 230.9 998.9 283.3C1038.1 328.7 1067.0 382.8 1081.2 441.2C1080.7 441.5 1080.7 442.4 1080.3 442.9C1077.1 446.2 1049.7 456.6 1043.7 458.9C1027.7 465.4 1012.3 473.5 996.2 479.8C981.4 485.5 967.2 494.1 952.1 497.8C944.7 472.4 939.4 446.4 925.2 423.1C872.8 336.4 775.7 299.6 678.7 324.7C657.4 330.2 636.0 342.2 617.8 354.3C548.9 400.5 502.2 473.5 507.5 558.7C509.0 583.0 515.5 607.5 525.2 629.9C529.5 639.6 535.5 648.8 539.1 658.3C521.0 666.1 500.8 669.6 481.7 674.9C453.4 682.9 423.4 691.3 394.5 694.7C371.2 657.8 364.5 613.5 358.0 571.4C357.5 571.7 356.8 571.1 356.2 571.2C350.9 572.4 342.6 583.4 338.3 587.1C313.9 608.3 255.7 669.8 298.7 698.6C306.6 703.9 317.4 707.5 326.8 708.5C334.7 709.4 342.5 711.0 350.5 711.5C369.2 712.5 387.6 709.9 406.1 708.5C440.4 706.0 474.5 699.1 508.2 691.8C698.5 650.4 884.9 585.7 1058.7 497.9C1103.7 475.2 1148.6 450.2 1186.6 416.9C1192.5 411.8 1199.1 406.7 1203.9 400.4C1211.5 390.4 1223.7 373.1 1213.1 360.7C1197.8 342.6 1140.4 339.1 1117.7 341.5C1102.8 343.1 1086.9 344.7 1072.0 344.1C1082.2 339.2 1094.1 337.1 1105.5 334.3C1158.5 321.0 1239.2 309.2 1289.6 334.6C1301.1 340.3 1311.3 348.4 1315.5 360.9C1323.1 383.4 1303.7 406.8 1288.8 421.7C1255.1 455.4 1212.8 481.0 1170.7 502.9C1101.6 538.9 1029.6 569.3 956.9 597.2C927.7 608.4 898.5 619.8 869.1 630.5C859.1 634.1 848.8 637.0 838.9 640.9C758.9 671.9 676.4 697.4 594.3 722.1C513.0 746.6 430.9 771.8 346.7 783.4C303.9 789.3 250.2 791.1 213.7 764.6C204.0 757.6 198.8 745.1 197.4 733.6C191.6 682.6 266.7 624.1 301.8 594.7C319.1 580.3 339.3 569.2 357.1 555.5Z"/><path d="M458.2 787.0C478.1 778.9 500.3 773.9 521.1 768.1C554.5 758.9 587.1 746.9 620.6 737.8C628.9 741.7 636.6 746.9 644.7 751.6C658.3 759.3 673.9 765.6 689.1 769.4C749.0 784.5 811.3 774.2 862.0 737.8C877.1 727.0 893.0 716.3 903.5 701.0C902.8 700.9 902.5 700.0 901.9 699.8C897.3 697.8 876.2 699.5 869.9 699.5C849.3 699.5 828.6 699.5 807.9 699.5C801.6 699.5 773.8 700.9 769.9 699.3C769.3 699.0 769.1 698.1 768.4 698.0C792.0 686.8 818.6 679.7 843.6 671.3C875.8 660.5 907.7 648.8 939.9 638.2C977.2 625.9 1014.1 611.9 1051.0 598.5C1066.0 593.1 1080.8 586.7 1096.2 582.6C1096.2 583.2 1097.1 583.4 1097.4 584.0C1098.8 587.7 1096.3 594.1 1095.7 597.8C1090.9 624.1 1083.6 649.6 1073.2 674.3C1064.9 693.8 1056.2 713.5 1044.8 731.5C944.6 889.4 751.0 957.2 578.1 880.3C537.9 862.5 482.3 823.5 458.2 787.0Z"/></g></svg>
-                    <div class="thread__empty-title">Hola, ¿qué hacemos hoy?</div>
+                    <div class="thread__empty-title">Hey, what should we build today?</div>
                   </div>
                 </div>
               </div>
@@ -264,31 +273,186 @@
             <!-- Tarjeta de decisión: anclada sobre el composer, como la suya. -->
             <div class="ask-host" id="ask-host" hidden></div>
 
+          <!-- Medido en la UI de referencia: el panel va dentro de una tarjeta flotante (absolute, 12 px del borde de la hoja, 320px, radio 12, z-30). -->
+          <div class="overview-host" id="overview-host" hidden>
+          <aside class="overview-panel" id="overview-panel">
+
+            <div class="overview-panel__head">
+
+              <div class="overview-panel__title-row">
+
+                <span class="overview-panel__title">Overview</span>
+
+                <button
+
+                  class="overview-panel__customize"
+
+                  id="overview-customize"
+
+                  aria-label="Customize Sections"
+
+                ><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M480-189.23q-24.75,0-42.37-17.62T420-249.23t17.62-42.37T480-309.23t42.37,17.62T540-249.23t-17.62,42.37T480-189.23ZM480-420q-24.75,0-42.37-17.62T420-480t17.62-42.37T480-540t42.37,17.62T540-480t-17.62,42.37T480-420Zm0-230.77q-24.75,0-42.37-17.62T420-710.77t17.62-42.37T480-770.77t42.37,17.62T540-710.77t-17.62,42.37T480-650.77Z"></path></svg></button>
+
+              </div>
+
+            </div>
+
+
+
+            <div class="overview-panel__list" id="overview-list">
+
+              <!-- Medido: Review y Extensions llevan un div
+
+                   con ml-auto al final; Files y Terminal llevan la etiqueta con flex-1. -->
+
+              <button class="overview-row" data-panel="review" data-testid="overview-panel-row-review"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M510-530h60v-80h80v-60H570v-80H510v80H430v60h80v80ZM430-370H650v-60H430v60ZM332.31-220Q302-220 281-241t-21-51.31V-827.69Q260-858 281-879t51.31-21H610L820-690v397.69Q820-262 799-241t-51.31,21H332.31Zm0-60H747.69q4.62,0 8.46-3.85t3.85-8.46V-660L580-840H332.31q-4.62,0-8.46,3.85T320-827.69v535.38q0,4.62 3.85,8.46t8.46,3.85Zm-160,220Q142-60 121-81t-21-51.31V-660h60v527.69q0,4.62 3.85,8.46t8.46,3.85H580v60H172.31ZM320-280q0,0 0-3.85t0-8.46V-827.69q0-4.62 0-8.46t0-3.85v180v367.69q0,4.62 0,8.46t0,3.85Z"></path></svg>
+
+                <span class="overview-row__label">Review</span>
+
+                <span class="overview-row__trailing"></span>
+
+              </button>
+
+              <button class="overview-row" data-panel="files" data-testid="overview-panel-row-files"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M252.31-100Q222-100 201-121t-21-51.31V-787.69Q180-818 201-839t51.31-21H570L780-650v477.69Q780-142 759-121t-51.31,21H252.31ZM540-620V-800H252.31q-4.62,0-8.46,3.85T240-787.69v615.38q0,4.62 3.85,8.46t8.46,3.85H707.69q4.62,0 8.46-3.85t3.85-8.46V-620H540ZM240-800v180V-800v180v447.69q0,4.62 0,8.46t0,3.85q0,0 0-3.85t0-8.46V-787.69q0-4.62 0-8.46t0-3.85Z"></path></svg>
+
+                <span class="overview-row__label overview-row__label--grow">Files</span>
+
+              </button>
+
+              <button class="overview-row" data-panel="terminal" data-testid="overview-panel-row-terminal"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M11.25 15.8122C11.0375 15.8122 10.8594 15.7403 10.7158 15.5965C10.5719 15.4526 10.5 15.2745 10.5 15.062C10.5 14.8493 10.5719 14.6712 10.7158 14.5277C10.8594 14.384 11.0375 14.3122 11.25 14.3122H15.25C15.4625 14.3122 15.6406 14.3841 15.7842 14.528C15.9281 14.6718 16 14.85 16 15.0625C16 15.2751 15.9281 15.4532 15.7842 15.5967C15.6406 15.7404 15.4625 15.8122 15.25 15.8122H11.25Z"></path></svg>
+
+                <span class="overview-row__label overview-row__label--grow">Terminal</span>
+
+              </button>
+
+              <button class="overview-row" data-panel="plugins" data-testid="overview-panel-row-plugins"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M208.85-197.69H713.46q3.85,0 6.35-2.69t2.5-6.54V-383.23l36.92-15.85q18.31-6.85 29.54-23.54T800-461.15q0-21.62-11.23-38.42t-29.54-24.04l-36.92-15.23V-715.38q0-4.23-2.5-6.73t-6.35-2.5H534.92l-7.31-51.08q-3.77-25.85-22.38-43.92t-44.08-18.08q-26.08,0-44.69,18.08t-22.38,43.92l-7.31,51.08H208.46q-3.46,0-5.96,2.5t-2.5,6.73V-624q51.77,17.15 84.15,62.04t32.38,100.81q0,57.31-32.19,102.19T200-297.69v90.77q0,3.85 2.5,6.54t6.35,2.69Zm0,60q-29,0-48.92-20.12T140-206.92V-347q48-1.54 82.27-33.58t34.27-80.58q0-45.62-34.46-78.12T140-575.69V-715.38q0-28.77 20.04-49t48.42-20.23H334.69q6.62-47.92 42.15-80.5t84.31-32.58q48.15,0 83.69,32.58t42.77,80.5H713.46q28.38,0 48.61,20.23t20.23,49v136.69q34.85,14.15 56.27,46.23T860-461.15q0,39.08-21.42,70.96t-56.27,46.58v136.69q0,29-20.23,49.11t-48.61,20.12H208.85ZM500-461.15Z"></path></svg>
+
+                <span class="overview-row__label">Extensions</span>
+
+                <span class="overview-row__trailing">
+
+                  <svg width="14" height="14" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true">
+
+                    <path d="M504-480 348-636l56-56 212 212-212 212-56-56 156-156Z"></path>
+
+                  </svg>
+
+                </span>
+
+              </button>
+
+            </div>
+
+
+
+            <div class="overview-panel__body" id="overview-body">
+
+              <section class="overview-section" data-view="review" hidden>
+
+                <h3 class="overview-section__title">Source Control</h3>
+
+                <select class="select git-branch-select" id="git-branch-select"></select>
+
+                <div class="git-remote" id="git-remote">
+
+                  <button class="btn btn--sm" id="git-fetch-btn">Fetch</button>
+
+                  <button class="btn btn--sm" id="git-pull-btn">Pull</button>
+
+                  <button class="btn btn--sm" id="git-push-btn">Push</button>
+
+                  <span class="git-remote__status" id="git-tracking"></span>
+
+                </div>
+
+                <div class="git-conflict" id="git-conflict" hidden>
+
+                  <span class="git-conflict__text" id="git-conflict-text"></span>
+
+                  <button class="btn btn--sm" id="git-abort-btn">Abortar fusión</button>
+
+                </div>
+
+                <div id="git-files"></div>
+
+                <div class="git-commit">
+
+                  <input class="text-input git-commit__input" id="git-message" placeholder="Mensaje de commit" />
+
+                  <button class="btn btn--primary git-commit__btn" id="git-commit-btn">Commit</button>
+
+                </div>
+
+                <h3 class="overview-section__title">History</h3>
+
+                <div class="git-log" id="git-log"></div>
+
+              </section>
+
+
+
+              <section class="overview-section" data-view="files" hidden>
+
+                <h3 class="overview-section__title">Explorer</h3>
+
+                <div class="tree" id="file-tree"></div>
+
+                <h3 class="overview-section__title">Index</h3>
+
+                <div class="overview-empty" id="index-status">sin construir</div>
+
+                <button class="btn" id="index-build" style="margin: 4px 8px 0">Reconstruir índice</button>
+
+                <button class="btn" id="index-warm" style="margin: 4px 8px 0">Precalcular embeddings</button>
+
+              </section>
+
+
+
+              <section class="overview-section" data-view="terminal" hidden>
+
+                <h3 class="overview-section__title">Terminal</h3>
+
+                <div id="overview-terminal"><div class="overview-empty">Sin terminal integrada</div></div>
+
+              </section>
+
+
+
+              <section class="overview-section" data-view="plugins" hidden>
+
+                <h3 class="overview-section__title">Extensions</h3>
+
+                <div id="overview-plugins"></div>
+
+              </section>
+
+            </div>
+
+          </aside>
+
+          </div>
             <div class="composer">
               <div class="popover" id="model-popover" hidden>
                 <div class="popover__header">Modelo</div>
                 <div class="popover__body" id="model-popover-body"></div>
               </div>
-
               <div class="popover" id="command-popover" hidden>
                 <div class="popover__header">Comandos</div>
                 <div class="popover__body" id="command-popover-body"></div>
               </div>
-
               <div class="popover" id="mention-popover" hidden>
                 <div class="popover__header">Ficheros</div>
                 <div class="popover__body" id="mention-popover-body"></div>
               </div>
-
               <form class="composer__inner" id="composer-form">
-                <div class="composer__project-row" id="composer-project-row">
-                  <button type="button" class="pill" id="btn-project-selector-inline">
+                <div class="composer__project-row" id="composer-project-row" data-testid="input-box-bottom-toolbar">
+                  <button type="button" class="pill" id="btn-project-selector-inline" data-testid="project-selector-trigger" aria-label="Select project, current: No Project" aria-haspopup="menu" aria-expanded="false">
                     <span data-icon="project"></span>
                     <span id="project-inline-label">No Project</span>
                     <span class="pill__chevron" data-icon="chevronDown"></span>
                   </button>
                 </div>
-
                 <div class="composer__card">
                 <textarea
                   class="composer__input"
@@ -296,7 +460,6 @@
                   rows="1"
                   placeholder="Ask anything, @ to mention, / for actions"
                 ></textarea>
-
                 <div class="composer__footer">
                   <button
                     type="button"
@@ -306,21 +469,29 @@
                   >
                     <span data-icon="addContext"></span>
                   </button>
-
                   <button type="button" class="pill" id="btn-model-selector">
                     <span id="model-label">sin modelo</span>
                     <span class="pill__effort" id="effort-label">Medium</span>
                     <span class="pill__chevron" data-icon="chevronDown"></span>
                   </button>
-
+                  <!-- Solo aparece si el modelo actual admite pensamiento extendido. -->
+                  <button
+                    type="button"
+                    class="pill pill--thinking"
+                    id="btn-thinking"
+                    aria-pressed="false"
+                    title="Extended thinking"
+                    hidden
+                  >
+                    <span class="pill__icon" data-icon="sparkle"></span>
+                    <span>Think</span>
+                  </button>
                   <div class="composer__spacer"></div>
-
                   <button type="button" class="pill" id="btn-turbo" aria-haspopup="menu">
                     <span class="pill__icon" data-icon="shield"></span>
                     <span id="preset-label">Turbo</span>
                     <span class="pill__chevron" data-icon="chevronDown"></span>
                   </button>
-
                   <button
                     type="button"
                     class="composer__icon-btn"
@@ -329,7 +500,6 @@
                   >
                     <span data-icon="mic"></span>
                   </button>
-
                   <button type="submit" class="send" id="btn-send" disabled title="Enviar" aria-label="Send message">
                     <span data-icon="send"></span>
                   </button>
@@ -337,8 +507,8 @@
                 </div>
               </form>
             </div>
+            </div>
           </div>
-
           <section class="editor" id="editor-pane" hidden>
               <div class="editor__tabs" id="editor-tabs"></div>
               <div class="editor__body">
@@ -350,7 +520,6 @@
                     <div class="editor__monaco" id="editor-monaco-2"></div>
                   </div>
                 </div>
-
                 <div class="newtab" id="newtab-view">
                   <input
                     class="newtab__search"
@@ -387,91 +556,7 @@
                 <span id="editor-state"></span>
               </div>
             </section>
-
-          <!-- Copiado de su DOM: el panel va dentro de una tarjeta flotante
-               (absolute, 8px arriba y a la derecha, 320px, radio 12, z-30). -->
-          <div class="overview-host" id="overview-host" hidden>
-          <aside class="overview-panel" id="overview-panel">
-            <div class="overview-panel__head">
-              <div class="overview-panel__title-row">
-                <span class="overview-panel__title">Overview</span>
-                <button
-                  class="overview-panel__customize"
-                  id="overview-customize"
-                  aria-label="Customize Sections"
-                ><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M480-189.23q-24.75,0-42.37-17.62T420-249.23t17.62-42.37T480-309.23t42.37,17.62T540-249.23t-17.62,42.37T480-189.23ZM480-420q-24.75,0-42.37-17.62T420-480t17.62-42.37T480-540t42.37,17.62T540-480t-17.62,42.37T480-420Zm0-230.77q-24.75,0-42.37-17.62T420-710.77t17.62-42.37T480-770.77t42.37,17.62T540-710.77t-17.62,42.37T480-650.77Z"></path></svg></button>
-              </div>
-            </div>
-
-            <div class="overview-panel__list" id="overview-list">
-              <!-- Estructura copiada de su DOM: Review y Extensions llevan un div
-                   con ml-auto al final; Files y Terminal llevan la etiqueta con flex-1. -->
-              <button class="overview-row" data-panel="review" data-testid="overview-panel-row-review"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M510-530h60v-80h80v-60H570v-80H510v80H430v60h80v80ZM430-370H650v-60H430v60ZM332.31-220Q302-220 281-241t-21-51.31V-827.69Q260-858 281-879t51.31-21H610L820-690v397.69Q820-262 799-241t-51.31,21H332.31Zm0-60H747.69q4.62,0 8.46-3.85t3.85-8.46V-660L580-840H332.31q-4.62,0-8.46,3.85T320-827.69v535.38q0,4.62 3.85,8.46t8.46,3.85Zm-160,220Q142-60 121-81t-21-51.31V-660h60v527.69q0,4.62 3.85,8.46t8.46,3.85H580v60H172.31ZM320-280q0,0 0-3.85t0-8.46V-827.69q0-4.62 0-8.46t0-3.85v180v367.69q0,4.62 0,8.46t0,3.85Z"></path></svg>
-                <span class="overview-row__label">Review</span>
-                <span class="overview-row__trailing"></span>
-              </button>
-              <button class="overview-row" data-panel="files" data-testid="overview-panel-row-files"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M252.31-100Q222-100 201-121t-21-51.31V-787.69Q180-818 201-839t51.31-21H570L780-650v477.69Q780-142 759-121t-51.31,21H252.31ZM540-620V-800H252.31q-4.62,0-8.46,3.85T240-787.69v615.38q0,4.62 3.85,8.46t8.46,3.85H707.69q4.62,0 8.46-3.85t3.85-8.46V-620H540ZM240-800v180V-800v180v447.69q0,4.62 0,8.46t0,3.85q0,0 0-3.85t0-8.46V-787.69q0-4.62 0-8.46t0-3.85Z"></path></svg>
-                <span class="overview-row__label overview-row__label--grow">Files</span>
-              </button>
-              <button class="overview-row" data-panel="terminal" data-testid="overview-panel-row-terminal"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M11.25 15.8122C11.0375 15.8122 10.8594 15.7403 10.7158 15.5965C10.5719 15.4526 10.5 15.2745 10.5 15.062C10.5 14.8493 10.5719 14.6712 10.7158 14.5277C10.8594 14.384 11.0375 14.3122 11.25 14.3122H15.25C15.4625 14.3122 15.6406 14.3841 15.7842 14.528C15.9281 14.6718 16 14.85 16 15.0625C16 15.2751 15.9281 15.4532 15.7842 15.5967C15.6406 15.7404 15.4625 15.8122 15.25 15.8122H11.25Z"></path></svg>
-                <span class="overview-row__label overview-row__label--grow">Terminal</span>
-              </button>
-              <button class="overview-row" data-panel="plugins" data-testid="overview-panel-row-plugins"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M208.85-197.69H713.46q3.85,0 6.35-2.69t2.5-6.54V-383.23l36.92-15.85q18.31-6.85 29.54-23.54T800-461.15q0-21.62-11.23-38.42t-29.54-24.04l-36.92-15.23V-715.38q0-4.23-2.5-6.73t-6.35-2.5H534.92l-7.31-51.08q-3.77-25.85-22.38-43.92t-44.08-18.08q-26.08,0-44.69,18.08t-22.38,43.92l-7.31,51.08H208.46q-3.46,0-5.96,2.5t-2.5,6.73V-624q51.77,17.15 84.15,62.04t32.38,100.81q0,57.31-32.19,102.19T200-297.69v90.77q0,3.85 2.5,6.54t6.35,2.69Zm0,60q-29,0-48.92-20.12T140-206.92V-347q48-1.54 82.27-33.58t34.27-80.58q0-45.62-34.46-78.12T140-575.69V-715.38q0-28.77 20.04-49t48.42-20.23H334.69q6.62-47.92 42.15-80.5t84.31-32.58q48.15,0 83.69,32.58t42.77,80.5H713.46q28.38,0 48.61,20.23t20.23,49v136.69q34.85,14.15 56.27,46.23T860-461.15q0,39.08-21.42,70.96t-56.27,46.58v136.69q0,29-20.23,49.11t-48.61,20.12H208.85ZM500-461.15Z"></path></svg>
-                <span class="overview-row__label">Extensions</span>
-                <span class="overview-row__trailing">
-                  <svg width="14" height="14" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true">
-                    <path d="M504-480 348-636l56-56 212 212-212 212-56-56 156-156Z"></path>
-                  </svg>
-                </span>
-              </button>
-            </div>
-
-            <div class="overview-panel__body" id="overview-body">
-              <section class="overview-section" data-view="review" hidden>
-                <h3 class="overview-section__title">Source Control</h3>
-                <select class="select git-branch-select" id="git-branch-select"></select>
-                <div class="git-remote" id="git-remote">
-                  <button class="btn btn--sm" id="git-fetch-btn">Fetch</button>
-                  <button class="btn btn--sm" id="git-pull-btn">Pull</button>
-                  <button class="btn btn--sm" id="git-push-btn">Push</button>
-                  <span class="git-remote__status" id="git-tracking"></span>
-                </div>
-                <div class="git-conflict" id="git-conflict" hidden>
-                  <span class="git-conflict__text" id="git-conflict-text"></span>
-                  <button class="btn btn--sm" id="git-abort-btn">Abortar fusión</button>
-                </div>
-                <div id="git-files"></div>
-                <div class="git-commit">
-                  <input class="text-input git-commit__input" id="git-message" placeholder="Mensaje de commit" />
-                  <button class="btn btn--primary git-commit__btn" id="git-commit-btn">Commit</button>
-                </div>
-                <h3 class="overview-section__title">History</h3>
-                <div class="git-log" id="git-log"></div>
-              </section>
-
-              <section class="overview-section" data-view="files" hidden>
-                <h3 class="overview-section__title">Explorer</h3>
-                <div class="tree" id="file-tree"></div>
-                <h3 class="overview-section__title">Index</h3>
-                <div class="overview-empty" id="index-status">sin construir</div>
-                <button class="btn" id="index-build" style="margin: 4px 8px 0">Reconstruir índice</button>
-                <button class="btn" id="index-warm" style="margin: 4px 8px 0">Precalcular embeddings</button>
-              </section>
-
-              <section class="overview-section" data-view="terminal" hidden>
-                <h3 class="overview-section__title">Terminal</h3>
-                <div id="overview-terminal"><div class="overview-empty">Sin terminal integrada</div></div>
-              </section>
-
-              <section class="overview-section" data-view="plugins" hidden>
-                <h3 class="overview-section__title">Extensions</h3>
-                <div id="overview-plugins"></div>
-              </section>
-            </div>
-          </aside>
-          </div>
         </main>
-
         <!--
           Panel lateral derecho. Medido en Antigravity: 590 px de ancho, alto
           completo bajo la barra de título, con una lista de vistas
@@ -500,14 +585,12 @@
               <span data-icon="toggleSidebar"></span>
             </button>
           </div>
-
           <!-- Vista de lanzamiento: buscador y lista de vistas. -->
           <div class="aux__launcher" id="aux-launcher">
             <div class="aux__search">
               <span class="aux__search-icon" data-icon="search"></span>
               <input class="aux__search-input" id="aux-search" placeholder="Search or enter a URL" spellcheck="false" autocomplete="off" />
             </div>
-
             <div class="aux__list" id="aux-list">
               <button type="button" class="aux__item" data-aux-view="review">
                 <span class="aux__item-icon" data-icon="review"></span>
@@ -527,7 +610,6 @@
               </button>
             </div>
           </div>
-
           <!-- Vista Terminal: su propia barra de pestañas. -->
           <div class="aux__view" id="aux-view-terminal" hidden>
             <div class="terminal__subheader">
@@ -536,11 +618,9 @@
                 <span data-icon="more"></span>
               </button>
             </div>
-
             <div class="terminal__body">
               <div class="terminal__main">
             <div class="terminal__xterm" id="terminal-xterm" hidden></div>
-
             <div class="terminal__legacy" id="terminal-legacy">
               <div class="terminal__output" id="terminal-output"></div>
               <div class="terminal__input-row">
@@ -549,7 +629,6 @@
               </div>
             </div>
               </div>
-
               <!-- Lista de terminales: medido en su DOM (cabecera h-6, filas h-8). -->
               <div class="terminal__list">
                 <div class="terminal__list-head">
@@ -559,64 +638,57 @@
               </div>
             </div>
           </div>
-
           <!-- Vista Review: cambios del turno. -->
           <div class="aux__view aux__view--list" id="aux-view-review" hidden>
             <div class="aux__empty">Sin cambios pendientes de revisar.</div>
           </div>
-
           <!-- Vista Open File: ficheros abiertos. -->
           <div class="aux__view aux__view--list" id="aux-view-open-file" hidden>
             <div class="aux__empty">Ningún fichero abierto.</div>
           </div>
-
-          <!-- Vista Browser: no implementada. -->
-          <div class="aux__view aux__view--list" id="aux-view-browser" hidden>
-            <div class="aux__empty">El navegador integrado aún no está disponible.</div>
+          <!-- Vista Browser: barra de 40 px (atrás, adelante, recargar y URL)
+               sobre el navegador integrado, como su `builtin-browser-pane`. -->
+          <div class="aux__view aux__view--browser" id="aux-view-browser" hidden>
+            <div class="aux-browser">
+              <div class="aux-browser__toolbar">
+                <button type="button" class="aux-browser__nav" id="aux-browser-back" aria-label="Back" disabled>
+                  <span data-icon="goBack"></span>
+                </button>
+                <button type="button" class="aux-browser__nav" id="aux-browser-forward" aria-label="Forward" disabled>
+                  <span data-icon="goForward"></span>
+                </button>
+                <button type="button" class="aux-browser__nav" id="aux-browser-reload" aria-label="Reload">
+                  <span data-icon="refresh"></span>
+                </button>
+                <button type="button" class="aux-browser__nav" id="aux-browser-downloads" aria-label="Downloads" title="Downloads">
+                  <span data-icon="archive"></span>
+                </button>
+                <form class="aux-browser__urlbar" id="aux-browser-form">
+                  <label class="aux-browser__pill">
+                    <span class="aux-browser__lock" data-icon="lock"></span>
+                    <input
+                      class="aux-browser__input"
+                      id="aux-browser-input"
+                      spellcheck="false"
+                      autocomplete="off"
+                      aria-label="URL"
+                    />
+                  </label>
+                </form>
+              </div>
+              <div class="aux-browser__downloads" id="aux-browser-downloads-panel" hidden></div>
+              <webview
+                class="aux-browser__view"
+                id="aux-browser-view"
+                src="about:blank"
+                partition="persist:opengravity-browser"
+              ></webview>
+            </div>
           </div>
         </aside>
-
       </div>
     </div>
-
     <!-- ================= Diálogo de entrada ================= -->
-    <!-- ================= Plan mode ================= -->
-    <div class="modal" id="plan-modal" hidden>
-      <div class="modal__backdrop"></div>
-      <div class="plan">
-        <div class="plan__head">
-          <span class="plan__icon" data-icon="review"></span>
-          <h3 class="plan__title" id="plan-title">Plan</h3>
-        </div>
-        <p class="plan__hint">Puedes editar los pasos antes de aprobar. El agente recibirá el plan tal como lo dejes.</p>
-        <div class="plan__steps" id="plan-steps"></div>
-        <button class="btn plan__add" id="plan-add-step" type="button">+ Añadir paso</button>
-        <textarea
-          class="text-input plan__feedback"
-          id="plan-feedback"
-          rows="2"
-          placeholder="¿Quieres cambiar algo? (opcional)"
-        ></textarea>
-        <div class="plan__actions">
-          <button class="btn" id="plan-reject">Rechazar</button>
-          <button class="btn btn--primary" id="plan-approve">Aprobar y ejecutar</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ================= Preguntas del agente ================= -->
-    <div class="modal" id="question-modal" hidden>
-      <div class="modal__backdrop"></div>
-      <div class="plan question">
-        <div class="plan__head">
-          <span class="plan__icon" data-icon="chat"></span>
-          <h3 class="plan__title">Necesito una decisión</h3>
-        </div>
-        <div class="question__body" id="question-body"></div>
-        <div class="plan__actions" id="question-actions"></div>
-      </div>
-    </div>
-
     <!-- ================= Buscar y reemplazar ================= -->
     <div class="modal" id="search-modal" hidden>
       <div class="modal__backdrop" data-close-search></div>
@@ -625,7 +697,6 @@
           <span class="search-panel__title">Buscar y reemplazar</span>
           <button type="button" class="search-panel__close" id="search-close" aria-label="Cerrar" data-icon="close"></button>
         </div>
-
         <div class="search-panel__field">
           <span class="search-panel__icon" data-icon="search"></span>
           <input type="text" id="search-input" class="search-panel__input" placeholder="Buscar en el proyecto" spellcheck="false" autocomplete="off" />
@@ -633,18 +704,15 @@
           <button type="button" class="search-panel__toggle" id="search-word" title="Palabra completa">ab|</button>
           <button type="button" class="search-panel__toggle" id="search-regex" title="Expresión regular">.*</button>
         </div>
-
         <div class="search-panel__field">
           <span class="search-panel__icon" data-icon="edit"></span>
           <input type="text" id="search-replace" class="search-panel__input" placeholder="Reemplazar por" spellcheck="false" autocomplete="off" />
           <button type="button" class="search-panel__replace" id="search-replace-all">Reemplazar todo</button>
         </div>
-
         <div class="search-panel__status" id="search-status"></div>
         <div class="search-panel__results" id="search-results"></div>
       </div>
     </div>
-
     <!-- ================= Tareas programadas ================= -->
     <div class="modal" id="scheduled-modal" hidden>
       <div class="modal__backdrop" data-close-scheduled></div>
@@ -655,7 +723,6 @@
             <span data-icon="close"></span>
           </button>
         </div>
-
         <div class="scheduled__form">
           <input
             class="text-input scheduled__prompt"
@@ -673,11 +740,9 @@
             <button class="btn btn--primary" id="scheduled-add">Añadir</button>
           </div>
         </div>
-
         <div class="scheduled__list" id="scheduled-list"></div>
       </div>
     </div>
-
     <!-- ================= Vista previa de reversión ================= -->
     <div class="modal" id="revert-modal" hidden>
       <div class="modal__backdrop" data-close-revert></div>
@@ -691,7 +756,6 @@
         </div>
       </div>
     </div>
-
     <!-- ================= Renombrar conversación ================= -->
     <div class="modal" id="rename-modal" hidden>
       <div class="modal__backdrop" data-close-rename></div>
@@ -704,7 +768,6 @@
         </div>
       </div>
     </div>
-
     <!-- ================= Paleta de comandos ================= -->
     <div class="modal palette" id="palette-modal" hidden>
       <div class="modal__backdrop" data-close-palette></div>
@@ -720,23 +783,10 @@
         <div class="palette__list" id="palette-list"></div>
       </div>
     </div>
-
-    <div class="modal" id="prompt-modal" hidden>
-      <div class="modal__backdrop" data-close-prompt></div>
-      <div class="prompt">
-        <h3 class="prompt__title" id="prompt-title">Renombrar</h3>
-        <input class="text-input prompt__input" id="prompt-input" autocomplete="off" spellcheck="false" />
-        <div class="prompt__actions">
-          <button class="btn" data-close-prompt>Cancelar</button>
-          <button class="btn btn--primary" id="prompt-accept">Aceptar</button>
-        </div>
-      </div>
-    </div>
-
     <!-- ================= Diff de git ================= -->
     <div class="modal" id="git-diff-modal" hidden>
       <div class="modal__backdrop" data-close-git-diff></div>
-      <div class="settings" style="width: min(900px, calc(100vw - 80px)); height: min(680px, calc(100vh - 80px))">
+      <div class="settings" role="dialog" aria-modal="true" aria-label="Diff" style="width: min(900px, calc(100vw - 80px)); height: min(680px, calc(100vh - 80px))">
         <div class="settings__content">
           <header class="settings__header">
             <div style="min-width: 0">
@@ -753,16 +803,14 @@
         </div>
       </div>
     </div>
-
     <!-- ================= Menú contextual ================= -->
     <div class="context-menu" id="context-menu" hidden></div>
-
     <!-- ================= Ajustes ================= -->
     <div class="modal" id="settings-modal" hidden>
       <div class="modal__backdrop" data-close-settings></div>
-
-      <div class="settings" role="dialog" aria-label="Ajustes">
+      <div class="settings" role="dialog" aria-modal="true" aria-label="Ajustes">
         <nav class="settings__nav">
+          <div class="settings__nav-header">Settings</div>
           <div class="settings__nav-list" id="settings-nav">
             <button class="settings__nav-item is-active" data-section="general">General</button>
             <button class="settings__nav-item" data-section="application">Application</button>
@@ -770,17 +818,16 @@
             <button class="settings__nav-item" data-section="shortcuts">Shortcuts</button>
             <button class="settings__nav-item" data-section="notifications">Notifications</button>
             <button class="settings__nav-item" data-section="models">Models</button>
+            <button class="settings__nav-item" data-section="browser">Browser</button>
             <div class="settings__nav-group">Projects</div>
             <div class="settings__projects" id="settings-projects"></div>
             <button class="settings__nav-more" id="settings-projects-more" type="button" hidden>Show All</button>
             <div class="settings__nav-group">Not in Project</div>
             <button class="settings__nav-item" data-section="conversations">Conversations</button>
-            <button class="settings__nav-item" data-section="feedback">Give Feedback</button>
-            <button class="settings__nav-item" data-section="account">Account</button>
+            <button class="settings__nav-item" data-section="account">Google</button>
           </div>
-
           <div class="settings__nav-footer">
-            <button class="settings__nav-item" id="settings-feedback" hidden>Give Feedback</button>
+            <button class="settings__nav-item" id="settings-feedback" data-testid="settings-nav-item-Provide Feedback">Give Feedback</button>
             <div class="settings__profile">
               <span class="settings__avatar"></span>
               <span style="min-width: 0">
@@ -790,7 +837,6 @@
             </div>
           </div>
         </nav>
-
         <div class="settings__content">
           <header class="settings__header">
             <div style="min-width: 0">
@@ -800,17 +846,16 @@
               </div>
               <p class="settings__subtitle" id="settings-subtitle"></p>
             </div>
-            <button class="settings__close" data-close-settings title="Cerrar">✕</button>
+            <button class="settings__close" data-close-settings title="Cerrar" aria-label="Cerrar" data-testid="settings-close">✕</button>
           </header>
-
           <div class="settings__body" id="settings-body"></div>
         </div>
       </div>
     </div>
-
     <script src="icons.js"></script>
     <script src="xterm/xterm.js"></script>
     <script src="monaco/monaco.js"></script>
+    <script src="katex/katex.min.js"></script>
     <script src="highlight.js"></script>
     <script src="markdown.js"></script>
     <script src="settings.js"></script>

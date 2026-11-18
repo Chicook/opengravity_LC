@@ -27,6 +27,12 @@ export interface ProviderSpec {
   note?: string;
   /** `true` si el usuario debe aportar la URL y la clave desde los ajustes. */
   custom?: boolean;
+  /**
+   * `true` en servidores que arranca el usuario: la URL se puede cambiar desde
+   * los ajustes (puerto propio) y el token es opcional, porque muchos solo lo
+   * exigen si se activa la autenticación (LM Studio ≥ 0.4, vLLM --api-key…).
+   */
+  selfHosted?: boolean;
   /** `true` si requiere la cabecera de sesión de OpenCode. */
   opencode?: boolean;
   /** Cabeceras extra fijas. */
@@ -54,6 +60,7 @@ export const PROVIDER_CATALOG: ProviderSpec[] = [
     baseUrl: 'http://127.0.0.1:1234/v1',
     envKey: null,
     local: true,
+    selfHosted: true,
     note: 'Servidor local de LM Studio (API compatible con OpenAI).',
   },
   {
@@ -63,6 +70,7 @@ export const PROVIDER_CATALOG: ProviderSpec[] = [
     baseUrl: 'http://127.0.0.1:8000/v1',
     envKey: null,
     local: true,
+    selfHosted: true,
     note: 'Servidor vLLM local.',
   },
   {
@@ -72,6 +80,7 @@ export const PROVIDER_CATALOG: ProviderSpec[] = [
     baseUrl: 'http://127.0.0.1:8080/v1',
     envKey: null,
     local: true,
+    selfHosted: true,
     note: 'llama-server de llama.cpp.',
   },
 

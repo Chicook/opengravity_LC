@@ -31,8 +31,12 @@
     planReviewPolicy: 'Always Ask',
     queuedMessages: 'Queue',
     openLinksIn: 'External Browser',
+    downloadPath: '',
     browserJsPolicy: 'Request Review',
+    rulesEnabled: true,
+    rulesBudget: 20000,
     restrictToWorkspace: false,
+    goRoot: '',
     sandboxMemoryMB: 1024,
     sandboxMaxProcesses: 32,
     sandboxCpuSeconds: 300,
@@ -59,6 +63,8 @@
   let proyectos = [];
   let proyectoActivo = null;
   let mostrarTodosLosProyectos = false;
+  /** Carpeta de descargas del sistema, para enseñarla mientras no haya pref. */
+  let downloadDir = '';
 
   // -------------------------------------------------------------------------
   // Descripciones de sección
@@ -70,8 +76,8 @@
       subtitle: 'Configure agent execution, queued message delivery, and permissions.',
     },
     account: {
-      title: 'Account',
-      subtitle: 'Información de la cuenta y del plan.',
+      title: 'Google',
+      subtitle: 'Cuenta de Google para Flow y la generación de imágenes.',
     },
     appearance: {
       title: 'Appearance',
@@ -82,8 +88,12 @@
       subtitle: 'Gestiona las preferencias de notificación.',
     },
     models: {
-      title: 'Models',
+      title: 'Models & Usage',
       subtitle: 'Elige el proveedor y el modelo que usa el agente.',
+    },
+    browser: {
+      title: 'Browser',
+      subtitle: 'Configure built-in browser, link opening, and browser subagent preferences.',
     },
     conversations: {
       title: 'Conversations',
@@ -164,6 +174,69 @@
     for (const t of document.querySelectorAll('.dropdown__trigger')) t.setAttribute('aria-expanded', 'false');
   }
 
+  /*
+   * Un solo listener para todos los desplegables. `makeSelect` registraba dos
+   * por instancia y cada render de Ajustes dejaba dos más sobre nodos muertos.
+   * Los clicks dentro del desplegable no llegan aquí: el trigger y el wrapper
+   * cortan la propagación.
+   */
+  document.addEventListener('click', () => cerrarDesplegables());
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') cerrarDesplegables();
+  });
+
+  /**
+   * Tarjetas de «Interface Layout».
+   *
+   * Medidas del original: 306×112, rejilla de dos columnas con gap 12, relleno
+   * 14, radio 12. La elegida lleva el primario al 10 % y `aria-pressed`.
+   */
+  function makeLayoutCards() {
+    const grid = el('div', 'layout-cards');
+    const actual = prefs.persona ?? 'engineering';
+
+    const perfiles = [
+      {
+        id: 'knowledge-work',
+        titulo: 'Knowledge Work',
+        descripcion: 'Simplified interface for research, writing, and everyday tasks.',
+        icono: 'files',
+      },
+      {
+        id: 'engineering',
+        titulo: 'Software Engineering',
+        descripcion: 'Full interface for coding, developer tools, and managing agents.',
+        icono: 'terminal',
+      },
+    ];
+
+    for (const perfil of perfiles) {
+      const card = el('button', 'layout-card');
+      card.type = 'button';
+      card.setAttribute('aria-pressed', String(perfil.id === actual));
+      card.classList.toggle('is-selected', perfil.id === actual);
+
+      const icono = el('span', 'layout-card__icon');
+      icono.innerHTML = window.Icon(perfil.icono, 16);
+      card.append(icono);
+      card.append(el('span', 'layout-card__title', perfil.titulo));
+      card.append(el('span', 'layout-card__desc', perfil.descripcion));
+
+      card.addEventListener('click', () => {
+        setPref('persona', perfil.id);
+        for (const otra of grid.querySelectorAll('.layout-card')) {
+          const activa = otra === card;
+          otra.setAttribute('aria-pressed', String(activa));
+          otra.classList.toggle('is-selected', activa);
+        }
+      });
+
+      grid.append(card);
+    }
+
+    return grid;
+  }
+
   function makeSelect({ options, value, onChange, wide }) {
     const normalizadas = options.map((o) => (typeof o === 'string' ? { label: o } : o));
     const valorDe = (opcion) => opcion.value ?? opcion.label;
@@ -208,7 +281,7 @@
         item.append(texto);
         if (valorDe(opcion) === seleccionada) {
           const check = el('span', 'dropdown__check');
-          check.innerHTML = window.Icon('chevronDown', 16);
+          check.innerHTML = window.Icon('check', 16);
           item.append(check);
         }
 
@@ -235,16 +308,8 @@
       trigger.setAttribute('aria-expanded', String(abrir));
     });
 
-    // Cerrar al pulsar fuera o con Escape.
-    const cerrar = () => {
-      panel.hidden = true;
-      trigger.setAttribute('aria-expanded', 'false');
-    };
-    document.addEventListener('click', cerrar);
+    // El cierre al pulsar fuera y con Escape lo resuelve el listener global.
     wrap.addEventListener('click', (event) => event.stopPropagation());
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') cerrar();
-    });
 
     wrap.append(trigger, panel);
     return wrap;
@@ -372,7 +437,7 @@
    * contador de **10 px** semibold en pastilla (`bg-secondary`, `px-1.5 py-0.5`,
    * `rounded-full`, con borde) y un chevron de 16 que gira 90° al abrir.
    */
-  function makeSection({ title, desc, rows, count, abierta = true }) {
+  function makeSection({ title, desc, rows, count, abierta = true, grouped = true }) {
     const section = el('section');
 
     const head = el('button', 'settings__section-head');
@@ -392,7 +457,13 @@
     if (desc) section.append(el('p', 'settings__section-desc', desc));
 
     const cuerpo = el('div', 'settings__section-body');
-    cuerpo.append(makeGroup(rows));
+    if (grouped) {
+      cuerpo.append(makeGroup(rows));
+    } else {
+      const contenedor = el('div', 'row-groupless');
+      contenedor.append(...rows);
+      cuerpo.append(contenedor);
+    }
     cuerpo.hidden = !abierta;
 
     head.addEventListener('click', () => {
@@ -416,14 +487,37 @@
   // -------------------------------------------------------------------------
 
   function setPref(key, value) {
+    const anterior = prefs[key];
     prefs[key] = value;
-    window.api.setPrefs({ [key]: value }).catch(() => {
-      // persistir preferencias es best-effort
-    });
+    /*
+     * Si el disco falla, el interruptor no puede quedarse encendido mintiendo:
+     * se vuelve al valor anterior, se repinta y se avisa. Antes el error se
+     * tragaba con un `.catch(() => {})`.
+     */
+    const guardado = window.api
+      .setPrefs({ [key]: value })
+      .then((respuesta) => {
+        if (respuesta && respuesta.ok === false) throw new Error(respuesta.error ?? 'no se pudo guardar');
+        return respuesta;
+      })
+      .catch((error) => {
+        prefs[key] = anterior;
+        if (typeof bridge?.onPrefChange === 'function') {
+          bridge.onPrefChange(key, anterior, prefs);
+        }
+        bridge?.addNotice?.(
+          `No se pudo guardar «${key}»: ${error?.message ?? error}`,
+          'error',
+        );
+        // No se relanza: los llamantes son toggles sin await y quedaría
+        // una promesa rechazada sin dueño.
+        return null;
+      });
     // Avisa a la app para que aplique el cambio (contraste, sonido, cola…).
     if (bridge && typeof bridge.onPrefChange === 'function') {
       bridge.onPrefChange(key, value, prefs);
     }
+    return guardado;
   }
 
   // -------------------------------------------------------------------------
@@ -435,6 +529,19 @@
     const availableProviders = state.providers.filter((entry) => entry.available).length;
 
     return [
+      /*
+       * Interface Layout: medido en el original (306×112, rejilla de 2, gap 12,
+       * relleno 14, radio 12; la elegida va con el primario al 10 %). No cambia
+       * la interfaz: cambia el perfil con el que trabaja el agente.
+       */
+      makeSection({
+        title: 'Interface Layout',
+        // Las tarjetas ya tienen su propio borde; el row-group las unía en una celda.
+        grouped: false,
+        rows: [
+          makeLayoutCards(),
+        ],
+      }),
       makeSection({
         title: 'Global Permissions',
         desc: 'Configure global allowed and denied resource permissions. Learn more.',
@@ -498,42 +605,30 @@
               onChange: (value) => setPref('queuedMessages', value),
             }),
           }),
-        ],
-      }),
-
-      makeSection({
-        title: 'Built-in Browser',
-        desc: 'Configure link opening and built-in browser preferences.',
-        rows: [
+          // Su General termina con este acceso a la lista de atajos.
           makeRow({
-            label: 'Open Links In',
-            desc: 'Where links open by default when clicked.',
-            control: makeSegmented({
-              options: ['External Browser', 'Built-in Browser'],
-              value: prefs.openLinksIn,
-              onChange: (value) => setPref('openLinksIn', value),
-            }),
+            label: 'Keyboard shortcuts',
+            desc: 'Keyboard shortcuts for quick navigation and control.',
+            control: makeButton({ label: 'Open', onClick: () => selectSection('shortcuts') }),
           }),
-        ],
-      }),
-
-      makeSection({
-        title: 'Browser Subagent',
-        desc: 'El subagente de navegador requiere Google Chrome instalado. Se invoca escribiendo /browser en el cuadro de entrada.',
-        rows: [
+          /*
+           * Equivalente a `merge_subagents_latency_ms`: cuánto espera el turno a
+           * los subagentes lanzados a la vez antes de fusionar lo que haya.
+           */
           makeRow({
-            label: 'Browser Javascript Execution Policy',
-            desc: 'Whether the agent may run its own JavaScript to automate complex actions.',
+            label: 'Subagent wait',
+            desc: 'How long the turn waits for parallel subagents before merging what arrived.',
             control: makeSelect({
-              options: ['Request Review', 'Always Allow', 'Never'],
-              value: prefs.browserJsPolicy,
-              onChange: (value) => setPref('browserJsPolicy', value),
+              options: [
+                { label: '1 minute', value: 60_000 },
+                { label: '2 minutes', value: 120_000 },
+                { label: '3 minutes', value: 180_000 },
+                { label: '5 minutes', value: 300_000 },
+                { label: 'No limit', value: 0 },
+              ],
+              value: Number(prefs.subagentMergeLatencyMs ?? 180_000),
+              onChange: (value) => setPref('subagentMergeLatencyMs', Number(value)),
             }),
-          }),
-          makeRow({
-            label: 'Browser Actuation Rules',
-            desc: 'Comparte las reglas de red: el navegador integrado solo abre dominios permitidos.',
-            control: makeButton({ label: 'Edit', onClick: () => selectSection('network') }),
           }),
         ],
       }),
@@ -542,6 +637,79 @@
         `${availableProviders} of ${state.providers.length} model providers available. ` +
           'Configure them in Models.',
       ),
+    ];
+  }
+
+  /** Sección Browser: mismas filas que la suya, medidas en 2.31. */
+  function renderBrowser() {
+    const ruta = prefs.downloadPath || downloadDir || '';
+
+    const controlUbicacion = document.createElement('div');
+    controlUbicacion.className = 'row__inline';
+    if (ruta) controlUbicacion.append(el('span', 'row__value', ruta));
+    controlUbicacion.append(
+      makeButton({
+        label: 'Change…',
+        onClick: async () => {
+          const resultado = await window.api.chooseDownloadDir();
+          if (!resultado?.ok) return;
+          prefs.downloadPath = resultado.path;
+          downloadDir = resultado.path;
+          render();
+        },
+      }),
+    );
+
+    return [
+      makeSection({
+        title: 'Built-in Browser',
+        desc: null,
+        rows: [
+          makeRow({
+            label: 'Open Links In',
+            desc: 'Choose where links open by default when clicked.',
+            control: makeSegmented({
+              options: ['External Browser', 'Built-in Browser'],
+              value: prefs.openLinksIn,
+              onChange: (value) => setPref('openLinksIn', value),
+            }),
+          }),
+          makeRow({
+            label: 'Download Location',
+            desc: 'Folder where files downloaded in the built-in browser are saved.',
+            control: controlUbicacion,
+          }),
+          makeRow({
+            label: 'Browsing History',
+            desc: 'Clear visited URLs and autocomplete suggestions from the built-in browser.',
+            control: makeButton({
+              label: 'Clear',
+              onClick: async () => {
+                await window.api.clearBrowserHistory();
+                try {
+                  document.getElementById('aux-browser-view')?.clearHistory?.();
+                } catch {
+                  // sin webview montado
+                }
+                showNotice('Historial del navegador borrado.');
+              },
+            }),
+          }),
+        ],
+      }),
+      makeSection({
+        title: 'Browser Subagent',
+        desc: null,
+        rows: [
+          makeRow({
+            label: 'Browser Actuation Rules',
+            desc:
+              'Configure allowed and denied URLs for the browser subagent. It runs in the ' +
+              'built-in browser, so no separate browser install is needed.',
+            control: makeButton({ label: 'Edit', onClick: () => selectSection('network') }),
+          }),
+        ],
+      }),
     ];
   }
 
@@ -727,126 +895,161 @@
 
   function renderModels() {
     const state = bridge.getState();
+    const providers = state.providers ?? [];
+    const actual = providers.find((entry) => entry.id === state.providerId) ?? null;
 
-    const providerSelect = el('select', 'select select--wide');
-    state.providers.forEach((entry) => {
-      const label = entry.available
-        ? entry.label
-        : `${entry.label} — ${entry.needsKey && !entry.hasKey ? 'sin clave' : 'no disponible'}`;
-      const opt = el('option', null, label);
-      opt.value = entry.id;
-      if (entry.id === state.providerId) opt.selected = true;
-      providerSelect.append(opt);
+    /** Estado corto de un proveedor para el desplegable. */
+    const estadoDe = (entry) => {
+      if (entry.available) return `${entry.models.length} modelos`;
+      if (!entry.hasKey && entry.needsKey) return 'sin clave';
+      return entry.reason || 'no disponible';
+    };
+
+    /*
+     * Desplegable propio, no un <select> nativo: en Windows el nativo pinta su
+     * lista blanca encima del modal y con el tamaño de todo el catálogo.
+     */
+    const providerSelect = makeSelect({
+      wide: true,
+      value: state.providerId ?? '',
+      options: [
+        { value: '', label: 'Elige un proveedor' },
+        ...providers.map((entry) => ({
+          value: entry.id,
+          label: entry.label,
+          description: estadoDe(entry),
+        })),
+      ],
+      onChange: (id) => {
+        // El relleno no es una elección: pulsarlo dejaba el agente sin proveedor.
+        if (!id) return;
+        const elegido = providers.find((entry) => entry.id === id);
+        bridge.onSelectModel(id, elegido?.models?.[0]?.id ?? null);
+      },
     });
-    providerSelect.addEventListener('change', () => {
-      const chosen = state.providers.find((entry) => entry.id === providerSelect.value);
-      const firstModel = chosen && chosen.models.length > 0 ? chosen.models[0].id : null;
-      bridge.onSelectModel(providerSelect.value, firstModel);
+
+    const modelos = actual?.models ?? [];
+    const guardado = state.model ?? '';
+    const valido = modelos.some((model) => model.id === guardado);
+
+    const modelSelect = makeSelect({
+      wide: true,
+      value: valido ? guardado : '',
+      options:
+        modelos.length > 0
+          ? modelos.map((model) => ({ value: model.id, label: model.name || model.id }))
+          : [{ value: '', label: 'sin modelos' }],
+      onChange: (id) => bridge.onSelectModel(state.providerId, id || null),
     });
-
-    const current = state.providers.find((entry) => entry.id === state.providerId);
-
-    // Modelo
-    const modelSelect = el('select', 'select select--wide');
-    if (!current || current.models.length === 0) {
-      modelSelect.append(el('option', null, 'sin modelos'));
-      modelSelect.disabled = true;
-    } else {
-      for (const model of current.models) {
-        const opt = el('option', null, model.name);
-        opt.value = model.id;
-        if (model.id === state.model) opt.selected = true;
-        modelSelect.append(opt);
-      }
-      modelSelect.addEventListener('change', () => {
-        bridge.onSelectModel(state.providerId, modelSelect.value);
-      });
-    }
 
     const rows = [
       makeRow({
         label: 'Proveedor',
-        desc: `${state.providers.length} configurados · local y en la nube.`,
+        desc: `${providers.filter((entry) => entry.available).length} de ${providers.length} disponibles.`,
         control: providerSelect,
       }),
       makeRow({
         label: 'Endpoint',
-        desc: current ? current.baseUrl || '—' : '—',
-        control: current
+        desc: actual ? actual.baseUrl || '—' : '—',
+        control: actual
           ? el(
               'span',
               'count-badge',
-              current.local ? 'local' : current.custom ? 'personalizado' : 'remoto',
+              actual.local ? 'local' : actual.custom ? 'personalizado' : 'remoto',
             )
           : null,
       }),
     ];
 
-    // --- Clave de API: para todos los que la necesitan ---
-    if (current && current.needsKey) {
-      const saved = (prefs.apiKeys ?? {})[current.id] ?? '';
-      const placeholder = current.hasEnvKey
-        ? `detectada en ${current.envKey}`
-        : current.envKey
-          ? current.envKey
-          : 'sk-…';
+    // --- Clave de API: para todos los que la aceptan ---
+    if (actual && actual.needsKey) {
+      const saved = (prefs.apiKeys ?? {})[actual.id] ?? '';
+      const placeholder = actual.selfHosted
+        ? 'opcional'
+        : actual.hasEnvKey
+          ? `detectada en ${actual.envKey}`
+          : actual.envKey
+            ? actual.envKey
+            : 'sk-…';
 
       rows.push(
         makeRow({
           label: 'Clave de API',
           desc: saved
             ? 'Guardada en este equipo (settings.json).'
-            : current.hasEnvKey
-              ? `Usando la variable de entorno ${current.envKey}.`
-              : 'Pega tu clave. Se guarda en settings.json de tu equipo.',
+            : actual.selfHosted
+              ? 'Opcional. Solo si activaste «Require Authentication» en el servidor local.'
+              : actual.hasEnvKey
+                ? `Usando la variable de entorno ${actual.envKey}.`
+                : actual.hasKey
+                  ? 'Usando una clave guardada compartida con el otro proveedor de OpenCode.'
+                  : 'Pega tu clave. Se guarda en settings.json de tu equipo.',
           control: makeInput({
             value: saved,
             placeholder,
             type: 'password',
             onCommit: (value) => {
               const all = { ...(prefs.apiKeys ?? {}) };
-              if (value.length > 0) all[current.id] = value;
-              else delete all[current.id];
-              setPref('apiKeys', all);
-              bridge.reloadProviders();
+              if (value.length > 0) all[actual.id] = value;
+              else delete all[actual.id];
+              void setPref('apiKeys', all).then(() => bridge.reloadProviders());
             },
           }),
         }),
       );
     }
 
-    // --- URL del endpoint: solo personalizables ---
-    if (current && current.custom) {
-      const stored = (prefs.customProviders ?? {})[current.id] ?? {};
+    // --- URL del endpoint: personalizables y servidores propios ---
+    if (actual && (actual.custom || actual.selfHosted)) {
+      const stored = (prefs.customProviders ?? {})[actual.id] ?? {};
       rows.push(
         makeRow({
           label: 'URL del endpoint',
           desc: 'Base sin barra final, por ejemplo https://api.ejemplo.com/v1',
           control: makeInput({
             value: stored.baseUrl ?? '',
-            placeholder: 'https://…',
-            onCommit: (value) => updateCustomProvider(current.id, { baseUrl: value }),
+            placeholder: actual.baseUrl || 'https://…',
+            onCommit: (value) => updateCustomProvider(actual.id, { baseUrl: value }),
           }),
         }),
       );
     }
 
+    const detalle = actual
+      ? actual.available
+        ? `${actual.models.length} modelos detectados en ${actual.label}.`
+        : `No se pudo consultar ${actual.label}: ${actual.reason || 'sin modelos'}.`
+      : 'Elige un proveedor para consultar sus modelos.';
+
     rows.push(
       makeRow({
         label: 'Modelo',
-        desc: 'Se detecta automáticamente desde el proveedor.',
+        desc: valido || modelos.length === 0
+          ? 'Se detecta automáticamente desde el proveedor.'
+          : `El modelo guardado (${guardado}) no está en la lista; elige otro.`,
         control: modelSelect,
+      }),
+      makeRow({
+        label: 'Detección',
+        desc: detalle,
+        control: makeButton({
+          label: 'Detectar de nuevo',
+          onClick: () => {
+            showNotice('Consultando proveedores…');
+            bridge.refreshProviders?.();
+          },
+        }),
       }),
     );
 
-    const available = state.providers.filter((entry) => entry.available);
+    const available = providers.filter((entry) => entry.available);
     const hint =
       available.length === 0
-        ? state.providers
+        ? providers
             .filter((entry) => entry.reason)
             .map((entry) => `${entry.label}: ${entry.reason}`)
             .join(' · ')
-        : `${available.length} de ${state.providers.length} proveedores disponibles.`;
+        : `${available.length} de ${providers.length} proveedores disponibles.`;
 
     return [
       makeSection({
@@ -866,10 +1069,7 @@
   function updateCustomProvider(id, patch) {
     const all = { ...(prefs.customProviders ?? {}) };
     all[id] = { ...(all[id] ?? {}), ...patch };
-    setPref('customProviders', all);
-
-    // Releer el catálogo: el proveedor puede pasar a estar disponible.
-    bridge.reloadProviders();
+    void setPref('customProviders', all).then(() => bridge.reloadProviders());
   }
 
   /** Sección de embeddings del índice de código. */
@@ -976,6 +1176,37 @@
     );
 
     return [
+      makeSection({
+        title: 'Workspace rules',
+        desc:
+          'AGENTS.md and .agents/rules/*.md go into the system prompt with their own ' +
+          'budget. They are read at every turn.',
+        rows: [
+          makeRow({
+            label: 'Load workspace rules',
+            desc: "If off, the agent won't see the project's conventions.",
+            control: makeToggle({
+              value: prefs.rulesEnabled !== false,
+              onChange: (value) => setPref('rulesEnabled', value),
+            }),
+          }),
+          makeRow({
+            label: 'Budget',
+            desc: 'Tokens reserved for rules. What does not fit is replaced by the file path.',
+            control: makeSelect({
+              wide: true,
+              value: String(prefs.rulesBudget ?? 20000),
+              options: [
+                { value: '4000', label: '4 000 tokens' },
+                { value: '8000', label: '8 000 tokens' },
+                { value: '20000', label: '20 000 tokens' },
+                { value: '40000', label: '40 000 tokens' },
+              ],
+              onChange: (value) => setPref('rulesBudget', Number(value)),
+            }),
+          }),
+        ],
+      }),
       embeddingsSection(),
       makeSection({
         title: 'Skills',
@@ -1164,62 +1395,11 @@
       })
       .catch(() => pintar(false));
 
-    /*
-     * Usar el Chrome del usuario: hereda su sesión sin volver a meter
-     * credenciales. Requiere que esté cerrado del todo.
-     */
-    const filaChrome = makeRow({
-      label: 'Usar mi Chrome',
-      desc: 'Abre Chrome con tu sesión. Para Flow usa la cuenta de Google de arriba.',
-      control: null,
-    });
-
-    const controlChrome = filaChrome.querySelector('.row__control') ?? filaChrome;
-
-    const pintarChrome = (estadoChrome) => {
-      controlChrome.replaceChildren();
-
-      const etiqueta = el('span', 'google-state', estadoChrome?.conectado ? 'Conectado' : 'Sin conectar');
-      etiqueta.classList.toggle('is-on', estadoChrome?.conectado === true);
-      controlChrome.append(etiqueta);
-
-      if (!estadoChrome?.instalado) {
-        controlChrome.append(el('span', 'google-state', 'Chrome no encontrado'));
-        return;
-      }
-
-      controlChrome.append(
-        makeButton({
-          label: estadoChrome?.conectado ? 'Desconectar' : 'Usar mi Chrome',
-          onClick: async () => {
-            if (estadoChrome?.conectado) {
-              await window.api.chromeDisconnect?.();
-              pintarChrome({ ...estadoChrome, conectado: false });
-              return;
-            }
-
-            const r = await window.api.chromeLaunch?.();
-            if (r?.ok) {
-              addNotice?.('Chrome abierto con tu sesión.', 'ok');
-              pintarChrome({ ...estadoChrome, conectado: true });
-            } else {
-              addNotice?.(r?.error ?? 'No se pudo abrir Chrome.', 'error');
-            }
-          },
-        }),
-      );
-    };
-
-    pintarChrome(null);
-    window.api
-      .chromeStatus?.()
-      .then((r) => pintarChrome(r))
-      .catch(() => pintarChrome({ instalado: false }));
 
     return [
       makeSection({
-        title: 'Cuenta',
-        rows: [fila, filaChrome],
+        title: 'Google',
+        rows: [fila],
       }),
       makeSection({
         title: 'Generación de imágenes',
@@ -1252,7 +1432,8 @@
    * conversations»).
    */
   function renderProject() {
-    const cwd = proyectoActivo || bridge?.getState?.()?.cwd || '';
+    const estado = bridge?.getState?.() ?? {};
+    const cwd = proyectoActivo || estado.project || estado.cwd || '';
     const nombre = cwd.split(/[\\/]/).filter(Boolean).pop() || 'Proyecto';
     const skills = bridge.getSkills ? bridge.getSkills() : [];
     const conversaciones = (bridge.getState?.()?.sessions ?? []).length;
@@ -1384,6 +1565,23 @@
         ],
       }),
       makeSection({
+        title: 'Go',
+        desc: 'Ruta de la instalación de Go para gopls; útil si Go no está en PATH.',
+        rows: [
+          makeRow({
+            label: 'GOROOT',
+            desc:
+              'Carpeta de Go, su subcarpeta bin o go.exe. Se usa al abrir un fichero Go ' +
+              'y se guarda solo en local.',
+            control: makeInput({
+              value: prefs.goRoot ?? '',
+              placeholder: 'C:\\Program Files\\Go',
+              onCommit: (value) => setPref('goRoot', value),
+            }),
+          }),
+        ],
+      }),
+      makeSection({
         title: 'Sandbox Limits',
         desc:
           'Límites del sandbox de procesos. En Windows los aplica un Job Object; en ' +
@@ -1424,7 +1622,7 @@
         rows: [
           makeRow({
             label: 'Mostrar el prompt del sistema',
-            desc: 'Incluye en el hilo el prompt que recibe el modelo en cada turno.',
+            desc: 'Añade al hilo el prompt del turno, plegado bajo su recuento de caracteres.',
             control: makeToggle({
               value: prefs.debugShowSystemPrompt === true,
               onChange: (value) => setPref('debugShowSystemPrompt', value),
@@ -1605,7 +1803,7 @@
 
     const addBtn = makeButton({
       label: 'Añadir',
-      onClick: () => {
+      onClick: async () => {
         const name = nameInput.value.trim();
         const command = commandInput.value.trim();
 
@@ -1621,7 +1819,7 @@
           if (key && key.trim()) env[key.trim()] = rest.join('=').trim();
         }
 
-        setPref('plugins', [
+        await setPref('plugins', [
           ...plugins,
           {
             id: `plugin-${Date.now().toString(36)}`,
@@ -1932,6 +2130,7 @@
     conversations: renderConversations,
     feedback: renderFeedback,
     models: renderModels,
+    browser: renderBrowser,
     customizations: renderCustomizations,
     application: renderApplication,
     shortcuts: renderShortcuts,
@@ -1964,9 +2163,24 @@
     const renderer = RENDERERS[active] ?? renderGeneral;
     for (const node of renderer()) els.body.append(node);
 
+    const testids = {
+      general: 'General',
+      application: 'App',
+      appearance: 'Appearance',
+      shortcuts: 'Shortcuts',
+      notifications: 'Notifications',
+      models: 'Models',
+      browser: 'Browser',
+      conversations: 'Conversations',
+      account: 'Account',
+      feedback: 'Provide Feedback',
+    };
     for (const btn of els.nav.querySelectorAll('[data-section]')) {
       btn.classList.toggle('is-active', btn.dataset.section === active);
+      const testid = testids[btn.dataset.section];
+      if (testid) btn.dataset.testid = `settings-nav-item-${testid}`;
     }
+    els.feedback?.classList.toggle('is-active', active === 'feedback');
     renderProyectos();
   }
 
@@ -1979,7 +2193,7 @@
   /** Pinta las entradas de proyecto; Antigravity muestra tres y «Show All». */
   function renderProyectos() {
     if (!els.projects) return;
-    const actual = bridge?.getState?.()?.cwd ?? '';
+    const actual = bridge?.getState?.()?.project ?? '';
     const lista = proyectos.length > 0 ? proyectos : actual ? [actual] : [];
     const visibles = mostrarTodosLosProyectos ? lista : lista.slice(0, 3);
 
@@ -2002,34 +2216,53 @@
     }
 
     if (els.projectsMore) {
-      els.projectsMore.hidden = lista.length <= 3;
+      // El original lo enseña en cuanto hay proyectos; con tres, también.
+      els.projectsMore.hidden = lista.length === 0;
       els.projectsMore.textContent = mostrarTodosLosProyectos ? 'Show Less' : 'Show All';
     }
   }
 
   async function cargarProyectos() {
-    const actual = bridge?.getState?.()?.cwd ?? '';
-    let cwds = [];
-    try {
-      const sesiones = (await window.api.listSessions()) || [];
-      const vistos = new Set();
-      for (const sesion of sesiones) {
-        if (sesion.cwd && !vistos.has(sesion.cwd)) {
-          vistos.add(sesion.cwd);
-          cwds.push(sesion.cwd);
+    const state = bridge?.getState?.() ?? {};
+    const registrados = Array.isArray(state.projects) ? state.projects : [];
+    let cwds = registrados.map((p) => p.path).filter(Boolean);
+    if (cwds.length === 0) {
+      try {
+        const sesiones = (await window.api.listSessions()) || [];
+        const vistos = new Set();
+        for (const sesion of sesiones) {
+          const cwd = sesion.project ?? sesion.cwd;
+          if (cwd && !vistos.has(cwd)) {
+            vistos.add(cwd);
+            cwds.push(cwd);
+          }
         }
+      } catch {
+        cwds = [];
       }
-    } catch {
-      cwds = [];
     }
-    if (actual) cwds = [actual, ...cwds.filter((cwd) => cwd !== actual)];
+    const actual = state.project ?? '';
+    if (actual && !cwds.includes(actual)) cwds = [actual, ...cwds];
     proyectos = cwds;
     renderProyectos();
   }
 
+  /** Devuelve el foco a donde estaba al abrir: al cerrar, el teclado no se pierde. */
+  let focoPrevio = null;
+
   function open(section) {
     if (section && SECTIONS[section]) active = section;
+    focoPrevio = document.activeElement;
+    // El resto de la app queda inerte mientras el diálogo está abierto.
+    document.querySelector('.app')?.setAttribute('inert', '');
     void cargarProyectos();
+    window.api
+      .getDownloadDir()
+      .then((resultado) => {
+        downloadDir = resultado?.path ?? '';
+        if (active === 'browser' && !els.modal.hasAttribute('hidden')) render();
+      })
+      .catch(() => {});
 
     // Relee las preferencias: pueden haber cambiado desde la app.
     window.api
@@ -2043,10 +2276,23 @@
       .catch(() => {});
     els.modal.removeAttribute('hidden');
     render();
+
+    // Foco dentro del diálogo: con Tab no se recorre la interfaz tapada.
+    const primero = els.modal.querySelector('.settings__nav-item.is-active, button, [href], input');
+    if (primero && typeof primero.focus === 'function') primero.focus();
   }
 
   function close() {
+    /*
+     * Un campo con el foco (la clave recién pegada) se confirma al cerrar:
+     * ocultar el modal sin blur perdía lo escrito.
+     */
+    const activo = document.activeElement;
+    if (activo && els.modal.contains(activo) && typeof activo.blur === 'function') activo.blur();
     els.modal.setAttribute('hidden', '');
+    document.querySelector('.app')?.removeAttribute('inert');
+    if (focoPrevio && typeof focoPrevio.focus === 'function') focoPrevio.focus();
+    focoPrevio = null;
   }
 
   function showNotice(message) {

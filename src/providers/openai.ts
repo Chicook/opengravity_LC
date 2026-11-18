@@ -18,7 +18,16 @@ import {
   type ModelProvider,
   type ToolCall,
 } from './types.js';
-import { DEFAULT_BASE_URLS, coerceArguments, ensureOk, fetchWithRetry, readSSE, tryParseJSON } from './http.js';
+import {
+  DEFAULT_BASE_URLS,
+  LIST_TIMEOUT_MS,
+  coerceArguments,
+  ensureOk,
+  fetchWithRetry,
+  readSSE,
+  textoDeDelta,
+  tryParseJSON,
+} from './http.js';
 
 export interface OpenAIOptions {
   apiKey?: string;
@@ -71,16 +80,40 @@ export class OpenAIProvider implements ModelProvider {
   async listModels(): Promise<ModelInfo[]> {
     if (this.fixedModels) return this.fixedModels;
 
-    const response = await fetch(`${this.baseUrl}/models`, { headers: this.headers() });
+    /*
+     * Sin timeout, un proveedor que no responde dejaba la detección colgada.
+     * El endpoint puede devolver `{ data: [...] }` o un array directo, y el
+     * `name` es el nombre legible que usa la pasarela.
+     */
+    const response = await fetch(`${this.baseUrl}/models`, {
+      headers: this.headers(),
+      signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+    });
     await ensureOk(response, this.id);
 
-    const payload = (await response.json()) as { data?: Array<{ id?: string }> };
+    type Entrada = { id?: string; name?: string; context_length?: number; context_window?: number };
+    const payload = (await response.json()) as { data?: Entrada[] } | Entrada[];
+    const entradas = Array.isArray(payload) ? payload : (payload.data ?? []);
 
-    return (payload.data ?? [])
-      .map((entry) => entry.id)
-      .filter((id): id is string => typeof id === 'string')
-      .sort()
-      .map((id) => ({ id, name: id }));
+    return entradas
+      .filter((entry): entry is Entrada & { id: string } => typeof entry.id === 'string')
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((entry) => {
+        /*
+         * Algunas pasarelas compatibles con OpenAI declaran la ventana en el
+         * listado (`context_length` en OpenRouter, `context_window` en otras).
+         * Antes se tiraba y el presupuesto de contexto acababa adivinando por
+         * el nombre del modelo. Se acepta el primero que sea un número válido.
+         */
+        const declarada = Number(entry.context_length ?? entry.context_window);
+        return {
+          id: entry.id,
+          name: typeof entry.name === 'string' && entry.name.trim().length > 0 ? entry.name : entry.id,
+          ...(Number.isFinite(declarada) && declarada > 0
+            ? { contextWindow: Math.floor(declarada) }
+            : {}),
+        };
+      });
   }
 
   async *streamGenerate(req: GenerateRequest, signal?: AbortSignal): AsyncIterable<Chunk> {
@@ -104,6 +137,9 @@ export class OpenAIProvider implements ModelProvider {
 
     if (req.temperature !== undefined) body.temperature = req.temperature;
     if (req.maxTokens !== undefined) body.max_tokens = req.maxTokens;
+    // Esfuerzo de razonamiento con nombre (minimal / low / medium / high).
+    // Solo lo manda quien lo soporta: los servidores locales no lo aceptan.
+    if (req.reasoningEffort) body.reasoning_effort = req.reasoningEffort;
 
     const response = await fetchWithRetry(
       `${this.baseUrl}/chat/completions`,
@@ -136,13 +172,14 @@ export class OpenAIProvider implements ModelProvider {
 
       const choice = event.choices?.[0];
 
-      const reasoning = choice?.delta?.reasoning_content ?? choice?.delta?.reasoning;
-      if (reasoning && reasoning.length > 0) {
+      // Algunas pasarelas mandan listas de partes en vez de texto: se normaliza.
+      const reasoning = textoDeDelta(choice?.delta?.reasoning_content ?? choice?.delta?.reasoning);
+      if (reasoning.length > 0) {
         yield { type: 'reasoning', text: reasoning };
       }
 
-      const text = choice?.delta?.content;
-      if (text && text.length > 0) {
+      const text = textoDeDelta(choice?.delta?.content);
+      if (text.length > 0) {
         yield { type: 'text', text };
       }
 

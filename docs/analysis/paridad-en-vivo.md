@@ -71,3 +71,163 @@ Los puntos 3, 4 y 5 de la tabla quedaron corregidos después de esta prueba:
   Commit `ba3fb02`.
 - El título no llegaba porque el reader SSE no cancelaba el cuerpo al recibir
   `[DONE]` y dejaba la conexión ocupada. Commit `2cc42d4`.
+
+## Correcciones medidas contra 2.31 (2026-11-11)
+
+Antigravity 2.31 cambió la barra lateral y los ajustes; se volvió a medir su DOM
+y se ajustó lo nuestro:
+
+- **Iconos superiores**: su logo empieza en x=8 y los cuatro botones caen en
+  50/82/114/146. Los nuestros estaban 8 px a la izquierda y la navegación 12 px
+  por debajo por un `margin-bottom` que su 2.31 ya no tiene. Corregido:
+  navegación en y=75, separador en y=195 y cabeceras de sección en x=8 w=240.
+- **Filas de conversación anidadas**: sus filas ocupan los mismos 240 px que las
+  de primer nivel; las nuestras iban 8 px a la derecha y 16 px más estrechas.
+  Corregido: título en x=38, hora en x=224 y kebab de 24 en x=220.
+- **Fila de proyecto**: su botón lleva icono de carpeta de 16 en x=16 y etiqueta
+  en x=38; el nuestro solo tenía etiqueta en x=16.
+- **Saludo**: «Hey Darío, what should we build today?» — mismo 24/32 weight 350
+  con tracking −0.36 y marca de agua de 112 px al 0.15. El nombre sale del perfil
+  local; si está vacío, de la cuenta del sistema. El separador superior es
+  `clamp(72px, -66px + 32vh, 264px)`, no un padding fijo.
+- **Vista Browser**: implementada con `<webview>` sobre
+  `persist:opengravity-browser`: barra de 40 px (atrás, adelante, recargar y
+  pastilla de 28 con la URL) y pestaña en la fila superior. Pendiente: su panel
+  se ensancha a 786 px al abrir el navegador y su barra lleva botón de descargas.
+- **Ajustes**: navegación con **Browser** tras Models, «Settings» como cabecera,
+  pasos de 30 px, Give Feedback en el pie y sección Browser con Download Location
+  real (la carpeta se usa para las descargas del webview) y Browsing History.
+
+### Agente, en vivo
+
+Un turno real con el modelo configurado (144 s) ejecutó `define_subagent`,
+`invoke_subagent` y `send_message`:
+
+- El subagente definido solo con `read_file` y `list_directory` no pudo escribir
+  `prueba-lector.txt`: no recibió herramientas de escritura. No se creó el
+  fichero.
+- `send_message` llegó al subagente (`Mensaje entregado a 1 subagente(s)`); el
+  primer intento fue a un subagente ya terminado y el reintento a `sub-1` sí se
+  entregó.
+
+## Medición 2026-11-13 — Antigravity 2.31.0
+
+Método: las dos apps en vivo por CDP (Antigravity `:9223`, 1424×892;
+Opengravity release `:9225`, 1440×900). `getBoundingClientRect` y
+`getComputedStyle`; sin capturas.
+
+| Elemento | Antigravity 2.31 | Opengravity | Veredicto |
+|---|---|---|---|
+| Sidebar | 256 px | 256 px | Igual |
+| Logo / iconos superiores | x=8; 50/82/114/146 | idéntico | Igual |
+| New Conversation / Automations / Customizations | 8,75 / 8,113 / 8,151 · 240×32 | idéntico | Igual |
+| Cabecera Projects | 8,208 · 240×24 | idéntico | Igual |
+| Separador | 240×1 en y=195 | idéntico | Igual |
+| Composer | 768×118, radio 21, `rgb(13,13,17)` | idéntico | Igual |
+| Entrada | 758×40, 14/24, radio 6, padding 8 | idéntico | Igual |
+| Botón enviar | 28×28 | idéntico | Igual |
+| Saludo vacío | 24/32, w350, −0,36 px | idéntico | Igual |
+| Modal de ajustes | 1024×720 | idéntico | Igual |
+| Ítem de ajustes | 184×28 | idéntico | Igual |
+
+### Correcciones de esta pasada
+
+- **Tokens**: 91 de 97 idénticos; los 6 restantes alineados con su valor
+  (`--color-background: #070708`, `--color-selection-background:
+  rgba(47 113 227 / 0.4)` y los cuatro `--color-diffEditor-*`). Ahora 97/97.
+- **Panel lateral**: al abrir Browser pasa a **786 px** (medido en su 2.31) y
+  vuelve a la fórmula del 50 % en las demás vistas.
+- **Ajustes · Browser**: su 2.31 solo tiene Built-in Browser (Open Links In,
+  Download Location, Browsing History) y Browser Subagent (Actuation Rules). Se
+  retira «Browser Javascript Execution Policy», que no existe en su interfaz.
+- **Ajustes · General**: se añade la fila «Keyboard shortcuts» al final de
+  Execution, como la suya.
+
+### Pendiente medido y no implementado
+
+- **Interface Layout** (Knowledge Work / Software Engineering) en su General:
+  el control no es un `button` y no se pudo accionar por DOM; sin medir su
+  efecto no se replica.
+- **Voice mode** en General: depende de Gemini Live, fuera del alcance del
+  proyecto (modelo del usuario).
+- **Botón de descargas** de su barra de URL y vistas reales de Review y
+  Open File: sin referencia de geometría y con subsistema propio pendiente.
+- **Separación entre tarjetas de turno**: su contenedor mide `gap: 6px`; el
+  nuestro es de 16 px en la lista de mensajes. No se cambia sin medir el hueco
+  usuario→respuesta, que en su DOM es otro contenedor.
+
+### Chat — medido en Antigravity 2.32.0 (2026-11-13)
+
+| Medida | Antigravity 2.32 (1920) | Opengravity antes | Ahora |
+|---|---|---|---|
+| Columna del hilo | 768 px **centrada** (x=701, centro del panel 1088) | 768 px con `margin-left: 17px` | `margin: 0 auto`, centrada |
+| Separación entre tarjetas | `gap: 6px` | 16 px | 6 px |
+| Mensaje de usuario | `pt-6` = 24 px | 16 px | 24 px |
+| Resumen del turno terminado | `aria-expanded="false"` (cerrado) | abierto, con todas las filas de pensamiento a la vista | se cierra al terminar |
+| Composer | 768×82 centrado (x=701) | 768×82 con 33 px de margen izquierdo | centrado, mismo eje que el hilo |
+
+#### Filas de herramienta y markdown (2.32)
+
+Medido con un turno real abierto por el buscador y desplegado:
+
+| Detalle | Antigravity 2.32 | Opengravity (antes) | Ahora |
+|---|---|---|---|
+| Turno con **una** llamada | «Worked for 14s» → fila directa `Ran <tarea>` a +12 px, ancho 756 | cabecera intermedia «Ran command» y fila dentro | se aplana: la fila cuelga del resumen, sin cabecera |
+| Turno con **varias** llamadas | fila de grupo con el resumen por intención | igual | se mantiene |
+| Texto de la fila de comando | `Ran verify date calculation` | solo `Ran` (el comando iba solo en la tarjeta) | `Ran <taskName>` |
+| Chevron de un grupo cerrado | apunta a la derecha | siempre abajo (la rotación dependía de una clase que nadie ponía) | rota con `aria-expanded="false"` |
+| Negrita markdown | peso **600** | 490 | 600 |
+| Lista markdown | `ul` margen 8px 0 0, `li` sin margen | margen 8px 0, `li` 2px | igual a 2.32 |
+
+### Panel Overview: solape con el chat (2026-11-14)
+
+La tarjeta flotante (320×166, `absolute`, 8 px arriba y a la derecha, radio 12,
+z-30 — geometría de su DOM) se dibujaba en ventanas estrechas encima del hilo:
+a 1440 px el margen derecho de la columna (768 centrada) es de 207 px y la
+tarjeta ocupa 328.
+
+Corregido sin tocar la tarjeta: con el panel abierto, `.content__main` reserva
+344 px por la derecha cuando la ventana mide ≤1680 px (por encima, el margen ya
+supera a la tarjeta). Medido a 1440 con conversación abierta:
+
+| Elemento | Antes | Ahora |
+|---|---|---|
+| Columna del hilo | x=465, derecha 1233 | x=293, derecha 1061 |
+| Composer | x=465 | x=293 (mismo eje) |
+| Tarjeta | x=1112 | x=1112 |
+| Solape | 121 px sobre el texto | −51 px (51 de hueco) |
+
+Con el estado vacío no hay solape (saludo a 867, tarjeta a 1112).
+
+### Plan propuesto: tarjeta de artefacto (2026-11-14)
+
+Medido en Antigravity 2.32 provocando `present_plan` en una conversación real.
+El plan **no** es un modal: es una tarjeta en el hilo.
+
+```html
+<div data-testid="artifact-card"
+     class="border p-2 my-0.5 rounded-xl flex flex-col gap-1 items-start cursor-pointer artifact-card">
+  <div data-testid="artifact-card-header" class="flex flex-col gap-1 items-start w-full">
+    <button class="inline-flex items-baseline text-base font-medium … rounded-md p-0.5">
+      <svg 16×16/><span>Plan</span>
+    </button>
+    <span class="text-secondary-foreground line-clamp-3">Plan de 3 pasos para…</span>
+  </div>
+  <div class="flex gap-2 mt-1 items-center">
+    <button class="agy-button agy-button-sm bg-primary h-7 text-base rounded-md gap-1.5 px-2.5 proceed-button">
+      Proceed<span class="ml-0.5 text-sm opacity-50">Ctrl+↵</span>
+    </button>
+  </div>
+</div>
+```
+
+Medidas: tarjeta **768×100** (ancho del hilo), borde 1, `p-2` = 8, `my-0.5` = 2,
+radio 12, `gap-1` = 4; título 16/24 peso 500 en pastilla (`p-0.5`, radio 6);
+resumen en `secondary-foreground` con clamp de 3 líneas; botón primario de
+**28 px** (`h-7`, `px-2.5`, radio 6, `gap-1.5`) y pista «Ctrl+↵» de 14 px al
+50 %. Sin botón de rechazo: la revisión se escribe en el composer.
+
+Opengravity pasa de modal centrado (pasos editables, Rechazar/Aprobar) a esa
+tarjeta: se inserta en el hilo, el título despliega el documento del plan, y
+«Proceed»/Ctrl+↵ aprueba. Escribir en el composer con un plan pendiente lo
+rechaza con ese texto como motivo (el turno sigue y el agente revisa).

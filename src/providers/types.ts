@@ -17,6 +17,22 @@ export interface ToolCall {
   name: string;
   /** Argumentos ya deserializados. Si el modelo devuelve JSON inválido, `{}`. */
   arguments: Record<string, unknown>;
+  /**
+   * Datos que el proveedor exige devolver junto a la llamada en el siguiente
+   * turno (por ejemplo, `thoughtSignature` de Gemini 3). No se interpretan.
+   */
+  providerMeta?: Record<string, unknown>;
+}
+
+/**
+ * Bloque de razonamiento de Anthropic.
+ *
+ * La API exige reenviarlo intacto, con su firma, cuando el asistente pidió
+ * herramientas. Sin esto, el segundo paso del turno falla con un 400.
+ */
+export interface ThinkingBlock {
+  thinking: string;
+  signature?: string;
 }
 
 /** Imagen adjunta a un mensaje, ya codificada en base64. */
@@ -35,10 +51,17 @@ export interface Message {
   images?: ImagePart[];
   /** Presente cuando `role === 'assistant'` y el modelo pidió herramientas. */
   toolCalls?: ToolCall[];
+  /** Bloques de pensamiento que hay que devolver al proveedor tal cual. */
+  thinkingBlocks?: ThinkingBlock[];
   /** Presente cuando `role === 'tool'`: a qué llamada responde. */
   toolCallId?: string;
   /** Presente cuando `role === 'tool'`: nombre de la herramienta. */
   name?: string;
+  /**
+   * Nota interna del bucle (nudge, revisión de plan, cierre forzado). Viaja al
+   * modelo, pero no debe pintarse como mensaje del usuario ni guardarse.
+   */
+  internal?: boolean;
 }
 
 /** Esquema JSON de los parámetros de una herramienta. */
@@ -58,6 +81,11 @@ export interface GenerateRequest {
   tools?: ToolDef[];
   temperature?: number;
   maxTokens?: number;
+  /**
+   * Ventana de contexto del modelo en tokens. Los adaptadores que pueden
+   * configurarla en el servidor (Ollama) la usan; el resto la ignora.
+   */
+  contextWindow?: number;
   /** Instrucción de sistema; se prepende como mensaje `system` si existe. */
   system?: string;
   /**
@@ -65,6 +93,21 @@ export interface GenerateRequest {
    * la escritura de caché cuesta más que una lectura normal.
    */
   cachePrompt?: boolean;
+  /**
+   * Presupuesto de pensamiento extendido, en tokens. `0`/ausente = no se pide.
+   * Lo envían los adaptadores que lo expresan así (Anthropic, Gemini 2.5).
+   */
+  thinkingBudget?: number;
+  /**
+   * Esfuerzo de razonamiento con nombre, para la API de OpenAI y sus copias
+   * (`reasoning_effort`: minimal / low / medium / high).
+   */
+  reasoningEffort?: string;
+  /**
+   * Nivel de pensamiento con nombre de Gemini 3 y posteriores
+   * (`thinkingLevel`: low / medium / high).
+   */
+  thinkingLevel?: string;
 }
 
 /** Motivo de fin de generación, normalizado entre proveedores. */
@@ -80,6 +123,8 @@ export type Chunk =
   | { type: 'text'; text: string }
   /** Razonamiento del modelo (no forma parte de la respuesta visible). */
   | { type: 'reasoning'; text: string }
+  /** Bloque de pensamiento completo, con la firma que exige el proveedor. */
+  | { type: 'thinking_block'; block: ThinkingBlock }
   | { type: 'tool_call'; call: ToolCall }
   | { type: 'usage'; inputTokens: number; outputTokens: number }
   | { type: 'done'; finishReason: FinishReason };

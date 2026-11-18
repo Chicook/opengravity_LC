@@ -137,6 +137,23 @@ describe('revertirA', () => {
     }
   });
 
+  test('restaura un fichero de más de 1 MB sin truncarlo', async () => {
+    const { trayecto, objetivo, limpiar } = montar();
+    try {
+      const grande = 'x'.repeat(1_200_000);
+      trayecto.abrirPaso('c1', { indice: 1, herramienta: 'write_file' });
+      trayecto.anotarEscritura('c1', objetivo, grande);
+      escribir(objetivo, 'MODIFICADO');
+      trayecto.cerrarPaso('c1', {});
+
+      const resultado = await trayecto.revertirA('c1', 0);
+      assert.equal(resultado.ok, true);
+      assert.equal(fs.statSync(objetivo).size, grande.length);
+    } finally {
+      limpiar();
+    }
+  });
+
   test('revertir dos veces seguidas se niega la segunda', async () => {
     const { trayecto, objetivo, limpiar } = montar();
     try {
@@ -220,5 +237,81 @@ describe('persistencia', () => {
     } finally {
       limpiar();
     }
+  });
+});
+
+describe('índice de pasos y revert por turno', () => {
+  let ctx;
+  beforeEach(() => {
+    ctx = montar();
+  });
+
+  test('el índice es de la conversación, no del turno', () => {
+    const { trayecto } = ctx;
+    // El llamante reinicia en 1 cada turno; la trayectoria debe seguir numerando.
+    trayecto.abrirPaso('c1', { herramienta: 'read_file', turno: 0 });
+    trayecto.abrirPaso('c1', { herramienta: 'read_file', turno: 0 });
+    const tercero = trayecto.abrirPaso('c1', { herramienta: 'write_file', turno: 4 });
+
+    const indices = trayecto.listarPasos('c1').map((p) => p.indice);
+    assert.deepEqual(indices, [1, 2, 3]);
+    assert.equal(tercero.indice, 3);
+  });
+
+  test('planDeReversionPorMensaje solo alcanza el turno indicado', () => {
+    const { trayecto, objetivo, dir } = ctx;
+    const otro = path.join(dir, 'otro.txt');
+    escribir(otro, 'ORIGINAL-OTRO');
+
+    // Turno 0: toca otro.txt. Turno 2: toca objetivo.txt.
+    trayecto.abrirPaso('c1', { herramienta: 'write_file', turno: 0 });
+    trayecto.anotarEscritura('c1', otro, 'ORIGINAL-OTRO');
+    trayecto.cerrarPaso('c1', {});
+
+    trayecto.abrirPaso('c1', { herramienta: 'write_file', turno: 2 });
+    trayecto.anotarEscritura('c1', objetivo, 'ORIGINAL');
+    trayecto.cerrarPaso('c1', {});
+
+    // Revertir desde el mensaje 2: solo debe incluir objetivo.txt.
+    const plan = trayecto.planDeReversionPorMensaje('c1', 2);
+    assert.equal(plan.ok, true);
+    assert.equal(plan.pasosDeshacer, 1);
+    assert.deepEqual(plan.cambios.map((c) => path.basename(c.ruta)), ['objetivo.txt']);
+
+    // Revertir desde el mensaje 0: las dos.
+    assert.equal(trayecto.planDeReversionPorMensaje('c1', 0).pasosDeshacer, 2);
+  });
+
+  test('descartarDesdeMensaje olvida el turno revertido', () => {
+    const { trayecto } = ctx;
+    trayecto.abrirPaso('c1', { herramienta: 'read_file', turno: 0 });
+    trayecto.abrirPaso('c1', { herramienta: 'read_file', turno: 4 });
+    trayecto.abrirPaso('c1', { herramienta: 'read_file', turno: 4 });
+
+    const descartados = trayecto.descartarDesdeMensaje('c1', 4);
+    assert.equal(descartados, 2);
+    assert.deepEqual(trayecto.listarPasos('c1').map((p) => p.indice), [1]);
+  });
+
+  test('revertirAMensaje restaura ficheros del turno y respeta los anteriores', async () => {
+    const { trayecto, objetivo, dir } = ctx;
+    const otro = path.join(dir, 'otro.txt');
+    escribir(otro, 'ORIGINAL-OTRO');
+
+    trayecto.abrirPaso('c1', { herramienta: 'write_file', turno: 0 });
+    trayecto.anotarEscritura('c1', otro, 'ORIGINAL-OTRO');
+    escribir(otro, 'MODIFICADO-TURNO-0');
+    trayecto.cerrarPaso('c1', {});
+
+    trayecto.abrirPaso('c1', { herramienta: 'write_file', turno: 2 });
+    trayecto.anotarEscritura('c1', objetivo, 'ORIGINAL');
+    escribir(objetivo, 'MODIFICADO-TURNO-2');
+    trayecto.cerrarPaso('c1', {});
+
+    const resultado = await trayecto.revertirAMensaje('c1', 2);
+    assert.equal(resultado.ok, true);
+    assert.equal(fs.readFileSync(objetivo, 'utf8'), 'ORIGINAL', 'vuelve al turno 2');
+    assert.equal(fs.readFileSync(otro, 'utf8'), 'MODIFICADO-TURNO-0', 'el turno 0 no se toca');
+    assert.deepEqual(trayecto.listarPasos('c1').map((p) => p.indice), [1]);
   });
 });

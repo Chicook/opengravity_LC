@@ -13,9 +13,17 @@ async function conFichero(lineas) {
   return { dir, ruta };
 }
 
-test('sin rango devuelve el fichero entero', async () => {
+test('sin rango devuelve el fichero entero con números de línea', async () => {
   const { dir } = await conFichero(['uno', 'dos', 'tres']);
   const r = await readFileTool.execute({ path: 'datos.txt' }, { cwd: dir });
+  assert.match(r.content, /3 líneas/);
+  assert.match(r.content, /1 \| uno/);
+  assert.match(r.content, /3 \| tres/);
+});
+
+test('lineNumbers:false devuelve el texto pelado', async () => {
+  const { dir } = await conFichero(['uno', 'dos', 'tres']);
+  const r = await readFileTool.execute({ path: 'datos.txt', lineNumbers: false }, { cwd: dir });
   assert.equal(r.content, 'uno\ndos\ntres');
 });
 
@@ -23,7 +31,8 @@ test('startLine/endLine devuelve solo ese tramo, 1-based e incluido', async () =
   const { dir } = await conFichero(['uno', 'dos', 'tres', 'cuatro', 'cinco']);
   const r = await readFileTool.execute({ path: 'datos.txt', startLine: 2, endLine: 4 }, { cwd: dir });
   assert.match(r.content, /líneas 2-4 de 5/);
-  assert.match(r.content, /\ndos\ntres\ncuatro/);
+  assert.match(r.content, /2 \| dos/);
+  assert.match(r.content, /4 \| cuatro/);
   assert.doesNotMatch(r.content, /uno/);
   assert.doesNotMatch(r.content, /cinco/);
 });

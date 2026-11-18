@@ -34,6 +34,27 @@ import {
   type McpToolDescriptor,
 } from './types.js';
 
+/**
+ * Variables que no se heredan al servidor MCP.
+ *
+ * Mismo criterio que `electron/hooks.cjs` para los comandos del agente: un
+ * servidor de terceros no hereda la clave del modelo ni tokens de la nube.
+ * `test/mcp-entorno.test.mjs` comprueba que las dos listas coincidan.
+ */
+const VARIABLE_SECRETA =
+  /(api[_-]?key|secret|passw|credential|token|^aws_|^openai_|^anthropic_|^gemini_|^google_application_credentials$|^ssh_auth_sock$)/i;
+
+/** Copia el entorno quitando las credenciales. */
+export function entornoSanitizado(env: NodeJS.ProcessEnv): Record<string, string> {
+  const limpio: Record<string, string> = {};
+  for (const [clave, valor] of Object.entries(env)) {
+    if (valor === undefined) continue;
+    if (VARIABLE_SECRETA.test(clave)) continue;
+    limpio[clave] = valor;
+  }
+  return limpio;
+}
+
 export interface StdioMcpOptions {
   /** Ejecutable del servidor MCP (`npx`, `node`, `uvx`, ruta absoluta…). */
   command: string;
@@ -116,7 +137,9 @@ export class StdioMcpClient implements McpClientLike {
       needsShell ? ['/c', options.command, ...(options.args ?? [])] : options.args ?? [],
       {
         ...(options.cwd ? { cwd: options.cwd } : {}),
-        env: { ...process.env, ...options.env },
+        // Las credenciales del proceso no viajan al servidor; las que el usuario
+        // declare en su configuración, sí.
+        env: { ...entornoSanitizado(process.env), ...options.env },
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
       },
@@ -163,19 +186,29 @@ export class StdioMcpClient implements McpClientLike {
 
   /** Catálogo de herramientas del servidor. */
   async listTools(): Promise<McpToolDescriptor[]> {
-    const result = (await this.request('tools/list', {})) as
-      | { tools?: Array<{ name?: string; description?: string; inputSchema?: Record<string, unknown> }> }
-      | undefined;
-
     const descriptors: McpToolDescriptor[] = [];
-    for (const tool of result?.tools ?? []) {
-      if (typeof tool.name !== 'string') continue;
-      descriptors.push({
-        name: tool.name,
-        ...(tool.description !== undefined ? { description: tool.description } : {}),
-        ...(tool.inputSchema !== undefined ? { inputSchema: tool.inputSchema } : {}),
-      });
-    }
+    let cursor: string | undefined;
+    let paginas = 0;
+
+    do {
+      const result = (await this.request('tools/list', cursor ? { cursor } : {})) as
+        | {
+            tools?: Array<{ name?: string; description?: string; inputSchema?: Record<string, unknown> }>;
+            nextCursor?: string;
+          }
+        | undefined;
+
+      for (const tool of result?.tools ?? []) {
+        if (typeof tool.name !== 'string') continue;
+        descriptors.push({
+          name: tool.name,
+          ...(tool.description !== undefined ? { description: tool.description } : {}),
+          ...(tool.inputSchema !== undefined ? { inputSchema: tool.inputSchema } : {}),
+        });
+      }
+      cursor = typeof result?.nextCursor === 'string' ? result.nextCursor : undefined;
+      paginas += 1;
+    } while (cursor && paginas < 50);
 
     return descriptors;
   }
@@ -194,27 +227,36 @@ export class StdioMcpClient implements McpClientLike {
 
   /** Recursos que expone el servidor. */
   async listResources(): Promise<McpResourceDescriptor[]> {
-    const result = (await this.request('resources/list', {})) as
-      | {
-          resources?: Array<{
-            uri?: string;
-            name?: string;
-            description?: string;
-            mimeType?: string;
-          }>;
-        }
-      | undefined;
-
     const recursos: McpResourceDescriptor[] = [];
-    for (const recurso of result?.resources ?? []) {
-      if (typeof recurso.uri !== 'string') continue;
-      recursos.push({
-        uri: recurso.uri,
-        name: typeof recurso.name === 'string' ? recurso.name : recurso.uri,
-        ...(recurso.description !== undefined ? { description: recurso.description } : {}),
-        ...(recurso.mimeType !== undefined ? { mimeType: recurso.mimeType } : {}),
-      });
-    }
+    let cursor: string | undefined;
+    let paginas = 0;
+
+    do {
+      const result = (await this.request('resources/list', cursor ? { cursor } : {})) as
+        | {
+            resources?: Array<{
+              uri?: string;
+              name?: string;
+              description?: string;
+              mimeType?: string;
+            }>;
+            nextCursor?: string;
+          }
+        | undefined;
+
+      for (const recurso of result?.resources ?? []) {
+        if (typeof recurso.uri !== 'string') continue;
+        recursos.push({
+          uri: recurso.uri,
+          name: typeof recurso.name === 'string' ? recurso.name : recurso.uri,
+          ...(recurso.description !== undefined ? { description: recurso.description } : {}),
+          ...(recurso.mimeType !== undefined ? { mimeType: recurso.mimeType } : {}),
+        });
+      }
+      cursor = typeof result?.nextCursor === 'string' ? result.nextCursor : undefined;
+      paginas += 1;
+    } while (cursor && paginas < 50);
+
     return recursos;
   }
 
@@ -245,35 +287,44 @@ export class StdioMcpClient implements McpClientLike {
 
   /** Plantillas de prompt que expone el servidor. */
   async listPrompts(): Promise<McpPromptDescriptor[]> {
-    const result = (await this.request('prompts/list', {})) as
-      | {
-          prompts?: Array<{
-            name?: string;
-            description?: string;
-            arguments?: Array<{ name?: string; description?: string; required?: boolean }>;
-          }>;
-        }
-      | undefined;
-
     const prompts: McpPromptDescriptor[] = [];
-    for (const prompt of result?.prompts ?? []) {
-      if (typeof prompt.name !== 'string') continue;
-      prompts.push({
-        name: prompt.name,
-        ...(prompt.description !== undefined ? { description: prompt.description } : {}),
-        ...(Array.isArray(prompt.arguments)
-          ? {
-              arguments: prompt.arguments
-                .filter((arg) => typeof arg?.name === 'string')
-                .map((arg) => ({
-                  name: String(arg.name),
-                  ...(arg.description !== undefined ? { description: arg.description } : {}),
-                  ...(arg.required !== undefined ? { required: arg.required } : {}),
-                })),
-            }
-          : {}),
-      });
-    }
+    let cursor: string | undefined;
+    let paginas = 0;
+
+    do {
+      const result = (await this.request('prompts/list', cursor ? { cursor } : {})) as
+        | {
+            prompts?: Array<{
+              name?: string;
+              description?: string;
+              arguments?: Array<{ name?: string; description?: string; required?: boolean }>;
+            }>;
+            nextCursor?: string;
+          }
+        | undefined;
+
+      for (const prompt of result?.prompts ?? []) {
+        if (typeof prompt.name !== 'string') continue;
+        prompts.push({
+          name: prompt.name,
+          ...(prompt.description !== undefined ? { description: prompt.description } : {}),
+          ...(Array.isArray(prompt.arguments)
+            ? {
+                arguments: prompt.arguments
+                  .filter((arg) => typeof arg?.name === 'string')
+                  .map((arg) => ({
+                    name: String(arg.name),
+                    ...(arg.description !== undefined ? { description: arg.description } : {}),
+                    ...(arg.required !== undefined ? { required: arg.required } : {}),
+                  })),
+              }
+            : {}),
+        });
+      }
+      cursor = typeof result?.nextCursor === 'string' ? result.nextCursor : undefined;
+      paginas += 1;
+    } while (cursor && paginas < 50);
+
     return prompts;
   }
 
@@ -363,6 +414,12 @@ export class StdioMcpClient implements McpClientLike {
     if (!stdin || stdin.destroyed) {
       throw new McpError(-32000, 'stdin del servidor MCP no disponible');
     }
+    /*
+     * Un servidor que muere mientras se le escribe emite EPIPE en stdin: sin
+     * manejador, Node lo lanza como error no capturado y tumba el proceso
+     * principal de Electron.
+     */
+    stdin.on('error', () => {});
     stdin.write(`${JSON.stringify(message)}\n`);
   }
 

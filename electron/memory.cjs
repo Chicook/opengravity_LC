@@ -22,6 +22,38 @@ const PALABRAS_VACIAS = new Set([
   'it','as','at','by','with','from','my','me','i','you','we','they',
 ]);
 
+/**
+ * ¿La ruta encaja con el patrón? Es el `CORTEX_MEMORY_TRIGGER_GLOB` del original.
+ *
+ * Cubre lo necesario sin traer una librería: `*` dentro de un segmento, `**`
+ * para cualquier profundidad y `?` para un carácter. Las barras invertidas de
+ * Windows se normalizan a `/`.
+ */
+function coincideGlob(patron, ruta) {
+  const normal = (v) => String(v ?? '').replace(/\\/g, '/').replace(/^\.\//, '');
+  const p = normal(patron).trim();
+  const r = normal(ruta).trim();
+  if (p.length === 0 || r.length === 0) return false;
+
+  const escapar = (t) => t.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  const cuerpo = p
+    .split('**')
+    .map((trozo) => escapar(trozo).replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]'))
+    .join('.*');
+  // Un patrón sin barra vale con el nombre del fichero a cualquier profundidad.
+  const ancla = p.includes('/') ? `^${cuerpo}$` : `(^|.*/)${cuerpo}$`;
+  return new RegExp(ancla, 'i').test(r);
+}
+
+/** Normaliza la lista de patrones: cortos, sin vacíos y sin duplicados. */
+function limpiarGlobs(globs) {
+  if (!Array.isArray(globs)) return [];
+  return [...new Set(globs.map((g) => String(g ?? '').trim()).filter((g) => g.length > 0 && g.length <= 120))].slice(
+    0,
+    5,
+  );
+}
+
 /** Convierte un texto en términos comparables. */
 function terminos(texto) {
   return String(texto)
@@ -95,7 +127,7 @@ class AlmacenDeMemoria {
   }
 
   /** Añade una memoria. Devuelve la entrada creada o la existente si era duplicada. */
-  async add({ texto, tags = [], ambito = 'global' }) {
+  async add({ texto, tags = [], ambito = 'global', globs = [] }) {
     await this.cargar();
 
     const limpio = String(texto ?? '').trim().slice(0, MAX_TEXTO);
@@ -108,6 +140,7 @@ class AlmacenDeMemoria {
     if (existente) {
       existente.actualizadoEn = new Date().toISOString();
       existente.tags = [...new Set([...(existente.tags ?? []), ...tags])].slice(0, 12);
+      existente.globs = [...new Set([...(existente.globs ?? []), ...limpiarGlobs(globs)])].slice(0, 5);
       await this.guardar();
       return { ...existente, duplicada: true };
     }
@@ -116,6 +149,7 @@ class AlmacenDeMemoria {
       id: `mem_${crypto.randomBytes(6).toString('hex')}`,
       texto: limpio,
       tags: [...new Set(tags)].slice(0, 12),
+      ...(limpiarGlobs(globs).length > 0 ? { globs: limpiarGlobs(globs) } : {}),
       ambito,
       creadoEn: new Date().toISOString(),
       actualizadoEn: new Date().toISOString(),
@@ -173,6 +207,28 @@ class AlmacenDeMemoria {
       .sort((a, b) => b.puntos - a.puntos)
       .slice(0, limite)
       .map((entrada) => entrada.memoria);
+  }
+
+  /**
+   * Memorias que se activan al tocar un fichero: las que declaran `globs` y
+   * alguno encaja con las rutas dadas. Devuelve la lista con su `ruta` para que
+   * el llamante pueda avisar de por qué aparece.
+   */
+  async porGlob(rutas, limite = 3) {
+    await this.cargar();
+    const lista = (Array.isArray(rutas) ? rutas : [rutas]).map((r) => String(r ?? '')).filter(Boolean);
+    if (lista.length === 0) return [];
+
+    const salida = [];
+    for (const memoria of this.memorias) {
+      const globs = memoria.globs ?? [];
+      if (globs.length === 0) continue;
+      const ruta = lista.find((r) => globs.some((g) => coincideGlob(g, r)));
+      if (!ruta) continue;
+      salida.push({ ...memoria, ruta });
+      if (salida.length >= limite) break;
+    }
+    return salida;
   }
 
   async list({ limite = 50 } = {}) {
@@ -248,6 +304,13 @@ function makeMemoryTool(almacen, getAmbito) {
           items: { type: 'string' },
           description: 'Etiquetas cortas para agrupar memorias relacionadas.',
         },
+        globs: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Patrones de fichero que activan esta memoria (por ejemplo `src/api/*.ts`). ' +
+            'Se inyecta sola cuando el agente toca uno de esos ficheros.',
+        },
         id: { type: 'string', description: 'Id de la memoria a borrar. Obligatorio para forget.' },
         limit: { type: 'number', description: 'Cuántas devolver. Por defecto 5.' },
       },
@@ -264,13 +327,19 @@ function makeMemoryTool(almacen, getAmbito) {
         const entrada = await almacen.add({
           texto,
           tags: Array.isArray(args.tags) ? args.tags.map(String) : [],
+          globs: Array.isArray(args.globs) ? args.globs.map(String) : [],
           ambito: args.global === true ? 'global' : ambito,
         });
 
+        const conGlobs =
+          entrada.globs && entrada.globs.length > 0
+            ? ` Se activará al tocar: ${entrada.globs.join(', ')}.`
+            : '';
         return {
-          content: entrada.duplicada
-            ? `Ya lo recordaba (${entrada.id}); he refrescado la fecha.`
-            : `Guardado como ${entrada.id}.`,
+          content:
+            (entrada.duplicada
+              ? `Ya lo recordaba (${entrada.id}); he refrescado la fecha.`
+              : `Guardado como ${entrada.id}.`) + conGlobs,
         };
       }
 
@@ -323,4 +392,4 @@ function makeMemoryTool(almacen, getAmbito) {
   };
 }
 
-module.exports = { AlmacenDeMemoria, makeMemoryTool, bloqueDeMemorias, terminos };
+module.exports = { AlmacenDeMemoria, makeMemoryTool, bloqueDeMemorias, terminos, coincideGlob };

@@ -109,3 +109,51 @@ test('acción desconocida es error', () => {
 test('sin acción es error', () => {
   assert.ok(aplicarAccion(cuaderno([]), {}).error);
 });
+
+test('create no sobrescribe un cuaderno existente', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+
+  const { makeEditNotebookTool } = require('../electron/notebook.cjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nb-'));
+  const ruta = path.join(dir, 'analisis.ipynb');
+  const previo = JSON.stringify(cuaderno([code('celda-importante')]), null, 1);
+  fs.writeFileSync(ruta, previo, 'utf8');
+
+  try {
+    const tool = makeEditNotebookTool(() => dir);
+    const resultado = await tool.execute({ path: 'analisis.ipynb', action: 'create' });
+
+    assert.equal(resultado.isError, true);
+    assert.match(resultado.content, /ya existe/);
+    assert.equal(fs.readFileSync(ruta, 'utf8'), previo, 'el cuaderno no debe cambiar');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('create escribe cuando el cuaderno no existe', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+
+  const { makeEditNotebookTool } = require('../electron/notebook.cjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nb-'));
+  const ruta = path.join(dir, 'nuevo.ipynb');
+
+  try {
+    const tool = makeEditNotebookTool(() => dir);
+    const resultado = await tool.execute({ path: 'nuevo.ipynb', action: 'create', content: 'print(1)' });
+
+    assert.equal(resultado.isError, undefined);
+    const escrito = JSON.parse(fs.readFileSync(ruta, 'utf8'));
+    assert.equal(escribido_cells(escrito), 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function escribido_cells(cuadernoEscrito) {
+  return Array.isArray(cuadernoEscrito.cells) ? cuadernoEscrito.cells.length : 0;
+}

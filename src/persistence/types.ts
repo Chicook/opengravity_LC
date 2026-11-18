@@ -18,6 +18,8 @@ export interface SessionMeta {
   model: string;
   /** Directorio de trabajo en el que se ejecutó. */
   cwd: string;
+  /** Proyecto asociado; null/undefined significa «No Project». */
+  project?: string | null;
   messageCount: number;
 }
 
@@ -32,6 +34,7 @@ export interface SessionInit {
   provider: string;
   model: string;
   cwd: string;
+  project?: string | null;
   title?: string;
 }
 
@@ -54,6 +57,9 @@ export interface SessionStore {
 
   /** Sustituye el historial completo de una sesión (para deshacer). */
   rewrite(id: string, messages: Message[]): Promise<void>;
+
+  /** Cambia el proyecto asociado a una sesión. */
+  setProject(id: string, project: string | null): Promise<void>;
 
   /** Sesión más reciente, si hay alguna. */
   latest(): Promise<SessionMeta | undefined>;

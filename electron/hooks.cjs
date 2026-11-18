@@ -19,6 +19,7 @@ const CLAVES_DE_RUTA = {
   edit_notebook: ['path'],
   list_directory: ['path'],
   search_files: ['path', 'directory'],
+  file_search: ['path'],
   search_code: ['path'],
   view_code_item: ['path'],
   run_command: ['cwd'],
@@ -28,6 +29,14 @@ const CLAVES_DE_RUTA = {
 function dentroDelWorkspace(cwd, absoluta) {
   const relativa = path.relative(cwd, absoluta);
   return relativa === '' || (relativa !== '..' && !relativa.startsWith(`..${path.sep}`) && !path.isAbsolute(relativa));
+}
+
+/** ¿La ruta está dentro del cwd o de alguna raíz añadida con `--add-dir`? */
+function dentroDeRaices(cwd, raices, absoluta) {
+  if (dentroDelWorkspace(cwd, absoluta)) return true;
+  return (Array.isArray(raices) ? raices : []).some((raiz) =>
+    typeof raiz === 'string' && raiz.length > 0 && dentroDelWorkspace(raiz, absoluta),
+  );
 }
 
 /**
@@ -55,7 +64,7 @@ function sanearEntorno(env) {
  * explora a ciegas gastando pasos. Se midió en una prueba real: 48 761 tokens
  * frente a 3 341 tras arreglar el directorio de trabajo.
  */
-function absolutizarRutas(toolName, args, getCwd, restringir = false) {
+function absolutizarRutas(toolName, args, getCwd, restringir = false, getRoots) {
   const claves = CLAVES_DE_RUTA[toolName];
   if (!claves) return { args, notas: [] };
 
@@ -76,7 +85,7 @@ function absolutizarRutas(toolName, args, getCwd, restringir = false) {
      * salir del directorio de trabajo. Es una comprobación de ruta, no un
      * sandbox del SO: un comando de shell todavía puede salir por su cuenta.
      */
-    if (restringir && !dentroDelWorkspace(cwd, absoluta)) {
+    if (restringir && !dentroDeRaices(cwd, getRoots?.(), absoluta)) {
       throw new Error(
         `La ruta «${valor}» queda fuera del workspace y el sandbox de workspace está activo.`,
       );
@@ -199,7 +208,7 @@ async function truncarAGuardar(texto, { toolName, getCwd, limite }) {
     texto:
       `${cabeza}\n\n` +
       `… salida truncada: ${texto.length} caracteres en total, se muestran ${PREVIEW}.\n` +
-      `El resto está en ${relativo}. Léelo con read_file (usa offset) si lo necesitas.`,
+      `El resto está en ${relativo}. Léelo con read_file (usa startLine/endLine) si lo necesitas.`,
     archivo: relativo,
   };
 }
@@ -225,6 +234,7 @@ function conHooks(tool, opciones) {
         actuales,
         getCwd,
         opciones.getRestringir?.() === true,
+        opciones.getRoots,
       );
       actuales = ruta.args;
       notas.push(...ruta.notas);
@@ -372,12 +382,31 @@ function aplicarHooksDeRazonamiento(texto, opciones = {}) {
   };
 }
 
+/**
+ * Copia de una estructura con los secretos evidentes tapados.
+ *
+ * Para lo que se escribe en disco (argumentos de herramientas, pasos de
+ * trayectoria, mensajes persistidos): una credencial que el agente escribió se
+ * quedaría en claro en `userData` para siempre.
+ */
+function redactarDatos(valor) {
+  try {
+    const redaccion = redactarSecretos(JSON.stringify(valor));
+    // El redactor devuelve { texto, encontrados }; aquí interesa el texto.
+    return JSON.parse(typeof redaccion === 'string' ? redaccion : redaccion.texto);
+  } catch {
+    return valor;
+  }
+}
+
 module.exports = {
   conHooks,
   absolutizarRutas,
   dentroDelWorkspace,
+  dentroDeRaices,
   sanearEntorno,
   redactarSecretos,
+  redactarDatos,
   truncarAGuardar,
   aplicarReglasDeReescritura,
   aplicarHooksDeTexto,

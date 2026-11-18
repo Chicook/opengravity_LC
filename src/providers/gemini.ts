@@ -21,7 +21,16 @@ import {
   type ModelProvider,
   type ToolCall,
 } from './types.js';
-import { DEFAULT_BASE_URLS, coerceArguments, ensureOk, fetchWithRetry, readSSE, tryParseJSON } from './http.js';
+import {
+  DEFAULT_BASE_URLS,
+  LIST_TIMEOUT_MS,
+  coerceArguments,
+  ensureOk,
+  fetchWithRetry,
+  readSSE,
+  tryParseJSON,
+  textoDeDelta,
+} from './http.js';
 
 export interface GeminiOptions {
   apiKey?: string;
@@ -40,6 +49,8 @@ interface GeminiPart {
   thought?: boolean;
   functionCall?: { name?: string; args?: unknown };
   functionResponse?: { name?: string; response?: unknown };
+  /** Firma que Gemini 3 exige devolver junto al `functionCall`. */
+  thoughtSignature?: string;
 }
 
 export class GeminiProvider implements ModelProvider {
@@ -59,30 +70,28 @@ export class GeminiProvider implements ModelProvider {
   }
 
   async listModels(): Promise<ModelInfo[]> {
+    // Sin clave, lista curada; con clave, los errores se propagan para que la
+    // detección no dé por bueno un endpoint que no responde.
     if (!this.apiKey) return FALLBACK_MODELS;
 
-    try {
-      const response = await fetch(
-        `${this.baseUrl}/models?key=${encodeURIComponent(this.apiKey)}`,
-      );
-      await ensureOk(response, this.id);
+    const response = await fetch(`${this.baseUrl}/models?key=${encodeURIComponent(this.apiKey)}`, {
+      signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+    });
+    await ensureOk(response, this.id);
 
-      const payload = (await response.json()) as {
-        models?: Array<{ name?: string; displayName?: string; inputTokenLimit?: number }>;
-      };
+    const payload = (await response.json()) as {
+      models?: Array<{ name?: string; displayName?: string; inputTokenLimit?: number }>;
+    };
 
-      const models = (payload.models ?? [])
-        .filter((entry) => entry.name?.startsWith('models/gemini'))
-        .map((entry) => ({
-          id: (entry.name ?? '').replace(/^models\//, ''),
-          name: entry.displayName ?? entry.name ?? '',
-          ...(entry.inputTokenLimit !== undefined ? { contextWindow: entry.inputTokenLimit } : {}),
-        }));
+    const models = (payload.models ?? [])
+      .filter((entry) => entry.name?.startsWith('models/gemini'))
+      .map((entry) => ({
+        id: (entry.name ?? '').replace(/^models\//, ''),
+        name: entry.displayName ?? entry.name ?? '',
+        ...(entry.inputTokenLimit !== undefined ? { contextWindow: entry.inputTokenLimit } : {}),
+      }));
 
-      return models.length > 0 ? models : FALLBACK_MODELS;
-    } catch {
-      return FALLBACK_MODELS;
-    }
+    return models.length > 0 ? models : FALLBACK_MODELS;
   }
 
   async *streamGenerate(req: GenerateRequest, signal?: AbortSignal): AsyncIterable<Chunk> {
@@ -109,6 +118,32 @@ export class GeminiProvider implements ModelProvider {
     const generationConfig: Record<string, unknown> = {};
     if (req.temperature !== undefined) generationConfig.temperature = req.temperature;
     if (req.maxTokens !== undefined) generationConfig.maxOutputTokens = req.maxTokens;
+
+    /*
+     * Gemini 2.5+ ya piensa por su cuenta, pero solo devuelve los pensamientos
+     * si se piden con `includeThoughts`. En modelos anteriores el campo no
+     * existe, así que solo se envía cuando el id lo indica.
+     */
+    if (/gemini-(2\.5|[3-9])/i.test(req.model)) {
+      const presupuesto = Number(req.thinkingBudget ?? 0);
+      /*
+       * `thinkingBudget` solo existe hasta 2.5: en Gemini 3+ está deprecado
+       * (se controla con `thinkingLevel`) y en Gemini 4 devuelve 400.
+       *
+       * Sin presupuesto ni nivel no se manda `thinkingConfig`: pedir
+       * `includeThoughts` siempre encendía el razonamiento aunque el usuario
+       * lo hubiera apagado.
+       */
+      const thinkingConfig = {
+        includeThoughts: true,
+        ...(presupuesto > 0 && /^gemini-2\.5/i.test(req.model) ? { thinkingBudget: presupuesto } : {}),
+        ...(req.thinkingLevel ? { thinkingLevel: req.thinkingLevel } : {}),
+      };
+      if (thinkingConfig.thinkingBudget || thinkingConfig.thinkingLevel) {
+        generationConfig.thinkingConfig = thinkingConfig;
+      }
+    }
+
     if (Object.keys(generationConfig).length > 0) body.generationConfig = generationConfig;
 
     const url =
@@ -152,10 +187,11 @@ export class GeminiProvider implements ModelProvider {
 
       for (const candidate of event.candidates ?? []) {
         for (const part of candidate.content?.parts ?? []) {
-          if (part.text && part.text.length > 0) {
+          const trozo = textoDeDelta(part.text);
+          if (trozo.length > 0) {
             // Los fragmentos de pensamiento no son respuesta visible.
-            if (part.thought) yield { type: 'reasoning', text: part.text };
-            else yield { type: 'text', text: part.text };
+            if (part.thought) yield { type: 'reasoning', text: trozo };
+            else yield { type: 'text', text: trozo };
           }
 
           if (part.functionCall?.name) {
@@ -164,6 +200,9 @@ export class GeminiProvider implements ModelProvider {
               id: `call_${crypto.randomUUID()}`,
               name: part.functionCall.name,
               arguments: coerceArguments(part.functionCall.args),
+              ...(part.thoughtSignature
+                ? { providerMeta: { thoughtSignature: part.thoughtSignature } }
+                : {}),
             };
             yield { type: 'tool_call', call };
           }
@@ -213,6 +252,9 @@ function toGeminiContents(messages: Message[]): unknown[] {
           ...(message.content ? [{ text: message.content }] : []),
           ...message.toolCalls.map((call) => ({
             functionCall: { name: call.name, args: call.arguments },
+            ...(typeof call.providerMeta?.thoughtSignature === 'string'
+              ? { thoughtSignature: call.providerMeta.thoughtSignature }
+              : {}),
           })),
         ],
       });

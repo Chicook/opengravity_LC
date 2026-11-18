@@ -23,8 +23,6 @@ const CSS = new URL('../renderer/styles.css', import.meta.url);
  * explicación se convierte en un cajón donde esconder el fallo siguiente.
  */
 const EXCEPCIONES = new Map([
-  // Rojo fijo de la X de cerrar de Windows. No es un color del tema.
-  ['#c42b1c', 'rojo de la X de cerrar de Windows: es fijo, no del tema'],
   // `#000` en un gradiente de máscara significa «opaco», no «negro».
   ['#000', 'en mask-image, negro significa opaco: no es un color'],
 ]);

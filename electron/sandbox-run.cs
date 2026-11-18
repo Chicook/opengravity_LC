@@ -10,6 +10,7 @@
 // el llamador usa el guard de PowerShell como respaldo.
 
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -247,12 +248,23 @@ internal static class OgSandbox
         SetHandleInformation(stdout, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
         SetHandleInformation(stderr, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
 
-        string comspec = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe";
+        /*
+         * Misma shell que el agente sin sandbox: PowerShell. `-EncodedCommand`
+         * evita que las comillas de la orden rompan la línea de CreateProcess.
+         */
+        string systemRoot = Environment.GetEnvironmentVariable("SystemRoot") ?? "C:\\Windows";
+        string shell = Path.Combine(
+            systemRoot,
+            "System32",
+            "WindowsPowerShell",
+            "v1.0",
+            "powershell.exe");
+        string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(
+            "$ProgressPreference='SilentlyContinue'; " + command));
         StringBuilder commandLine = new StringBuilder();
-        commandLine.Append('"').Append(comspec).Append('"');
-        commandLine.Append(" /d /s /c \"");
-        commandLine.Append(command);
-        commandLine.Append('"');
+        commandLine.Append('"').Append(shell).Append('"');
+        commandLine.Append(" -NoProfile -ExecutionPolicy Bypass -EncodedCommand ");
+        commandLine.Append(encoded);
 
         STARTUPINFO startup = new STARTUPINFO();
         startup.cb = (uint)Marshal.SizeOf(typeof(STARTUPINFO));

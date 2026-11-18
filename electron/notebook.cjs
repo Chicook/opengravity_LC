@@ -178,12 +178,24 @@ function makeEditNotebookTool(getCwd) {
       },
       required: ['path', 'action'],
     },
-    async execute(args) {
+    async execute(args, ctx) {
       const relativa = String(args?.path ?? '');
       if (relativa.length === 0) return { content: 'Falta el parámetro `path`.', isError: true };
 
-      const absoluta = path.resolve(getCwd(), relativa);
+      const absoluta = path.resolve(ctx?.cwd ?? getCwd(), relativa);
       const accion = String(args?.action ?? '').toLowerCase();
+
+      /*
+       * `create` parte de un cuaderno vacío y escribe: sin esta comprobación
+       * sobrescribe una libreta existente y borra celdas y salidas, sin
+       * checkpoint que lo deshaga.
+       */
+      if (accion === 'create' && (await fsp.access(absoluta).then(() => true, () => false))) {
+        return {
+          content: `${relativa} ya existe. Usa \`add\` para añadir celdas o \`update\` para editarlas.`,
+          isError: true,
+        };
+      }
 
       let cuaderno = cuadernoVacio();
 

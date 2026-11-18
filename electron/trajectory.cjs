@@ -10,9 +10,7 @@
 
 const fsp = require('node:fs/promises');
 const path = require('node:path');
-
-/** Tope de contenido guardado por fichero. */
-const MAX_SNAPSHOT = 1_000_000;
+const { redactarDatos } = require('./hooks.cjs');
 
 /** Tope de pasos recordados por conversación. */
 const MAX_PASOS = 400;
@@ -58,6 +56,7 @@ function serializar(trayectoria) {
       indice: paso.indice,
       herramienta: paso.herramienta,
       argumentos: paso.argumentos,
+      llamadaId: paso.llamadaId,
       mensaje: paso.mensaje,
       inicio: paso.inicio,
       fin: paso.fin,
@@ -78,6 +77,7 @@ function deserializar(datos, conversacion) {
       indice: Number(bruto?.indice ?? 0),
       herramienta: String(bruto?.herramienta ?? ''),
       argumentos: bruto?.argumentos ?? {},
+      llamadaId: typeof bruto?.llamadaId === 'string' ? bruto.llamadaId : null,
       mensaje: bruto?.mensaje ?? null,
       inicio: bruto?.inicio,
       fin: bruto?.fin,
@@ -190,6 +190,13 @@ function trayectoriaDe(conversacion) {
   return trayectoria;
 }
 
+/** Siguiente índice libre de la conversación (monotónico, no por turno). */
+function siguienteIndice(trayectoria) {
+  let maximo = 0;
+  for (const paso of trayectoria.pasos) if (paso.indice > maximo) maximo = paso.indice;
+  return maximo + 1;
+}
+
 /**
  * Abre un paso de la trayectoria.
  *
@@ -202,13 +209,21 @@ function trayectoriaDe(conversacion) {
  */
 function abrirPaso(conversacion, datos) {
   const trayectoria = trayectoriaDe(conversacion);
-  const indice = Number(datos.indice ?? trayectoria.pasos.length);
+  /*
+   * El índice lo asigna la trayectoria, no el llamante: antes se reiniciaba en
+   * cada turno, así que los pasos del turno 2 repetían los números del turno 1 y
+   * revertir a «el paso 2» alcanzaba también pasos del turno anterior.
+   */
+  const indice = siguienteIndice(trayectoria);
 
   const paso = {
     indice,
     herramienta: String(datos.herramienta ?? ''),
-    argumentos: datos.argumentos ?? {},
+    argumentos: redactarDatos(datos.argumentos ?? {}),
+    llamadaId: typeof datos.llamadaId === 'string' ? datos.llamadaId : null,
     mensaje: datos.mensaje ?? null,
+    /* Índice del mensaje con el que empezó el turno: permite revertir por mensaje. */
+    turno: typeof datos.turno === 'number' ? datos.turno : null,
     inicio: new Date().toISOString(),
     ficheros: new Map(),
     resultado: undefined,
@@ -240,29 +255,48 @@ function pasoActual(conversacion) {
  * Solo se guarda la primera vez **dentro del paso**: si el mismo paso escribe dos
  * veces el mismo fichero, lo que interesa restaurar es el estado anterior al paso.
  */
-function anotarEscritura(conversacion, absolutePath, contenidoAntes) {
-  const paso = pasoActual(conversacion);
+function anotarEscritura(conversacion, absolutePath, contenidoAntes, llamadaId) {
+  const trayectoria = trayectorias.get(String(conversacion ?? 'sin-conversacion'));
+  const paso = llamadaId && trayectoria
+    ? [...trayectoria.pasos].reverse().find((p) => p.llamadaId === llamadaId && !p.fin)
+    : pasoActual(conversacion);
   if (!paso) return false;
   if (paso.ficheros.has(absolutePath)) return false;
 
-  const contenido =
-    typeof contenidoAntes === 'string' && contenidoAntes.length > MAX_SNAPSHOT
-      ? contenidoAntes.slice(0, MAX_SNAPSHOT)
-      : contenidoAntes;
-
-  paso.ficheros.set(absolutePath, contenido ?? null);
+  /*
+   * Se guarda el contenido completo. Antes se recortaba a 1 MB y «deshacer»
+   * escribía ese recorte: un fichero de 1,2 MB quedaba en 1 MB, sin aviso.
+   * La poda por conversación (MAX_BYTES) se encarga del crecimiento.
+   */
+  paso.ficheros.set(absolutePath, contenidoAntes ?? null);
   programarVolcado(conversacion);
   return true;
 }
 
-/** Cierra el paso abierto con su resultado. */
-function cerrarPaso(conversacion, resultado) {
-  const paso = pasoActual(conversacion);
+/** Cierra un paso con su resultado. */
+function cerrarUnPaso(conversacion, paso, resultado) {
   if (!paso) return;
   paso.resultado = String(resultado?.contenido ?? '').slice(0, 500);
   paso.esError = resultado?.esError === true;
   paso.fin = new Date().toISOString();
   programarVolcado(conversacion);
+}
+
+/** Cierra el paso abierto con su resultado. */
+function cerrarPaso(conversacion, resultado) {
+  cerrarUnPaso(conversacion, pasoActual(conversacion), resultado);
+}
+
+/**
+ * Cierra el paso de una llamada concreta. Con varias herramientas en paralelo,
+ * cerrar siempre el último paso atribuía todos los resultados al mismo.
+ */
+function cerrarPasoPorLlamada(conversacion, llamadaId, resultado) {
+  const trayectoria = trayectorias.get(String(conversacion ?? 'sin-conversacion'));
+  const paso = trayectoria
+    ? [...trayectoria.pasos].reverse().find((p) => p.llamadaId === llamadaId && !p.fin)
+    : null;
+  cerrarUnPaso(conversacion, paso ?? pasoActual(conversacion), resultado);
 }
 
 /** Lista los pasos con lo justo para mostrarlos en la UI. */
@@ -290,8 +324,27 @@ function planDeReversion(conversacion, indiceDestino) {
   if (!trayectoria) return { ok: false, error: 'no hay trayectoria para esta conversación' };
 
   const destino = Number(indiceDestino);
-  const posteriores = trayectoria.pasos.filter((paso) => paso.indice > destino);
+  return planPara(trayectoria, trayectoria.pasos.filter((paso) => paso.indice > destino));
+}
 
+/**
+ * Plan para el revert por turno de mensajes: se deshacen los pasos del turno
+ * que empieza en el mensaje `keep` y los siguientes.
+ *
+ * Los pasos viejos (anteriores a guardar `turno`) no se pueden situar en un
+ * turno concreto: cuentan como turno 0, así que solo salen al revertir todo.
+ * shortcut: sin migración de trayectorias antiguas; se resuelve solo al
+ * descartarlas por antigüedad (30 días por defecto).
+ */
+function planDeReversionPorMensaje(conversacion, keep) {
+  const trayectoria = trayectorias.get(String(conversacion ?? 'sin-conversacion'));
+  if (!trayectoria) return { ok: false, error: 'no hay trayectoria para esta conversación' };
+
+  const desde = Math.max(0, Number(keep) || 0);
+  return planPara(trayectoria, trayectoria.pasos.filter((paso) => (paso.turno ?? 0) >= desde));
+}
+
+function planPara(trayectoria, posteriores) {
   if (posteriores.length === 0) {
     return { ok: false, error: 'no hay pasos posteriores que revertir' };
   }
@@ -320,13 +373,17 @@ function planDeReversion(conversacion, indiceDestino) {
   };
 }
 
-/** Aplica la reversión a un paso. Devuelve cuántos ficheros se tocaron. */
-async function revertirA(conversacion, indiceDestino) {
-  const plan = planDeReversion(conversacion, indiceDestino);
+/**
+ * Aplica la reversión. `seleccionar` decide qué pasos se deshacen; se restauran
+ * sus snapshots y luego se descartan de la trayectoria.
+ */
+async function revertirCon(conversacion, plan, seleccionar) {
   if (!plan.ok) return { ok: false, error: plan.error, restaurados: 0 };
 
-  const trayectoria = trayectorias.get(String(conversacion));
-  const posteriores = trayectoria.pasos.filter((paso) => paso.indice > Number(indiceDestino));
+  const trayectoria = trayectorias.get(String(conversacion ?? 'sin-conversacion'));
+  if (!trayectoria) return { ok: false, error: 'no hay trayectoria para esta conversación', restaurados: 0 };
+
+  const posteriores = trayectoria.pasos.filter(seleccionar);
 
   const porFichero = new Map();
   for (const paso of [...posteriores].sort((a, b) => b.indice - a.indice)) {
@@ -347,13 +404,47 @@ async function revertirA(conversacion, indiceDestino) {
     }
   }
 
-  trayectoria.pasos = trayectoria.pasos.filter((paso) => paso.indice <= Number(indiceDestino));
+  trayectoria.pasos = trayectoria.pasos.filter((paso) => !seleccionar(paso));
   trayectoria.porIndice.clear();
   for (const paso of trayectoria.pasos) trayectoria.porIndice.set(paso.indice, paso);
 
   programarVolcado(conversacion);
 
   return { ok: true, restaurados, mensaje: plan.mensaje, pasosDeshacer: posteriores.length };
+}
+
+/** Revierte a un paso concreto (el revert de una fila de herramienta). */
+async function revertirA(conversacion, indiceDestino) {
+  const destino = Number(indiceDestino);
+  const plan = planDeReversion(conversacion, destino);
+  return revertirCon(conversacion, plan, (paso) => paso.indice > destino);
+}
+
+/** Revierte los pasos del turno que empieza en el mensaje `keep` (revert por turno). */
+async function revertirAMensaje(conversacion, keep) {
+  const desde = Math.max(0, Number(keep) || 0);
+  const plan = planDeReversionPorMensaje(conversacion, desde);
+  return revertirCon(conversacion, plan, (paso) => (paso.turno ?? 0) >= desde);
+}
+
+/**
+ * Descarta los pasos del turno `keep` y siguientes sin tocar ficheros.
+ *
+ * Se usa cuando los snapshots ya se restauraron desde memoria
+ * (`restoreCheckpoints`): sin esto quedan pasos viejos que un revert posterior
+ * volvería a aplicar.
+ */
+function descartarDesdeMensaje(conversacion, keep) {
+  const trayectoria = trayectorias.get(String(conversacion ?? 'sin-conversacion'));
+  if (!trayectoria) return 0;
+
+  const desde = Math.max(0, Number(keep) || 0);
+  const antes = trayectoria.pasos.length;
+  trayectoria.pasos = trayectoria.pasos.filter((paso) => (paso.turno ?? 0) < desde);
+  trayectoria.porIndice.clear();
+  for (const paso of trayectoria.pasos) trayectoria.porIndice.set(paso.indice, paso);
+  if (trayectoria.pasos.length !== antes) programarVolcado(conversacion);
+  return antes - trayectoria.pasos.length;
 }
 
 /** Olvida la trayectoria de una conversación y borra su fichero. */
@@ -436,11 +527,16 @@ module.exports = {
   asegurar,
   abrirPaso,
   cerrarPaso,
+  cerrarPasoPorLlamada,
   anotarEscritura,
   pasoActual,
   listarPasos,
   planDeReversion,
+  planDeReversionPorMensaje,
+  rutaDeTrayectoria: rutaDe,
   revertirA,
+  revertirAMensaje,
+  descartarDesdeMensaje,
   olvidarTrayectoria,
   podarAntiguas,
   volcar,

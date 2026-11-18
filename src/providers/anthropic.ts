@@ -20,7 +20,16 @@ import {
   type ModelProvider,
   type ToolCall,
 } from './types.js';
-import { DEFAULT_BASE_URLS, coerceArguments, ensureOk, fetchWithRetry, readSSE, tryParseJSON } from './http.js';
+import {
+  DEFAULT_BASE_URLS,
+  LIST_TIMEOUT_MS,
+  coerceArguments,
+  ensureOk,
+  fetchWithRetry,
+  readSSE,
+  tryParseJSON,
+  textoDeDelta,
+} from './http.js';
 
 export interface AnthropicOptions {
   apiKey?: string;
@@ -36,6 +45,17 @@ const FALLBACK_MODELS: ModelInfo[] = [
   { id: 'claude-opus-4-20250514', name: 'Claude Opus 4', contextWindow: 200_000 },
   { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', contextWindow: 200_000 },
 ];
+
+/**
+ * Tope de tokens de salida por defecto del modelo.
+ *
+ * Claude 3 original (opus/sonnet/haiku) admite 4096; de 3.5 en adelante, 8192.
+ * Pedir más de lo que admite el modelo devuelve 400 y se pierde el turno entero.
+ * Con 4096, cualquier escritura de fichero grande se cortaba a mitad.
+ */
+function topeDeSalida(model: string): number {
+  return /^claude-3-(opus|sonnet|haiku)/.test(model) ? 4096 : 8192;
+}
 
 export class AnthropicProvider implements ModelProvider {
   readonly id = 'anthropic';
@@ -67,36 +87,34 @@ export class AnthropicProvider implements ModelProvider {
   }
 
   async listModels(): Promise<ModelInfo[]> {
+    // Sin clave, la lista curada sirve para que la UI no quede vacía; con
+    // clave, un error debe verse (401, red): ocultarlo marcaba como disponible
+    // un proveedor que luego fallaba al chatear.
     if (!this.apiKey) return FALLBACK_MODELS;
 
-    try {
-      const response = await fetch(`${this.baseUrl}/models?limit=100`, {
-        headers: this.headers(),
-      });
+    const response = await fetch(`${this.baseUrl}/models?limit=100`, {
+      headers: this.headers(),
+      signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+    });
+    await ensureOk(response, this.id);
 
-      if (!response.ok) return FALLBACK_MODELS;
+    const payload = (await response.json()) as {
+      data?: Array<{ id?: string; display_name?: string; created_at?: string }>;
+    };
 
-      const payload = (await response.json()) as {
-        data?: Array<{ id?: string; display_name?: string; created_at?: string }>;
-      };
-
-      const models: ModelInfo[] = [];
-      for (const entry of payload.data ?? []) {
-        if (typeof entry.id !== 'string') continue;
-        models.push({ id: entry.id, name: entry.display_name ?? entry.id });
-      }
-
-      return models.length > 0 ? models : FALLBACK_MODELS;
-    } catch {
-      // sin red o endpoint no disponible: se usa la lista curada
-      return FALLBACK_MODELS;
+    const models: ModelInfo[] = [];
+    for (const entry of payload.data ?? []) {
+      if (typeof entry.id !== 'string') continue;
+      models.push({ id: entry.id, name: entry.display_name ?? entry.id });
     }
+
+    return models.length > 0 ? models : FALLBACK_MODELS;
   }
 
   async *streamGenerate(req: GenerateRequest, signal?: AbortSignal): AsyncIterable<Chunk> {
     const body: Record<string, unknown> = {
       model: req.model,
-      max_tokens: req.maxTokens ?? 4096,
+      max_tokens: req.maxTokens ?? topeDeSalida(req.model),
       messages: toAnthropicMessages(req.messages),
       stream: true,
     };
@@ -109,6 +127,27 @@ export class AnthropicProvider implements ModelProvider {
         : req.system;
     }
     if (req.temperature !== undefined) body.temperature = req.temperature;
+
+    /*
+     * Pensamiento extendido: la API no lo emite si no se pide. Exige
+     * `max_tokens` mayor que el presupuesto y temperatura 1. Los bloques
+     * `thinking` se devuelven en el mensaje del asistente y se reenvían
+     * intactos antes de cada `tool_use`; sin eso la API rechaza el segundo
+     * paso del turno.
+     *
+     * El presupuesto tiene que caber en `max_tokens`. Los 3.7 y 4.x admiten
+     * más de 8192; 32k es un techo seguro para la familia. Sin este tope, el
+     * nivel `max` (96k) convertía la petición en un 400.
+     */
+    const modelo = req.model.toLowerCase();
+    const topePensamiento =
+      /claude-3-7|claude-[4-9]|claude-(?:opus|sonnet|haiku)-[4-9]/.test(modelo) ? 32_000 : 8_192;
+    const pensamiento = Math.min(Number(req.thinkingBudget ?? 0), topePensamiento - 1024);
+    if (pensamiento > 0) {
+      body.thinking = { type: 'enabled', budget_tokens: pensamiento };
+      body.max_tokens = Math.max(Number(body.max_tokens), pensamiento + 1024);
+      body.temperature = 1;
+    }
 
     if (req.tools && req.tools.length > 0) {
       const tools = req.tools;
@@ -137,6 +176,7 @@ export class AnthropicProvider implements ModelProvider {
     // Acumuladores por índice de bloque de contenido.
     const textBlocks = new Map<number, string>();
     const toolBlocks = new Map<number, { id: string; name: string; json: string }>();
+    const thinkingBlocks = new Map<number, { thinking: string; signature: string }>();
     let finishReason: FinishReason = 'stop';
     let inputTokens = 0;
     let outputTokens = 0;
@@ -151,6 +191,7 @@ export class AnthropicProvider implements ModelProvider {
               type?: string;
               text?: string;
               thinking?: string;
+              signature?: string;
               partial_json?: string;
               stop_reason?: string;
             };
@@ -179,6 +220,23 @@ export class AnthropicProvider implements ModelProvider {
               name: event.content_block.name ?? '',
               json: '',
             });
+          } else if (event.content_block?.type === 'thinking') {
+            thinkingBlocks.set(index, { thinking: '', signature: '' });
+          }
+          break;
+        }
+
+        case 'content_block_stop': {
+          const index = event.index ?? 0;
+          const block = thinkingBlocks.get(index);
+          if (block && block.thinking.length > 0) {
+            yield {
+              type: 'thinking_block',
+              block: {
+                thinking: block.thinking,
+                ...(block.signature.length > 0 ? { signature: block.signature } : {}),
+              },
+            };
           }
           break;
         }
@@ -186,14 +244,27 @@ export class AnthropicProvider implements ModelProvider {
         case 'content_block_delta': {
           const index = event.index ?? 0;
           // Bloques de razonamiento extendido (thinking).
-          if (event.delta?.type === 'thinking_delta' && event.delta.thinking) {
-            yield { type: 'reasoning', text: event.delta.thinking };
+          if (event.delta?.type === 'thinking_delta') {
+            const pensamiento = textoDeDelta(event.delta.thinking);
+            if (pensamiento.length > 0) {
+              const block = thinkingBlocks.get(index);
+              if (block) block.thinking += pensamiento;
+              yield { type: 'reasoning', text: pensamiento };
+            }
+            break;
+          }
+          if (event.delta?.type === 'signature_delta' && event.delta.signature) {
+            const block = thinkingBlocks.get(index);
+            if (block) block.signature += event.delta.signature;
             break;
           }
 
-          if (event.delta?.type === 'text_delta' && event.delta.text) {
-            textBlocks.set(index, (textBlocks.get(index) ?? '') + event.delta.text);
-            yield { type: 'text', text: event.delta.text };
+          if (event.delta?.type === 'text_delta') {
+            const trozo = textoDeDelta(event.delta.text);
+            if (trozo.length > 0) {
+              textBlocks.set(index, (textBlocks.get(index) ?? '') + trozo);
+              yield { type: 'text', text: trozo };
+            }
           }
           if (event.delta?.type === 'input_json_delta' && event.delta.partial_json) {
             const slot = toolBlocks.get(index);
@@ -255,6 +326,11 @@ function toAnthropicMessages(messages: Message[]): unknown[] {
       result.push({
         role: 'assistant',
         content: [
+          ...(message.thinkingBlocks ?? []).map((block) => ({
+            type: 'thinking',
+            thinking: block.thinking,
+            ...(block.signature ? { signature: block.signature } : {}),
+          })),
           ...(message.content ? [{ type: 'text', text: message.content }] : []),
           ...message.toolCalls.map((call) => ({
             type: 'tool_use',

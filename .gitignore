@@ -20,8 +20,9 @@ Thumbs.db
 .thinkrail/context/*
 !.thinkrail/context/.gitignore
 
-# Bundle de Monaco (se genera con npm run build:monaco)
+# Bundles generados con npm run build:monaco
 renderer/monaco/
+renderer/katex/
 
 # Salidas largas de herramientas
 .opengravity/

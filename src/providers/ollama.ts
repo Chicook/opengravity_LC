@@ -17,7 +17,16 @@ import {
   type ModelProvider,
   type ToolCall,
 } from './types.js';
-import { DEFAULT_BASE_URLS, coerceArguments, ensureOk, fetchWithRetry, readNDJSON, tryParseJSON } from './http.js';
+import {
+  DEFAULT_BASE_URLS,
+  LIST_TIMEOUT_MS,
+  coerceArguments,
+  ensureOk,
+  fetchWithRetry,
+  readNDJSON,
+  tryParseJSON,
+  textoDeDelta,
+} from './http.js';
 
 export interface OllamaOptions {
   baseUrl?: string;
@@ -28,6 +37,8 @@ export interface OllamaOptions {
 interface OllamaChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  /** Base64, sin el prefijo data:; lo usan los modelos de visión locales. */
+  images?: string[];
   tool_calls?: Array<{
     function: { name: string; arguments: unknown };
   }>;
@@ -50,7 +61,9 @@ export class OllamaProvider implements ModelProvider {
   }
 
   async listModels(): Promise<ModelInfo[]> {
-    const response = await fetch(`${this.baseUrl}/api/tags`);
+    const response = await fetch(`${this.baseUrl}/api/tags`, {
+      signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+    });
     await ensureOk(response, this.id);
 
     const payload = (await response.json()) as {
@@ -85,9 +98,18 @@ export class OllamaProvider implements ModelProvider {
       }));
     }
 
-    if (req.temperature !== undefined) {
-      body.options = { temperature: req.temperature };
+    /*
+     * Ollama no usa la ventana del modelo por defecto: en una GPU normal
+     * arranca con 4k. Sin `num_ctx` el prompt de sistema y las herramientas se
+     * truncan aunque el presupuesto del agente se haya calculado para más.
+     */
+    const options: Record<string, unknown> = {};
+    if (req.temperature !== undefined) options.temperature = req.temperature;
+    if (req.contextWindow && req.contextWindow > 0) {
+      options.num_ctx = Math.max(2_048, Math.floor(req.contextWindow));
     }
+    if (req.maxTokens && req.maxTokens > 0) options.num_predict = Math.floor(req.maxTokens);
+    if (Object.keys(options).length > 0) body.options = options;
 
     const response = await fetchWithRetry(`${this.baseUrl}/api/chat`, {
       method: 'POST',
@@ -121,8 +143,8 @@ export class OllamaProvider implements ModelProvider {
         throw new ProviderError(this.id, undefined, event.error);
       }
 
-      const text = event.message?.content;
-      if (text && text.length > 0) {
+      const text = textoDeDelta(event.message?.content);
+      if (text.length > 0) {
         yield { type: 'text', text };
       }
 
@@ -197,5 +219,11 @@ function toOllamaMessage(message: Message): OllamaChatMessage {
     return { role: 'tool', content: message.content };
   }
 
-  return { role: message.role as 'system' | 'user' | 'assistant', content: message.content };
+  return {
+    role: message.role as 'system' | 'user' | 'assistant',
+    content: message.content,
+    ...(message.images && message.images.length > 0
+      ? { images: message.images.map((image) => image.data) }
+      : {}),
+  };
 }

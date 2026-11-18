@@ -68,11 +68,60 @@
   }
 
   /**
+   * Fórmulas: se extraen ANTES de escapar y se sustituyen al final.
+   *
+   * KaTeX devuelve HTML propio, así que no puede pasar por `escapeHtml`; y el
+   * contenido de los bloques de código no debe convertirse, de ahí que el
+   * patrón respete vallas e código en línea. `trust: false` impide que una
+   * fórmula genere HTML a medida (`\href`, `\htmlClass`).
+   */
+  const MARCA_INICIO = '\uE000';
+  const MARCA_FIN = '\uE001';
+
+  function formulaAVista(tex, esBloque) {
+    if (!window.katex || typeof window.katex.renderToString !== 'function') {
+      return escapeHtml(esBloque ? `$$${tex}$$` : `$${tex}$`);
+    }
+    try {
+      return window.katex.renderToString(tex, {
+        displayMode: esBloque,
+        throwOnError: false,
+        trust: false,
+        strict: 'ignore',
+      });
+    } catch {
+      return escapeHtml(esBloque ? `$$${tex}$$` : `$${tex}$`);
+    }
+  }
+
+  /** Sustituye fórmulas por marcas y devuelve también el HTML de cada una. */
+  function extraerFormulas(texto) {
+    const formulas = [];
+    const marcador = (html) => {
+      formulas.push(html);
+      return `${MARCA_INICIO}${formulas.length - 1}${MARCA_FIN}`;
+    };
+
+    const patron =
+      /(```[\s\S]*?```|`[^`\n]+`)|(\$\$[\s\S]+?\$\$)|(?<![\\$])\$(?!\s)([^$\n]+?)(?<!\s)\$/g;
+
+    const conMarcas = texto.replace(patron, (todo, codigo, bloque, enLinea) => {
+      if (codigo) return todo;
+      if (bloque) return marcador(formulaAVista(bloque.slice(2, -2).trim(), true));
+      if (enLinea) return marcador(formulaAVista(enLinea, false));
+      return todo;
+    });
+
+    return { conMarcas, formulas };
+  }
+
+  /**
    * Convierte Markdown a HTML.
    * El texto de entrada se escapa antes de nada.
    */
   function render(markdown) {
-    const source = escapeHtml(markdown).replace(/\r\n/g, '\n');
+    const { conMarcas, formulas } = extraerFormulas(String(markdown));
+    const source = escapeHtml(conMarcas).replace(/\r\n/g, '\n');
     const lines = source.split('\n');
 
     const html = [];
@@ -186,7 +235,12 @@
       }
     }
 
-    return html.join('');
+    return html
+      .join('')
+      .replace(
+        new RegExp(`${MARCA_INICIO}(\\d+)${MARCA_FIN}`, 'g'),
+        (_todo, indice) => formulas[Number(indice)] ?? '',
+      );
   }
 
   window.Markdown = { render };

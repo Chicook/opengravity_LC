@@ -17,6 +17,8 @@
 
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, net, safeStorage } = require('electron');
 const path = require('node:path');
+const { fileURLToPath } = require('node:url');
+const os = require('node:os');
 const fsp = require('node:fs/promises');
 const http = require('node:http');
 const {
@@ -26,6 +28,7 @@ const {
   openBuiltInBrowser,
   browserEvaluate,
   makeSearchFilesTool,
+  makeFileSearchTool,
   makeEditFileTool,
   makeMultiReplaceTool,
   makeRunCommandTool,
@@ -41,21 +44,41 @@ const {
 } = require('./tools-extra.cjs');
 const { diffLines, compactDiff } = require('./diff.cjs');
 const { conMonitorDeSeguridad } = require('./guardian.cjs');
-const { conHooks, aplicarHooksDeTexto, aplicarHooksDeRazonamiento } = require('./hooks.cjs');
+const {
+  conHooks,
+  aplicarHooksDeTexto,
+  aplicarHooksDeRazonamiento,
+  redactarDatos,
+  redactarSecretos,
+  dentroDelWorkspace,
+} = require('./hooks.cjs');
 const trayectoria = require('./trajectory.cjs');
 const { restoreSnapshots } = require('./checkpoints.cjs');
+const { registrarRaiz, rutaAutorizada } = require('./rutas.cjs');
+const { SKILL_CATALOG, buildPromptExtras } = require('./prompt-extras.cjs');
+
+const { correrEnParalelo } = require('./subagent-merge.cjs');
 const { resetSessionState } = require('./session-state.cjs');
 const { CicloDePlan, PROMPT_PLANNER, PROMPT_EXECUTOR, HERRAMIENTAS_DE_LECTURA } = require('./plan-mode.cjs');
 const { descubrirSkills, bloqueDeSkills, makeSkillTool } = require('./skills.cjs');
+const { descubrirReglas, bloqueDeReglas, RULES_BUDGET_TOKENS } = require('./rules.cjs');
+const { resolverRutaApp } = require('./protocol-path.cjs');
 const { compilarCron, siguienteEjecucion, describirCron } = require('./cron.cjs');
 const subagentes = require('./subagents.cjs');
+const contexto = require('./contexto.cjs');
+const pensamiento = require('./pensamiento.cjs');
 const { cargarCatalogo } = require('./marketplace.cjs');
 const worktreeMod = require('./worktree.cjs');
 const testrunner = require('./testrunner.cjs');
 const { AlmacenDeMemoria, makeMemoryTool, bloqueDeMemorias } = require('./memory.cjs');
-const { guardarEnCola } = require('./settings-store.cjs');
+const { guardarEnCola, escribirAtomico, serializar } = require('./settings-store.cjs');
 const { descifrarClaves, prepararPrefsParaDisco } = require('./secret-store.cjs');
 const { puedeRenombrarAutomatico } = require('./title-policy.cjs');
+const {
+  nombreProyecto: nombreDelProyecto,
+  normalizarProyectos,
+  registrarEnLista,
+} = require('./projects.cjs');
 
 /** IDs cuyo título se fijó a mano: la generación automática no los toca. */
 const titulosManuales = new Set();
@@ -92,6 +115,7 @@ async function getEngine() {
     JsonlSessionStore: storeModule.JsonlSessionStore,
     createProvider: registry.createProvider,
     detectAvailableProviders: registry.detectAvailableProviders,
+    soportaPensamiento: registry.soportaPensamiento,
     PROVIDER_CATALOG: registry.PROVIDER_CATALOG,
     ToolRegistry: toolRegistry.ToolRegistry,
     fileSystemTools: fsTools.fileSystemTools,
@@ -100,10 +124,103 @@ async function getEngine() {
   return engine;
 }
 
+/**
+ * Carpeta de trabajo inicial.
+ *
+ * El `.exe` portable arranca desde su carpeta temporal de extracción y el
+ * instalado desde la carpeta de instalación: ninguna es un workspace válido.
+ * Sin `lastWorkspace` se empieza en Documentos. En desarrollo se respeta la
+ * carpeta desde la que se lanzó.
+ */
+function cwdInicial() {
+  if (!app.isPackaged) return process.cwd();
+  try {
+    return app.getPath('documents');
+  } catch {
+    return os.homedir();
+  }
+}
+
+/*
+ * Pruebas de instalador: una copia de la app puede usar datos temporales sin
+ * tocar las conversaciones ni las preferencias del usuario.
+ */
+if (process.env.OPENGRAVITY_USER_DATA) {
+  try {
+    const datos = path.resolve(process.env.OPENGRAVITY_USER_DATA);
+    require('node:fs').mkdirSync(datos, { recursive: true });
+    app.setPath('userData', datos);
+  } catch {
+    // sin aislamiento se sigue con el userData normal
+  }
+}
+
+/**
+ * gopls lanza `go list` en un subproceso. Si Go se instaló después de abrir la
+ * app, el PATH heredado no lo ve aunque el binario exista; se añade aquí.
+ */
+function asegurarGoEnPath(goRoot = '') {
+  const fsSync = require('node:fs');
+  const gopath = String(process.env.GOPATH ?? '').split(path.delimiter)[0];
+  const candidatos = [];
+  if (goRoot) {
+    let raiz = String(goRoot).trim().replace(/[\\/]+$/, '');
+    if (/go\.exe$/i.test(raiz)) raiz = path.dirname(raiz);
+    const bin = path.basename(raiz).toLowerCase() === 'bin' ? raiz : path.join(raiz, 'bin');
+    candidatos.push(bin);
+  }
+  candidatos.push(
+    process.env.GOROOT ? path.join(process.env.GOROOT, 'bin') : '',
+    path.join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Go', 'bin'),
+    path.join(process.env['ProgramFiles(x86)'] ?? '', 'Go', 'bin'),
+    path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Go', 'bin'),
+    'C:\\Go\\bin',
+    path.join(gopath, 'bin'),
+    path.join(process.env.USERPROFILE ?? '', 'go', 'bin'),
+    process.env.GOBIN ?? '',
+  );
+  try {
+    const sdk = path.join(process.env.USERPROFILE ?? '', 'sdk');
+    for (const version of fsSync.readdirSync(sdk)) {
+      candidatos.push(path.join(sdk, version, 'bin'));
+    }
+  } catch {
+    // No hay SDK de versiones; es opcional.
+  }
+  const carpetas = new Set(process.env.PATH?.split(';') ?? []);
+  let cambiado = false;
+  for (const carpeta of candidatos) {
+    if (!carpeta || carpetas.has(carpeta)) continue;
+    const tieneGo = fsSync.existsSync(path.join(carpeta, 'go.exe'));
+    const tieneGopls = fsSync.existsSync(path.join(carpeta, 'gopls.exe'));
+    if (!tieneGo && !tieneGopls) continue;
+    process.env.PATH = `${carpeta};${process.env.PATH ?? ''}`;
+    carpetas.add(carpeta);
+    cambiado = true;
+  }
+  return cambiado;
+}
+
+asegurarGoEnPath();
+
+/** Un workspace guardado puede haber sido renombrado o borrado. */
+async function esDirectorio(ruta) {
+  try {
+    const info = await fsp.stat(ruta);
+    return info.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /** Estado de la sesión de trabajo. */
 const state = {
   /** Raíz del workspace abierto. */
-  cwd: process.cwd(),
+  cwd: cwdInicial(),
+  /** Proyecto asociado a la conversación actual; null es «No Project». */
+  project: null,
+  /** Proyectos conocidos, persistidos aparte del historial. */
+  projects: [],
   providerId: null,
   model: null,
   sessionId: null,
@@ -113,6 +230,28 @@ const state = {
   /** Preferencias de la UI (permisos, apariencia, notificaciones…). */
   prefs: {},
 };
+
+/** Descargas del navegador integrado, de la más reciente a la más antigua. */
+const descargas = [];
+let contadorDescargas = 0;
+
+/*
+ * La carpeta de arranque es raíz autorizada desde el primer instante: sin esto,
+ * una instalación sin `settings.json` (primer arranque) no podría listar su
+ * propio workspace. `loadSettings` añade la última carpeta usada en cuanto la lee.
+ */
+registrarRaiz(state.cwd);
+
+/**
+ * Añade o actualiza un proyecto conocido. No persiste: lo hace saveSettings.
+ * El proyecto es una carpeta y sobrevive aunque no tenga conversaciones.
+ */
+function registrarProyecto(cwd) {
+  const ruta = path.resolve(String(cwd ?? ''));
+  if (!ruta) return null;
+  state.projects = registrarEnLista(state.projects, ruta);
+  return state.projects.find((p) => p.path === ruta) ?? null;
+}
 
 // ---------------------------------------------------------------------------
 // Preferencias persistentes (proveedor y modelo elegidos)
@@ -145,12 +284,42 @@ app.whenReady().then(() => {
 });
 
 async function loadSettings() {
+  let workspaceCorregido = false;
   try {
     const raw = await fsp.readFile(settingsPath(), 'utf8');
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed.providerId === 'string') state.providerId = parsed.providerId;
     if (parsed && typeof parsed.model === 'string') state.model = parsed.model;
-    if (parsed && typeof parsed.lastWorkspace === 'string') state.cwd = parsed.lastWorkspace;
+    if (parsed && typeof parsed.lastWorkspace === 'string') {
+      if (await esDirectorio(parsed.lastWorkspace)) {
+        state.cwd = parsed.lastWorkspace;
+        registrarRaiz(state.cwd);
+      } else {
+        // El proyecto guardado ya no existe: se abre el workspace por defecto
+        // en vez de dejar al agente apuntando a una ruta fantasma.
+        state.cwd = cwdInicial();
+        registrarRaiz(state.cwd);
+        workspaceCorregido = true;
+      }
+    }
+    if (parsed && Array.isArray(parsed.projects)) {
+      state.projects = normalizarProyectos(parsed.projects);
+    }
+
+    /*
+     * `project` se añadió después de `lastWorkspace`. Una instalación antigua
+     * sin la clave trataba el workspace como proyecto; se conserva esa lectura
+     * para no convertir de golpe todas sus conversaciones en «No Project».
+     */
+    const proyectoGuardado = parsed && typeof parsed.project === 'string' ? parsed.project : null;
+    const proyectoPorMigracion = parsed && !('project' in parsed) ? state.cwd : null;
+    const candidato = proyectoGuardado ?? proyectoPorMigracion;
+    if (candidato) {
+      const absoluto = path.resolve(candidato);
+      state.project = (await esDirectorio(absoluto)) ? absoluto : null;
+    }
+    if (state.project) registrarProyecto(state.project);
+
     if (parsed && parsed.prefs && typeof parsed.prefs === 'object') {
       const prefs = { ...parsed.prefs };
       const clavesEnClaro = Boolean(prefs.apiKeys && Object.keys(prefs.apiKeys).length > 0);
@@ -176,6 +345,11 @@ async function loadSettings() {
   } catch {
     // sin preferencias guardadas: se usan los valores por defecto
   }
+
+  if (workspaceCorregido) {
+    // Guardar después de cargar prefs: así no se reescribe el fichero a medias.
+    await saveSettings().catch(() => {});
+  }
 }
 
 async function saveSettings() {
@@ -196,6 +370,8 @@ async function saveSettings() {
     providerId: state.providerId ?? previo.providerId ?? null,
     model: state.model ?? previo.model ?? null,
     lastWorkspace: state.cwd ?? previo.lastWorkspace ?? null,
+    project: state.project ?? null,
+    projects: state.projects,
     prefs: prefsParaDisco,
   };
 
@@ -207,6 +383,45 @@ async function saveSettings() {
  * Construye las sobrescrituras que espera `createProvider` a partir de los
  * proveedores personalizables guardados en las preferencias.
  */
+
+/**
+ * Proveedores que comparten una única clave (OPENCODE_API_KEY sirve para Zen y
+ * Go). Sin esto, pegar la clave en uno deja al otro como «sin clave».
+ */
+const CLAVES_COMPARTIDAS = {
+  'opencode-zen': 'opencode-go',
+  'opencode-go': 'opencode-zen',
+};
+
+/**
+ * Texto de una redacción de secretos.
+ *
+ * El redactor devuelve `{ texto, encontrados }`; en disco va solo el texto.
+ * Guardar el objeto entero dejaba `[object Object]` al reabrir el hilo.
+ */
+function textoRedactado(contenido) {
+  const redaccion = redactarSecretos(contenido);
+  return typeof redaccion === 'string' ? redaccion : String(redaccion?.texto ?? '');
+}
+
+/**
+ * Copia persistible de los mensajes: sin secretos en el texto ni en los
+ * argumentos de las herramientas. Las imágenes no se tocan: son base64 y una
+ * sustitución las corrompería.
+ */
+function mensajesParaDisco(messages) {
+  // Las notas internas (nudge, revisión de plan) no son mensajes del usuario:
+  // se quedan en el turno, pero no se guardan ni reaparecen al reabrir.
+  return messages.filter((message) => message.internal !== true).map((message) => ({
+    ...message,
+    // Nunca se guarda un objeto como contenido: en disco queda texto o nada.
+    content: textoRedactado(
+      typeof message.content === 'string' ? message.content : String(message.content ?? ''),
+    ),
+    ...(message.toolCalls ? { toolCalls: redactarDatos(message.toolCalls) } : {}),
+  }));
+}
+
 function buildProviderConfig() {
   const baseUrls = {};
   const apiKeys = {};
@@ -227,6 +442,10 @@ function buildProviderConfig() {
     if (typeof entry.apiKey === 'string' && entry.apiKey.trim().length > 0) {
       apiKeys[id] = entry.apiKey.trim();
     }
+  }
+
+  for (const [id, hermano] of Object.entries(CLAVES_COMPARTIDAS)) {
+    if (!apiKeys[id] && apiKeys[hermano]) apiKeys[id] = apiKeys[hermano];
   }
 
   return { baseUrls, apiKeys };
@@ -353,26 +572,112 @@ function embeddingConfig() {
   };
 }
 
-function contextBudget(modelId) {
-  const ventanas = {
-    anthropic: 200_000,
-    gemini: 1_000_000,
-  };
+/** Ventanas de contexto que el proveedor declaró para cada modelo, por `proveedor:modelo`. */
+const ventanasDeclaradas = new Map();
+/** Capacidades declaradas por Ollama para el modelo activo. */
+const capacidadesOllama = new Map();
 
-  const provider = state.providerId ?? '';
-  const tokens = ventanas[provider] ?? 128_000;
-  return Math.floor(tokens * 4 * 0.75);
+/** Guarda la ventana de un modelo (solo si es un número con sentido). */
+function recordarVentana(providerId, modelId, tokens) {
+  const valor = Number(tokens);
+  if (!Number.isFinite(valor) || valor <= 0) return;
+  ventanasDeclaradas.set(`${providerId}:${modelId}`, valor);
 }
 
-function effortInstruction(effort) {
+/** Ventana declarada para ese modelo, o `undefined` si no la dijo. */
+function ventanaDeclaradaDe(providerId, modelId) {
+  return ventanasDeclaradas.get(`${providerId}:${modelId}`);
+}
+
+/**
+ * Pregunta a Ollama la ventana real del modelo (`POST /api/show`).
+ *
+ * `/api/tags` no la trae, y los modelos locales suelen venir con una ventana
+ * pequeña por defecto: mandarles el historial calculado para 128k hace que el
+ * turno falle entero por exceso de contexto. Falla en silencio y sin bloquear:
+ * si no contesta a tiempo, queda el valor por defecto.
+ */
+async function recordarVentanaOllama(modelId) {
+  if (!modelId) return;
+  if (ventanaDeclaradaDe('ollama', modelId) !== undefined || capacidadesOllama.has(modelId)) return;
+  const base = String(state.prefs?.customProviders?.ollama?.baseUrl ?? 'http://127.0.0.1:11434').replace(/\/+$/, '');
+  try {
+    const respuesta = await fetch(`${base}/api/show`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: modelId }),
+      signal: AbortSignal.timeout(2_500),
+    });
+    if (!respuesta.ok) return;
+    const payload = await respuesta.json();
+    const tokens = contexto.ventanaDeOllama(payload);
+    if (tokens) recordarVentana('ollama', modelId, tokens);
+    const capacidades = contexto.capacidadesDeOllama(payload);
+    if (capacidades) capacidadesOllama.set(modelId, capacidades);
+  } catch {
+    // Sin red, sin Ollama o lento: se sigue con el valor por defecto.
+  }
+}
+
+/**
+ * Ventana real del modelo activo, en tokens. El bucle la usa para descontar
+ * prompt y herramientas del presupuesto, y Ollama la recibe como `num_ctx`.
+ */
+function ventanaDelTurno(modelId) {
+  const proveedor = state.providerId ?? '';
+  const modelo = modelId ?? state.model ?? '';
+  return contexto.ventanaDeModelo({
+    providerId: proveedor,
+    modelId: modelo,
+    reportada: ventanaDeclaradaDe(proveedor, modelo),
+  });
+}
+
+/**
+ * Ajustes de pensamiento que hay que mandar al proveedor para el nivel elegido.
+ *
+ * El nivel no puede quedarse en una frase del prompt: cada familia tiene su
+ * campo (`reasoning_effort`, `budget_tokens`, `thinkingLevel`) y es lo que de
+ * verdad cambia cuánto piensa el modelo. Los que no lo soportan no reciben nada.
+ */
+function ajustesDePensamientoDelTurno(effort, modelId) {
+  // El catálogo vive en el motor, que es asíncrono: se lee del caché ya cargado.
+  // Antes se usaba un `PROVIDER_CATALOG` que solo existía dentro de otro manejador,
+  // así que cualquier turno fallaba con un ReferenceError.
+  const catalogo = engine?.PROVIDER_CATALOG;
+  const spec = Array.isArray(catalogo)
+    ? catalogo.find((entry) => entry.id === state.providerId)
+    : null;
+  return pensamiento.ajustesDePensamiento({
+    nivel: effort,
+    tipo: spec ? spec.kind : null,
+    proveedor: state.providerId,
+    modelo: modelId ?? state.model ?? null,
+  });
+}
+
+/**
+ * Recordatorio breve para el prompt. El esfuerzo real viaja en la petición;
+ * esto solo orienta el estilo, y solo cuando el proveedor no acepta el campo.
+ */
+function effortInstruction(effort, ajustes) {
+  const nivel = pensamiento.normalizarNivel(effort);
+  if (!nivel) return '';
+  const yaViaja = Boolean(
+    ajustes && (ajustes.reasoningEffort || ajustes.thinkingBudget || ajustes.thinkingLevel),
+  );
+  if (yaViaja) return '';
+
   const map = {
-    Low: 'Responde de forma directa y breve, con los mínimos pasos necesarios.',
-    Medium: 'Equilibra brevedad y rigor: explica lo justo antes de actuar.',
-    High: 'Razona con detalle, verifica cada paso y revisa el resultado antes de responder.',
+    minimal: 'Responde con lo mínimo: la respuesta más corta que resuelva la petición.',
+    low: 'Responde de forma directa y breve, con los mínimos pasos necesarios.',
+    medium: 'Equilibra brevedad y rigor: explica lo justo antes de actuar.',
+    high: 'Razona con detalle, verifica cada paso y revisa el resultado antes de responder.',
+    xhigh: 'Descompón el problema, contrasta cada hipótesis con evidencia y revisa el resultado dos veces.',
+    max: 'Razona al máximo: enumera alternativas, descarta las que no aguanten evidencia y verifica el resultado antes de responder.',
   };
 
-  const hint = map[effort];
-  return hint ? `\n\n[Esfuerzo de razonamiento: ${effort}] ${hint}` : '';
+  return `\n\n[Esfuerzo de razonamiento: ${nivel}] ${map[nivel] ?? ''}`;
 }
 
 function planReviewInstruction(policy) {
@@ -405,55 +710,6 @@ function planReviewInstruction(policy) {
   }
 }
 
-/** Skills disponibles: se inyectan en el prompt si están activadas. */
-const SKILL_CATALOG = [
-  {
-    id: 'spanish',
-    name: 'Responder en español',
-    description: 'Fuerza el idioma de las respuestas.',
-    body: 'Responde siempre en español, incluidos los mensajes de estado.',
-  },
-  {
-    id: 'concise',
-    name: 'Respuestas concisas',
-    description: 'Sin rodeos ni resúmenes innecesarios.',
-    body: 'Sé breve. No repitas el código que acabas de escribir ni resumas lo obvio.',
-  },
-  {
-    id: 'tests',
-    name: 'Proponer tests',
-    description: 'Sugiere pruebas al cambiar lógica.',
-    body: 'Cuando modifiques lógica de negocio, propón al menos un test que la cubra.',
-  },
-  {
-    id: 'explain',
-    name: 'Explicar el razonamiento',
-    description: 'Justifica cada decisión de diseño.',
-    body: 'Antes de aplicar un cambio no trivial, explica en una frase por qué es la opción correcta.',
-  },
-];
-
-/** Bloque de prompt con las skills activadas y el perfil del usuario. */
-function buildPromptExtras(prefs) {
-  const parts = [];
-
-  const profile = prefs.profile ?? {};
-  if (typeof profile.name === 'string' && profile.name.trim().length > 0) {
-    parts.push(`El usuario se llama ${profile.name.trim()}.`);
-  }
-
-  const enabled = prefs.skills ?? {};
-  const active = SKILL_CATALOG.filter((skill) => enabled[skill.id] === true);
-  if (active.length > 0) {
-    parts.push('Instrucciones adicionales:\n' + active.map((skill) => `- ${skill.body}`).join('\n'));
-  }
-
-  return parts.length > 0 ? `\n\n${parts.join('\n')}` : '';
-}
-
-/** Presets que no piden confirmación para escribir. */
-const AUTO_APPROVE_PRESETS = new Set(['Auto (Preview)', 'Turbo']);
-
 /**
  * Envuelve una herramienta con la puerta de permisos.
  *
@@ -463,6 +719,41 @@ const AUTO_APPROVE_PRESETS = new Set(['Auto (Preview)', 'Turbo']);
  *   - `ask`   → siempre pregunta.
  *   - `inherit` (o sin valor) → decide el preset.
  */
+let moduloSnapshotGit = null;
+const cargarSnapshotGit = () => {
+  moduloSnapshotGit ??= import('../dist/cli/git-snapshot.js');
+  return moduloSnapshotGit;
+};
+
+/**
+ * Ejecuta un comando con foto git antes/después para que el revert del paso
+ * también pueda deshacer ficheros que el shell cambió.
+ */
+async function ejecutarComandoConSnapshot(tool, args, ctx) {
+  let foto = null;
+  let anotar = null;
+  try {
+    const modulo = await cargarSnapshotGit();
+    foto = await modulo.prepararSnapshotGit(ctx.cwd);
+    anotar = modulo.anotarCambiosGit;
+  } catch {
+    // Sin módulo o sin git se ejecuta igual: el revert no podrá cubrir el shell.
+  }
+
+  try {
+    const resultado = await tool.execute(args, ctx);
+    if (foto && anotar) {
+      await anotar(foto, ctx.cwd, claveDeTrayectoria(), ctx.callId, trayectoria).catch(() => {});
+    }
+    return resultado;
+  } catch (error) {
+    if (foto && anotar) {
+      await anotar(foto, ctx.cwd, claveDeTrayectoria(), ctx.callId, trayectoria).catch(() => {});
+    }
+    throw error;
+  }
+}
+
 function guardTool(tool, preset, prefs, getWindow) {
   // Plan y subagente tienen su propio flujo: sus herramientas ya piden permiso.
   if (tool.name === 'present_plan' || tool.name === 'browser_task') return tool;
@@ -477,8 +768,6 @@ function guardTool(tool, preset, prefs, getWindow) {
       },
     };
   }
-
-  if (explicit === 'allow') return tool;
 
   /*
    * `edit_notebook` solo escribe en add/update/delete/create: list y get son
@@ -506,11 +795,20 @@ function guardTool(tool, preset, prefs, getWindow) {
     ...tool,
     async execute(args, ctx) {
       const writes = esMutacion(args);
+      /*
+       * «Pedir revisión» es para acciones que cambian algo: escrituras,
+       * comandos y red. Antes preguntaba también por cada lectura, así que
+       * abrir un fichero costaba un diálogo nativo.
+       */
       const presetAsks =
-        preset === 'Request Review' || (preset === 'Default' && (writes || esComando()));
+        (preset === 'Request Review' || preset === 'Default') && (writes || esComando());
       const needsAsk = explicit === 'ask' || (explicit === 'inherit' && presetAsks);
 
-      if (!needsAsk && !writes) return tool.execute(args, ctx);
+      if (!needsAsk && !writes) {
+        return tool.name === 'run_command'
+          ? ejecutarComandoConSnapshot(tool, args, ctx)
+          : tool.execute(args, ctx);
+      }
 
       // Las escrituras pasan por una tarjeta de diff, no por un diálogo nativo.
       if (writes) {
@@ -547,7 +845,9 @@ function guardTool(tool, preset, prefs, getWindow) {
         return { content: `El usuario denegó la herramienta ${tool.name}.`, isError: true };
       }
 
-      return tool.execute(args, ctx);
+      return tool.name === 'run_command'
+        ? ejecutarComandoConSnapshot(tool, args, ctx)
+        : tool.execute(args, ctx);
     },
   };
 }
@@ -569,10 +869,10 @@ async function registrarSnapshotDeEscritura(args, ctx) {
   const absoluta = path.resolve(ctx.cwd, relativa);
   try {
     const antes = await fsp.readFile(absoluta, 'utf8');
-    recordCheckpoint(absoluta, antes);
+    recordCheckpoint(absoluta, antes, ctx.callId);
   } catch {
     // El fichero no existe todavía: se marca como nuevo.
-    recordCheckpoint(absoluta, null);
+    recordCheckpoint(absoluta, null, ctx.callId);
   }
 }
 
@@ -614,7 +914,7 @@ async function executeWriteWithDiff(tool, args, ctx, win, needsAsk) {
     proposed = String(args.content ?? '');
   }
 
-  recordCheckpoint(absolute, isNew ? null : before);
+  recordCheckpoint(absolute, isNew ? null : before, ctx.callId);
 
   const { rows, additions, removals, approximate } = diffLines(before, proposed);
   const payload = {
@@ -645,6 +945,7 @@ async function executeWriteWithDiff(tool, args, ctx, win, needsAsk) {
 // ---------------------------------------------------------------------------
 
 const { CodeIndex } = require('./indexer.cjs');
+const { makeCodeSearchTool } = require('./code-search.cjs');
 
 /** Índice de código del workspace. */
 const codeIndex = new CodeIndex({ root: process.cwd() });
@@ -685,6 +986,15 @@ ipcMain.handle('index:warm', async () => {
   const model = state.prefs.embeddingModel ?? 'nomic-embed-text';
 
   const config = embeddingConfig();
+  /*
+   * La URL sale de las preferencias, que escribe el renderer: sin esta
+   * comprobación, un prefs:set cambiaba el destino de los embeddings y con él
+   * se iban el código del workspace y la clave del proveedor.
+   */
+  const veredicto = isUrlAllowed(String(config.url), state.prefs.networkRules);
+  if (!veredicto.allowed) {
+    return { ok: false, error: `URL de embeddings rechazada: ${veredicto.reason}` };
+  }
   const result = await codeIndex.warmEmbeddings(config, 300);
   await codeIndex.saveEmbeddings(embeddingsPath());
 
@@ -748,6 +1058,17 @@ function bundledTsServer() {
   return fsSync.existsSync(cli) ? { command: 'node', args: [cli, '--stdio'] } : null;
 }
 
+/** ¿Existe el ejecutable en PATH? En Windows los lanzadores npm son .cmd. */
+function comandoEnPath(nombre) {
+  const extensiones = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : [''];
+  for (const carpeta of String(process.env.PATH ?? '').split(path.delimiter)) {
+    for (const extension of extensiones) {
+      if (fsSync.existsSync(path.join(carpeta, `${nombre}${extension}`))) return true;
+    }
+  }
+  return false;
+}
+
 /** Comando del servidor para un lenguaje, con sobrescritura del usuario. */
 function serverFor(language) {
   const custom = state.prefs.lspServers?.[language];
@@ -763,6 +1084,16 @@ function serverFor(language) {
     if (bundled) return bundled;
   }
 
+  if (language === 'python') {
+    // pylsp arranca como ejecutable; el shim .cmd de pyright no lo hace sin shell.
+    const candidatos = [
+      { command: 'pylsp', args: [] },
+      { command: 'pyright-langserver', args: ['--stdio'] },
+    ];
+    const elegido = candidatos.find((c) => comandoEnPath(c.command));
+    if (elegido) return elegido;
+  }
+
   return DEFAULT_SERVERS[language] ?? null;
 }
 
@@ -771,11 +1102,32 @@ async function ensureLspClient(filePath) {
   const language = languageForPath(filePath);
   if (!language) return { ok: false, error: 'lenguaje sin servidor LSP' };
 
+  if (language === 'go') {
+    // gopls necesita `go` en PATH; sin esto el diagnóstico sería engañoso.
+    asegurarGoEnPath(state.prefs.goRoot);
+    if (!comandoEnPath('go')) {
+      return {
+        ok: false,
+        error: 'Go no está en PATH. Define GOROOT o añade su carpeta bin al PATH.',
+      };
+    }
+  }
+
   const existing = lspClients.get(language);
   if (existing && existing.ready) return { ok: true, client: existing, language };
 
   const server = serverFor(language);
   if (!server) return { ok: false, error: `no hay servidor LSP para ${language}` };
+
+  const existeServidor = path.isAbsolute(server.command)
+    ? fsSync.existsSync(server.command)
+    : comandoEnPath(server.command);
+  if (!existeServidor) {
+    return {
+      ok: false,
+      error: `No se encontró ${server.command}. Instálalo o configura su ruta en lspServers.`,
+    };
+  }
 
   const client = new LspClient({
     language,
@@ -883,13 +1235,28 @@ ipcMain.handle('lsp:definition', async (_event, payload) => {
 
     return {
       ok: true,
-      path: first.uri.replace(/^file:\/\//, '').replace(/\//g, path.sep),
+      path: rutaDeUri(first.uri),
       line: first.range?.start?.line ?? 0,
     };
   } catch (error) {
     return { ok: false, error: error.message };
   }
 });
+
+/**
+ * URI del LSP a ruta local.
+ *
+ * Hace falta porque `uri.replace('file://','')` deja `\C:\a\b.ts` en Windows y
+ * no decodifica `%20`: abrir el fichero fallaba y la acción se reportaba como
+ * hecha.
+ */
+function rutaDeUri(uri) {
+  try {
+    return fileURLToPath(String(uri));
+  } catch {
+    return String(uri);
+  }
+}
 
 /** Convierte una posición LSP (línea/carácter) a índice de cadena. */
 function positionToOffset(content, line, character) {
@@ -937,13 +1304,39 @@ ipcMain.handle('lsp:rename', async (_event, payload) => {
   if (newName.length === 0) return { ok: false, error: 'nombre vacío' };
 
   try {
+    const uri = pathToFileURL(absolute).href;
+    const position = {
+      line: Number(payload?.line ?? 0),
+      character: Number(payload?.character ?? 0),
+    };
+
+    /*
+     * Algunos servidores (rust-analyzer, pyright) necesitan el
+     * prepareRename para resolver el símbolo antes del rename. Si no lo
+     * implementan, se ignora y se prueba el rename directo.
+     */
+    try {
+      await client.request('textDocument/prepareRename', { textDocument: { uri }, position });
+    } catch {
+      // servidor sin prepareRename
+    }
+
     const result = await client.request('textDocument/rename', {
-      textDocument: { uri: pathToFileURL(absolute).href },
-      position: { line: Number(payload?.line ?? 0), character: Number(payload?.character ?? 0) },
+      textDocument: { uri },
+      position,
       newName,
     });
 
-    const changes = result?.changes ?? {};
+    /*
+     * gopls y rust-analyzer devuelven `documentChanges` en vez de `changes`.
+     * Aplanarlos aquí evita que un rename válido se descarte como vacío.
+     */
+    const changes = { ...(result?.changes ?? {}) };
+    for (const cambio of result?.documentChanges ?? []) {
+      if (cambio?.textDocument?.uri && Array.isArray(cambio.edits)) {
+        changes[cambio.textDocument.uri] = cambio.edits;
+      }
+    }
     const entries = Object.entries(changes);
 
     if (entries.length === 0) return { ok: false, error: 'el servidor no propuso cambios' };
@@ -951,9 +1344,12 @@ ipcMain.handle('lsp:rename', async (_event, payload) => {
     let touched = 0;
 
     for (const [uri, edits] of entries) {
-      // file:///c:/ruta -> c:/ruta en Windows
-      let target = decodeURIComponent(String(uri).replace(/^file:\/\//, ''));
-      if (/^\/[A-Za-z]:/.test(target)) target = target.slice(1);
+      let target;
+      try {
+        target = fileURLToPath(String(uri));
+      } catch {
+        continue; // no es un file:// (p. ej. untitled:)
+      }
       try {
         const current = await fsp.readFile(target, 'utf8');
         await fsp.writeFile(target, applyTextEdits(current, edits), 'utf8');
@@ -1020,6 +1416,23 @@ ipcMain.handle('lsp:status', async () => {
 ipcMain.handle('mcp:probe', async (_event, server) => {
   if (!server || !server.command) {
     return { ok: false, error: 'falta el comando' };
+  }
+
+  /*
+   * Solo se prueban servidores que ya están guardados en la configuración: el
+   * renderer no puede lanzar un proceso cualquiera por este canal. La fila de
+   * Ajustes solo ofrece «Probar» después de guardar, así que el uso normal no
+   * cambia.
+   */
+  const comando = String(server.command).trim();
+  const args = (Array.isArray(server.args) ? server.args : []).map(String);
+  const guardado = (state.prefs.plugins ?? []).some(
+    (plugin) =>
+      String(plugin.command ?? '').trim() === comando &&
+      JSON.stringify((plugin.args ?? []).map(String)) === JSON.stringify(args),
+  );
+  if (!guardado) {
+    return { ok: false, error: 'guarda el servidor antes de probarlo' };
   }
 
   let client = null;
@@ -1274,6 +1687,9 @@ ipcMain.handle('git:branches', async () => {
 ipcMain.handle('git:checkout', async (_event, branch) => {
   const name = String(branch ?? '').trim();
   if (name.length === 0) return { ok: false, error: 'rama vacía' };
+  // Una «rama» que empieza por guion es un flag: `git checkout -f` tira los
+  // cambios sin commit. Nunca se pasa tal cual a git.
+  if (name.startsWith('-')) return { ok: false, error: 'nombre de rama no válido' };
 
   const result = await runGit(['checkout', name], 30000);
   return result.ok
@@ -1669,59 +2085,6 @@ ipcMain.handle('terminal:kill', async () => {
 /** Directorio actual de la terminal. */
 ipcMain.handle('terminal:cwd', async () => currentTerminalCwd());
 
-/**
- * Herramienta del agente: buscar en el índice de código.
- * Mucho mejor que un grep: ordena por relevancia y conoce los símbolos.
- */
-function makeCodeSearchTool() {
-  return {
-    name: 'search_code',
-    description:
-      'Busca en el índice del proyecto y devuelve los ficheros más relevantes con sus símbolos. ' +
-      'Ordénalo por relevancia, no por texto literal. Úsalo antes de explorar a ciegas.',
-    parameters: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: 'Qué buscas, en lenguaje natural o un nombre.' },
-        mode: {
-          type: 'string',
-          description: 'symbol (nombres), lexical (palabras) o auto (híbrido).',
-        },
-        limit: { type: 'number', description: 'Máximo de resultados. Por defecto 10.' },
-      },
-      required: ['query'],
-    },
-    async execute(args) {
-      const query = String(args.query ?? '').trim();
-      if (query.length === 0) return { content: 'Consulta vacía.', isError: true };
-
-      if (codeIndex.size === 0) await codeIndex.build(state.cwd);
-
-      const mode = String(args.mode ?? 'auto');
-      const limit = Math.min(30, Number(args.limit ?? 10));
-
-      const results =
-        mode === 'symbol'
-          ? codeIndex.searchSymbols(query, limit)
-          : codeIndex.searchLexical(query, limit);
-
-      if (results.length === 0) {
-        return { content: `Sin resultados para «${query}».` };
-      }
-
-      const lines = results.map((entry) => {
-        if (mode === 'symbol') {
-          return `${entry.file}:${entry.line} — ${entry.kind} ${entry.name}`;
-        }
-        const symbols = entry.symbols.length > 0 ? `\n    ${entry.symbols.join(', ')}` : '';
-        return `${entry.file} (score ${entry.score})${symbols}`;
-      });
-
-      return { content: lines.join('\n') };
-    },
-  };
-}
-
 /** Propuesta de cambio pendiente de aprobación. */
 const turnCheckpoints = new Map();
 
@@ -1732,7 +2095,7 @@ let currentTurnKey = null;
  * Guarda el estado original de un fichero antes de modificarlo.
  * Solo se guarda la primera vez por turno: es el estado al inicio del turno.
  */
-function recordCheckpoint(absolutePath, originalContent) {
+function recordCheckpoint(absolutePath, originalContent, llamadaId) {
   // Registro plano para la tarjeta de revisión del turno.
   if (!cambiosDelTurno.some((entrada) => entrada.absolute === absolutePath)) {
     cambiosDelTurno.push({ absolute: absolutePath, original: originalContent });
@@ -1740,7 +2103,7 @@ function recordCheckpoint(absolutePath, originalContent) {
 
   // La trayectoria guarda el snapshot por paso; los checkpoints por turno siguen
   // sirviendo para el revert rápido de todo el turno.
-  trayectoria.anotarEscritura(claveDeTrayectoria(), absolutePath, originalContent);
+  trayectoria.anotarEscritura(claveDeTrayectoria(), absolutePath, originalContent, llamadaId);
 
   if (currentTurnKey === null) return;
   const snapshot = turnCheckpoints.get(currentTurnKey);
@@ -1753,8 +2116,6 @@ function claveDeTrayectoria() {
   return String(state.sessionId ?? 'actual');
 }
 
-/** Contador monótono de pasos dentro del turno. */
-let indiceDePaso = 0;
 
 /**
  * Quick fixes del LSP para la posición o el diagnóstico indicado.
@@ -1846,7 +2207,7 @@ ipcMain.handle('lsp:apply-action', async (_event, payload = {}) => {
     }
 
     for (const u of uris) {
-      const destino = decodeURIComponent(String(u).replace(/^file:\/\//, ''));
+      const destino = rutaDeUri(u);
       try {
         textos.set(u, await fsp.readFile(destino, 'utf8'));
         rutas.set(u, destino);
@@ -1995,7 +2356,7 @@ async function restoreCheckpoints(keepCount) {
   if (resultado.restored === 0 && failures.length === 0 && state.sessionId) {
     try {
       await trayectoria.asegurar(state.sessionId);
-      const plan = trayectoria.planDeReversion(state.sessionId, keepCount);
+      const plan = trayectoria.planDeReversionPorMensaje(state.sessionId, keepCount);
       if (plan.ok) {
         for (const cambio of plan.cambios ?? []) {
           try {
@@ -2017,6 +2378,19 @@ async function restoreCheckpoints(keepCount) {
       }
     } catch {
       // sin trayectoria no hay nada que restaurar
+    }
+  }
+
+  /*
+   * Los pasos del turno revertido se descartan: si se quedan en la trayectoria,
+   * un revert posterior vuelve a aplicar sus snapshots.
+   */
+  if (failures.length === 0 && state.sessionId) {
+    try {
+      await trayectoria.asegurar(state.sessionId);
+      await trayectoria.descartarDesdeMensaje(state.sessionId, keepCount);
+    } catch {
+      // sin trayectoria no hay nada que descartar
     }
   }
 
@@ -2208,6 +2582,17 @@ async function getStore() {
   return store;
 }
 
+/** Mantiene la conversación abierta alineada con el proyecto elegido. */
+async function actualizarProyectoDeSesion(project) {
+  if (!state.sessionId) return;
+  try {
+    const sessions = await getStore();
+    await sessions.setProject(state.sessionId, project);
+  } catch {
+    // best-effort: el estado en memoria ya representa la elección
+  }
+}
+
 /**
  * Pide al modelo un título corto y semántico para la conversación.
  *
@@ -2260,6 +2645,36 @@ async function generarTituloDeConversacion(provider, model, textoUsuario, textoA
 /** Ventana principal de la aplicación. */
 let mainWindow = null;
 
+/**
+ * Pinta la barra de título nativa con los colores del tema en uso.
+ *
+ * Los valores salen del CSS ya aplicado (`--sidebar` y `--foreground`), así que
+ * la paleta sigue teniendo un solo sitio: `styles.css`.
+ */
+async function aplicarBarraDeTitulo() {
+  if (!mainWindow || process.platform === 'darwin') return;
+  try {
+    const [fondo, simbolo] = await mainWindow.webContents.executeJavaScript(
+      `(() => {
+        const estilo = getComputedStyle(document.querySelector('.sidebar') || document.body);
+        const raiz = getComputedStyle(document.documentElement);
+        const aHex = (valor) => {
+          const m = String(valor).match(/rgba?\(([^)]+)\)/);
+          if (!m) return null;
+          const [r, g, b] = m[1].split(',').map((n) => Math.round(Number(n)));
+          return '#' + [r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('');
+        };
+        return [aHex(estilo.backgroundColor), aHex(raiz.color)];
+      })()`,
+    );
+    if (fondo && simbolo) {
+      mainWindow.setTitleBarOverlay({ color: fondo, symbolColor: simbolo, height: 35 });
+    }
+  } catch {
+    // si el renderer aún no está listo se queda el color por defecto
+  }
+}
+
 function createWindow() {
   // Sin menú nativo: la app tiene su propia barra de título.
   Menu.setApplicationMenu(null);
@@ -2273,13 +2688,44 @@ function createWindow() {
     icon: path.join(app.getAppPath(), 'assets', 'icon.ico'),
     show: true,
     titleBarStyle: 'hidden',
-    ...(process.platform === 'darwin' ? {} : { titleBarOverlay: false }),
+    // Los botones de ventana los dibuja el sistema (como el original): el color
+    // se sincroniza con el tema en aplicarBarraDeTitulo().
+    ...(process.platform === 'darwin' ? {} : { titleBarOverlay: { color: '#111114', symbolColor: '#eaebf1', height: 35 } }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
+      // Vista Browser del panel lateral: un <webview> con la partición persistente.
+      webviewTag: true,
     },
+  });
+
+  /*
+   * El webview lo crea el renderer con su propia partición; se fuerza aquí para
+   * que ninguna página adjunte preload ni integración de Node.
+   */
+  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.partition = 'persist:opengravity-browser';
+  });
+
+  /*
+   * La ventana principal solo debe mostrar la interfaz de la app (app://).
+   * Si la página navegara a un sitio externo, esa página recibiría el preload y
+   * con él todos los canales IPC: escritura de ficheros, terminal, ajustes.
+   * Los enlaces externos ya se abren fuera, así que aquí se bloquea el resto.
+   */
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!String(url).startsWith('app://local/')) event.preventDefault();
+  });
+
+  // Nada de ventanas nuevas desde la interfaz: los enlaces van al navegador.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url).catch(() => {});
+    return { action: 'deny' };
   });
 
   mainWindow.loadURL('app://local/renderer/index.html');
@@ -2287,6 +2733,7 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     mainWindow.focus();
+    void aplicarBarraDeTitulo();
   });
   // Si ready-to-show tarda por carga de recursos, forzar show
   setTimeout(() => {
@@ -2306,33 +2753,29 @@ function createWindow() {
 
 /** Estado inicial que necesita la UI para pintarse. */
 ipcMain.handle('app:state', async () => {
-  const { detectAvailableProviders } = await getEngine();
-
-  let providers = [];
+  // El mismo catálogo cacheado que usan los ajustes: una sola detección.
+  let catalogo = [];
   try {
-    providers = await detectAvailableProviders();
+    catalogo = await listarProveedores(false);
   } catch {
-    providers = [];
+    catalogo = [];
   }
 
-  let models = [];
-  if (state.providerId) {
-    try {
-      const { createProvider } = await getEngine();
-      models = await createProvider(state.providerId).listModels();
-    } catch {
-      models = [];
-    }
-  }
+  const providers = catalogo.filter((entry) => entry.available).map((entry) => entry.id);
+  const actual = catalogo.find((entry) => entry.id === state.providerId);
+  const models = (actual?.models ?? []).map((model) => ({ id: model.id, name: model.name }));
 
   return {
     cwd: state.cwd,
+    project: state.project,
+    projects: [...state.projects].sort((a, b) => String(b.lastUsed).localeCompare(String(a.lastUsed))),
     providerId: state.providerId,
     model: state.model,
     providers,
     models: models.map((model) => ({ id: model.id, name: model.name })),
     sessionId: state.sessionId,
     busy: state.busy,
+    userName: state.prefs.profile?.name?.trim() || os.userInfo().username,
   };
 });
 
@@ -2371,59 +2814,218 @@ ipcMain.handle('tests:run', async () => {
   return { ok: true, ...resultado };
 });
 
-/** Catálogo de proveedores con disponibilidad y modelos. */
-ipcMain.handle('providers:list', async () => {
-  const { createProvider, PROVIDER_CATALOG } = await getEngine();
-  const config = buildProviderConfig();
+/**
+ * Catálogo de proveedores con disponibilidad y modelos.
+ *
+ * Cada proveedor se consulta en paralelo y con timeout propio: uno que no
+ * responde no retrasa al resto. El resultado se cachea unos segundos para que
+ * abrir Ajustes varias veces no repita 20 peticiones.
+ */
+let catalogoProveedores = { at: 0, valor: null };
+const CATALOGO_TTL_MS = 20_000;
 
-  const result = [];
-  for (const spec of PROVIDER_CATALOG) {
-    let available = false;
-    let models = [];
-    let reason = null;
-
-    const hasBaseUrl = !spec.custom || Boolean(config.baseUrls[spec.id]);
-    const savedKey = config.apiKeys[spec.id];
-    const envValue = spec.envKey ? process.env[spec.envKey] : null;
-
-    // Los locales no necesitan clave; el resto sí (guardada o del entorno).
-    const hasKey = spec.envKey === null && !spec.custom ? true : Boolean(savedKey || envValue);
-
-    if (!hasBaseUrl) {
-      reason = 'configura la URL del endpoint';
-    } else if (!hasKey) {
-      reason = spec.envKey ? `falta ${spec.envKey} o una clave guardada` : 'falta la clave de API';
-    } else {
-      try {
-        const provider = createProvider(spec.id, config);
-        const listed = await provider.listModels();
-        models = listed.map((model) => ({ id: model.id, name: model.name }));
-        available = models.length > 0;
-        if (!available) reason = 'no reporta modelos';
-      } catch (cause) {
-        reason = cause instanceof Error ? cause.message : String(cause);
+/** Texto corto y legible para la UI a partir del error de un proveedor. */
+function resumirErrorProveedor(mensaje) {
+  const texto = String(mensaje ?? '').trim();
+  const json = texto.match(/\{[\s\S]*\}/);
+  if (json) {
+    try {
+      const data = JSON.parse(json[0]);
+      const detalle = data?.error?.message ?? data?.message;
+      if (typeof detalle === 'string' && detalle.trim().length > 0) {
+        return detalle.trim().slice(0, 160).replace(/[.\s]+$/, '');
       }
+    } catch {
+      // no era JSON: se recorta el texto tal cual
     }
+  }
+  return texto.replace(/^\[\w+\]\s*/, '').slice(0, 160).replace(/[.\s]+$/, '');
+}
 
-    result.push({
-      id: spec.id,
-      label: spec.label,
-      kind: spec.kind,
-      local: Boolean(spec.local),
-      custom: Boolean(spec.custom),
-      envKey: spec.envKey,
-      needsKey: spec.envKey !== null || Boolean(spec.custom),
-      hasKey,
-      hasEnvKey: Boolean(envValue),
-      note: spec.note ?? null,
-      baseUrl: config.baseUrls[spec.id] ?? spec.baseUrl,
-      available,
-      models,
-      reason,
-    });
+/** Invalida el catálogo cacheado (cambio de clave, URL o preferencias). */
+function invalidarCatalogoProveedores() {
+  catalogoProveedores = { at: 0, valor: null };
+}
+
+async function listarProveedores(force = false) {
+  if (!force && catalogoProveedores.valor && Date.now() - catalogoProveedores.at < CATALOGO_TTL_MS) {
+    return catalogoProveedores.valor;
   }
 
+  const { createProvider, PROVIDER_CATALOG, soportaPensamiento } = await getEngine();
+  const config = buildProviderConfig();
+
+  const result = await Promise.all(
+    PROVIDER_CATALOG.map(async (spec) => {
+      let available = false;
+      let models = [];
+      let reason = null;
+
+      const hasBaseUrl = !spec.custom || Boolean(config.baseUrls[spec.id]);
+      const savedKey = config.apiKeys[spec.id];
+      const envValue = spec.envKey ? process.env[spec.envKey] : null;
+
+      // Los locales no necesitan clave; el resto sí (guardada o del entorno).
+      const hasKey = spec.envKey === null && !spec.custom ? true : Boolean(savedKey || envValue);
+
+      if (!hasBaseUrl) {
+        reason = 'configura la URL del endpoint';
+      } else if (!hasKey) {
+        reason = spec.envKey ? `falta ${spec.envKey} o una clave guardada` : 'falta la clave de API';
+      } else {
+        try {
+          const provider = createProvider(spec.id, config);
+          const listed = await provider.listModels();
+          models = listed.map((model) => {
+            // La ventana que declara el proveedor se guarda: es el dato bueno
+            // para el presupuesto de contexto y antes se descartaba aquí.
+            recordarVentana(spec.id, model.id, model.contextWindow);
+            return {
+              id: model.id,
+              name: model.name,
+              thinking: soportaPensamiento(spec.kind, model.id, spec.id),
+            };
+          });
+          available = models.length > 0;
+          if (!available) reason = 'no reporta modelos';
+        } catch (cause) {
+          const mensaje = cause instanceof Error ? cause.message : String(cause);
+          // Los errores de red de `fetch` no dicen nada útil al usuario.
+          reason = /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|socket hang up/i.test(mensaje)
+            ? spec.local
+              ? 'no está en marcha'
+              : 'no se pudo conectar'
+            : resumirErrorProveedor(mensaje);
+        }
+      }
+
+      return {
+        id: spec.id,
+        label: spec.label,
+        kind: spec.kind,
+        local: Boolean(spec.local),
+        custom: Boolean(spec.custom),
+        selfHosted: Boolean(spec.selfHosted),
+        envKey: spec.envKey,
+        needsKey: spec.envKey !== null || Boolean(spec.custom) || Boolean(spec.selfHosted),
+        hasKey,
+        hasEnvKey: Boolean(envValue),
+        note: spec.note ?? null,
+        baseUrl: config.baseUrls[spec.id] ?? spec.baseUrl,
+        available,
+        models,
+        reason,
+      };
+    }),
+  );
+
+  catalogoProveedores = { at: Date.now(), valor: result };
   return result;
+}
+
+ipcMain.handle('providers:list', async () => listarProveedores(false));
+
+/** Fuerza una detección nueva, saltando la caché. */
+ipcMain.handle('providers:refresh', async () => listarProveedores(true));
+
+/** Lista de proyectos conocidos. */
+ipcMain.handle('projects:list', async () => {
+  return [...state.projects].sort((a, b) => String(b.lastUsed).localeCompare(String(a.lastUsed)));
+});
+
+/** Activa un proyecto conocido, sin diálogo. */
+ipcMain.handle('project:select', async (_event, target) => {
+  const cwd = path.resolve(String(target ?? ''));
+  const proyecto = state.projects.find((p) => path.resolve(p.path) === cwd);
+  if (!proyecto || !(await esDirectorio(cwd))) {
+    return { ok: false, error: 'El proyecto ya no existe o no está registrado.' };
+  }
+
+  state.cwd = cwd;
+  state.project = cwd;
+  registrarRaiz(cwd);
+  registrarProyecto(cwd);
+  terminalCwd = null;
+  await cerrarPlugins();
+  await actualizarProyectoDeSesion(state.project);
+  try {
+    await saveSettings();
+  } catch {
+    // El estado ya es válido aunque falle el disco.
+  }
+  return { ok: true, cwd, project: state.project };
+});
+
+/** Desasocia la conversación de cualquier proyecto sin cambiar el workspace. */
+ipcMain.handle('project:none', async () => {
+  state.project = null;
+  await actualizarProyectoDeSesion(null);
+  try {
+    await saveSettings();
+  } catch {
+    // best-effort: la UI ya refleja el cambio
+  }
+  return { ok: true, project: null, cwd: state.cwd };
+});
+
+/** Crea una carpeta nueva y la registra como proyecto. */
+ipcMain.handle('project:create', async (_event, target) => {
+  let cwd;
+  if (process.env.OPENGRAVITY_TEST === '1' && typeof target === 'string' && target.trim()) {
+    // Hook de verificación: solo existe en el modo de pruebas.
+    cwd = path.resolve(target.trim());
+  } else if (
+    process.env.OPENGRAVITY_TEST === '1' &&
+    typeof process.env.OPENGRAVITY_TEST_NEW_PROJECT === 'string' &&
+    process.env.OPENGRAVITY_TEST_NEW_PROJECT.trim()
+  ) {
+    // Sustituye solo el diálogo nativo; el clic del menú sigue siendo real.
+    cwd = path.resolve(process.env.OPENGRAVITY_TEST_NEW_PROJECT.trim());
+  } else {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'New Project',
+      buttonLabel: 'Create Project',
+      defaultPath: path.join(app.getPath('documents'), 'New Project'),
+      properties: ['createDirectory'],
+    });
+    if (result.canceled || !result.filePath) return null;
+    cwd = path.resolve(result.filePath);
+  }
+  try {
+    await fsp.mkdir(cwd, { recursive: false });
+  } catch (error) {
+    return { ok: false, error: `No se pudo crear el proyecto: ${error?.message ?? error}` };
+  }
+
+  state.cwd = cwd;
+  state.project = cwd;
+  registrarRaiz(cwd);
+  registrarProyecto(cwd);
+  terminalCwd = null;
+  await cerrarPlugins();
+  await actualizarProyectoDeSesion(state.project);
+  try {
+    await saveSettings();
+  } catch {
+    // best-effort
+  }
+  return { ok: true, cwd, project: state.project };
+});
+
+/** Quita un proyecto del selector; no borra su carpeta. */
+ipcMain.handle('project:remove', async (_event, target) => {
+  const cwd = path.resolve(String(target ?? ''));
+  state.projects = state.projects.filter((p) => path.resolve(p.path) !== cwd);
+  if (state.project === cwd) {
+    state.project = null;
+    await actualizarProyectoDeSesion(null);
+  }
+  try {
+    await saveSettings();
+  } catch {
+    // best-effort
+  }
+  return { ok: true, project: state.project, projects: state.projects };
 });
 
 /** Abre un directorio como workspace. */
@@ -2436,7 +3038,13 @@ ipcMain.handle('workspace:open', async () => {
   if (result.canceled || result.filePaths.length === 0) return null;
 
   state.cwd = result.filePaths[0];
+  state.project = state.cwd;
+  registrarRaiz(state.cwd);
+  registrarProyecto(state.cwd);
   terminalCwd = null;
+  await actualizarProyectoDeSesion(state.project);
+  // Los servidores MCP se arrancaron con el cwd anterior.
+  await cerrarPlugins();
 
   // El workspace ya está activo en memoria: si falla el disco no se revierte,
   // pero el rechazo debe quedar consumido aquí (el renderer no lo captura).
@@ -2449,6 +3057,43 @@ ipcMain.handle('workspace:open', async () => {
   }
 });
 
+/** Cambia el workspace a una carpeta ya conocida (proyectos recientes). */
+ipcMain.handle('workspace:set', async (_event, target) => {
+  const cwd = path.resolve(String(target ?? ''));
+  if (!(await esDirectorio(cwd))) {
+    return { ok: false, error: 'La carpeta del proyecto ya no existe.' };
+  }
+
+  /*
+   * El renderer solo puede activar proyectos que ya aparecen en el historial;
+   * así este canal no sirve para autorizar una carpeta arbitraria sin diálogo.
+   */
+  const store = await getStore();
+  const sesiones = await store.list();
+  const conocido =
+    cwd === path.resolve(state.cwd) ||
+    sesiones.some((sesion) => sesion?.cwd && path.resolve(sesion.cwd) === cwd);
+  if (!conocido) {
+    return { ok: false, error: 'Ese proyecto no está en el historial. Ábrelo con New Project.' };
+  }
+
+  state.cwd = cwd;
+  state.project = cwd;
+  registrarRaiz(state.cwd);
+  registrarProyecto(state.cwd);
+  terminalCwd = null;
+  await cerrarPlugins();
+  await actualizarProyectoDeSesion(state.project);
+
+  try {
+    await saveSettings();
+    return { ok: true, cwd: state.cwd, project: state.project, projects: state.projects };
+  } catch (err) {
+    console.error(`[settings] no se pudieron guardar las preferencias: ${err?.message ?? err}`);
+    return { ok: true, cwd: state.cwd, project: state.project, projects: state.projects, settingsError: true };
+  }
+});
+
 /** Abre el diálogo de selección de fichero. */
 ipcMain.handle('dialog:open-file', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -2457,6 +3102,8 @@ ipcMain.handle('dialog:open-file', async () => {
   });
 
   if (result.canceled || result.filePaths.length === 0) return null;
+  // La carpeta del fichero elegido pasa a ser legible para el editor.
+  registrarRaiz(path.dirname(result.filePaths[0]));
   return result.filePaths[0];
 });
 
@@ -2469,6 +3116,8 @@ ipcMain.handle('dialog:open-image', async () => {
   });
 
   if (result.canceled || result.filePaths.length === 0) return null;
+  // La carpeta del fichero elegido pasa a ser legible para el editor.
+  registrarRaiz(path.dirname(result.filePaths[0]));
   return result.filePaths[0];
 });
 
@@ -2480,7 +3129,7 @@ ipcMain.handle('fs:relative', (_event, target) => {
 
 /** Lista un directorio del workspace. */
 ipcMain.handle('fs:list', async (_event, dirPath) => {
-  const target = path.resolve(state.cwd, dirPath || '.');
+  const target = rutaAutorizada(state.cwd, dirPath || '.');
   const entries = await fsp.readdir(target, { withFileTypes: true });
 
   return entries
@@ -2495,7 +3144,7 @@ ipcMain.handle('fs:list', async (_event, dirPath) => {
 
 /** Lee un fichero del workspace. */
 ipcMain.handle('fs:read', async (_event, filePath) => {
-  const target = path.resolve(state.cwd, filePath);
+  const target = rutaAutorizada(state.cwd, filePath);
   const info = await fsp.stat(target);
 
   if (info.size > 2_000_000) {
@@ -2510,7 +3159,7 @@ ipcMain.handle('fs:read', async (_event, filePath) => {
 ipcMain.handle('fs:write', async (_event, payload) => {
   const relative = String(payload?.path ?? '');
   const content = String(payload?.content ?? '');
-  const absolute = path.resolve(state.cwd, relative);
+  const absolute = rutaAutorizada(state.cwd, relative);
 
   await fsp.writeFile(absolute, content, 'utf8');
   scheduleIndexRefresh();
@@ -2566,6 +3215,8 @@ ipcMain.handle('settings:set', async (_event, payload) => {
   if (payload && typeof payload.model === 'string') {
     state.model = payload.model;
   }
+  // Fire-and-forget: la ventana real del modelo local, sin retrasar el ajuste.
+  if (state.providerId === 'ollama') void recordarVentanaOllama(state.model);
   await saveSettings();
   return { providerId: state.providerId, model: state.model };
 });
@@ -2575,8 +3226,22 @@ ipcMain.handle('prefs:get', async () => state.prefs);
 /** Actualiza preferencias (merge superficial) y las persiste. */
 ipcMain.handle('prefs:set', async (_event, patch) => {
   if (patch && typeof patch === 'object') {
+    const cambiaElTema =
+      'theme' in patch || 'themeContrast' in patch || 'accent' in patch;
     state.prefs = { ...state.prefs, ...patch };
+    // Una clave o una URL nueva cambia qué proveedores responden.
+    invalidarCatalogoProveedores();
+    if ('lspServers' in patch || 'goRoot' in patch) {
+      // El siguiente lspOpen debe usar el comando o la ruta nueva.
+      for (const client of lspClients.values()) client.stop();
+      lspClients.clear();
+    }
+    if ('plugins' in patch) await cerrarPlugins();
     await saveSettings();
+    if (cambiaElTema) {
+      // El renderer aplica los tokens al recibir las prefs; se espera un tick.
+      setTimeout(() => void aplicarBarraDeTitulo(), 50);
+    }
   }
   return state.prefs;
 });
@@ -2703,7 +3368,7 @@ let notaDeTareaPendiente = null;
  */
 ipcMain.handle('image:as-data-url', async (_event, rutaRelativa) => {
   try {
-    const absoluta = path.resolve(state.cwd, String(rutaRelativa ?? ''));
+    const absoluta = rutaAutorizada(state.cwd, rutaRelativa);
     const datos = await fsp.readFile(absoluta);
 
     const extension = path.extname(absoluta).toLowerCase();
@@ -2756,33 +3421,6 @@ ipcMain.handle('image:generate', async (_event, payload) => {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
-});
-
-/**
- * Usar el Chrome del usuario.
- *
- * Se lanza SU Chrome con depuración sobre su perfil real: hereda la sesión sin
- * tocar nada cifrado. Requiere que esté cerrado del todo.
- */
-ipcMain.handle('chrome:status', async () => {
-  try {
-    return { ok: true, ...(await require('./chrome.cjs').estado()) };
-  } catch (error) {
-    return { ok: false, error: String(error) };
-  }
-});
-
-ipcMain.handle('chrome:launch', async () => {
-  try {
-    return await require('./chrome.cjs').lanzarChrome();
-  } catch (error) {
-    return { ok: false, error: String(error) };
-  }
-});
-
-ipcMain.handle('chrome:disconnect', async () => {
-  require('./chrome.cjs').desconectar();
-  return { ok: true };
 });
 
 ipcMain.handle('google:status', async () => {
@@ -2859,7 +3497,8 @@ ipcMain.handle('tools:list', async () => {
   const all = [
     ...fileSystemTools,
     makeSearchFilesTool(() => state.cwd),
-    makeCodeSearchTool(),
+    makeFileSearchTool(() => state.cwd),
+    makeCodeSearchTool(codeIndex, () => state.cwd),
     makeEditFileTool(() => state.cwd),
     makeMultiReplaceTool(() => state.cwd),
     makeEditNotebookTool(() => state.cwd),
@@ -2871,8 +3510,8 @@ ipcMain.handle('tools:list', async () => {
     makeViewCodeItemTool(() => state.cwd),
     makeMemoryTool(getMemoria(), () => state.cwd),
     makeSkillTool(() => descubrirSkills(state.cwd)),
-    makeRunWorkflowTool(() => state.cwd, (a) => makeRunCommandTool(() => state.cwd, () => state.prefs).execute(a)),
-    makeRunExtensionCodeTool(() => state.cwd, (a) => makeRunCommandTool(() => state.cwd, () => state.prefs).execute(a)),
+    makeRunWorkflowTool(() => state.cwd, (a, c) => makeRunCommandTool(() => state.cwd, () => state.prefs).execute(a, c)),
+    makeRunExtensionCodeTool(() => state.cwd, (a, c) => makeRunCommandTool(() => state.cwd, () => state.prefs).execute(a, c)),
     ...makeBrowserTools(() => state.prefs, (message, detail) =>
       askPermission(mainWindow, message, detail),
     ),
@@ -2893,6 +3532,10 @@ ipcMain.handle('tools:list', async () => {
     {
       name: 'browser_task',
       description: 'Delega una tarea de navegación a un subagente con su propio contexto.',
+    },
+    {
+      name: 'enter_plan_mode',
+      description: 'Devuelve el control al planificador con un informe de estado.',
     },
     makeSendMessageTool(),
   {
@@ -2959,6 +3602,48 @@ ipcMain.handle('skills:list', async () => {
 /** Perfil local. */
 ipcMain.handle('profile:get', async () => state.prefs.profile ?? { name: '', email: '' });
 
+/** Historial de descargas de esta sesión. */
+ipcMain.handle('downloads:list', async () => descargas);
+ipcMain.handle('downloads:open', async (_event, id) => {
+  const entrada = descargas.find((d) => d.id === String(id));
+  if (!entrada) return { ok: false, error: 'descarga no encontrada' };
+  shell.showItemInFolder(entrada.path);
+  return { ok: true };
+});
+
+/** Carpeta de descargas del navegador integrado. */
+ipcMain.handle('app:downloads-dir', async () => ({
+  path: state.prefs.downloadPath || app.getPath('downloads'),
+}));
+
+/** Elige y guarda una carpeta de descargas nueva. */
+ipcMain.handle('app:choose-download-dir', async () => {
+  const resultado = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (resultado.canceled || !resultado.filePaths[0]) return { ok: false };
+
+  state.prefs = { ...state.prefs, downloadPath: resultado.filePaths[0] };
+  await saveSettings();
+  return { ok: true, path: resultado.filePaths[0] };
+});
+
+/**
+ * Borra el historial del navegador integrado.
+ *
+ * Solo hay caché y navegación de la sesión persistente: no se guardan URLs
+ * visitadas en disco. El renderer limpia además el historial del webview.
+ */
+ipcMain.handle('browser:clear-history', async () => {
+  const { session } = require('electron');
+  try {
+    await session.fromPartition('persist:opengravity-browser').clearCache();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+});
+
 /** Abre una URL en el navegador del sistema. */
 ipcMain.handle('shell:open-external', async (_event, url) => {
   const verdict = isUrlAllowed(String(url), state.prefs.networkRules);
@@ -3011,11 +3696,37 @@ function stopRemote() {
  *   POST /prompt   { "text": "...", "token": "..." }
  *   GET  /status   → { ok, url, hasToken }
  */
+/**
+ * Compara el token recibido con el esperado en tiempo constante.
+ *
+ * `a !== b` termina en el primer byte distinto: con suficientes intentos se
+ * puede reconstruir el token carácter a carácter midiendo lo que tarda.
+ */
+function mismoToken(recibido, esperado) {
+  const a = Buffer.from(String(recibido ?? ''), 'utf8');
+  const b = Buffer.from(String(esperado ?? ''), 'utf8');
+  if (a.length !== b.length) return false;
+
+  let diferencia = 0;
+  for (let i = 0; i < a.length; i += 1) diferencia |= a[i] ^ b[i];
+  return diferencia === 0;
+}
+
 async function startRemote() {
   if (remoteServer) return remoteInfo;
 
   const port = Number(state.prefs.remotePort ?? 4789);
-  const token = String(state.prefs.remoteToken ?? '').trim();
+  /*
+   * Sin token, cualquiera que llegue a 127.0.0.1 podría lanzar prompts al agente
+   * (el renderer los envía solo, sin confirmación). Si el usuario no ha puesto
+   * uno, se genera y se guarda en vez de arrancar el servidor abierto.
+   */
+  let token = String(state.prefs.remoteToken ?? '').trim();
+  if (token.length === 0) {
+    token = require('node:crypto').randomBytes(24).toString('hex');
+    state.prefs = { ...state.prefs, remoteToken: token };
+    await saveSettings();
+  }
 
   remoteServer = http.createServer((req, res) => {
     const send = (code, payload) => {
@@ -3048,7 +3759,7 @@ async function startRemote() {
         return;
       }
 
-      if (token.length > 0 && payload.token !== token) {
+      if (!mismoToken(payload.token, token)) {
         send(401, { ok: false, error: 'token incorrecto' });
         return;
       }
@@ -3121,7 +3832,26 @@ ipcMain.handle('sessions:export', async (_event, id) => {
 
   if (result.canceled || !result.filePath) return { ok: false };
   await fsp.writeFile(result.filePath, lines.join('\n'), 'utf8');
-  return { ok: true, path: result.filePath };
+
+  /*
+   * Trayectoria junto al Markdown: sin servidor propio no hay «compartir» con
+   * un enlace, pero el receptor puede ver qué tocó cada paso. Es el
+   * `ShareTrajectoryByUser` del original resuelto como fichero autocontenido.
+   */
+  let trayectoriaExportada = null;
+  try {
+    await trayectoria.asegurar(id);
+    const ruta = trayectoria.rutaDeTrayectoria(id);
+    if (ruta) {
+      const destino = result.filePath.replace(/\.md$/i, '') + '.trajectory.json';
+      await fsp.copyFile(ruta, destino);
+      trayectoriaExportada = destino;
+    }
+  } catch {
+    // sin trayectoria se exporta solo la conversación
+  }
+
+  return { ok: true, path: result.filePath, trajectory: trayectoriaExportada };
 });
 
 /** Renombra una conversación. */
@@ -3204,7 +3934,28 @@ ipcMain.handle('sessions:load', async (_event, id) => {
   state.providerId = loaded.meta.provider;
   state.model = loaded.meta.model;
 
-  return { meta: loaded.meta, messages: loaded.messages };
+  // La conversación puede traer su propio workspace. Si ya no existe, no se
+  // arrastra la ruta fantasma a los siguientes turnos.
+  if (typeof loaded.meta.cwd === 'string' && (await esDirectorio(loaded.meta.cwd))) {
+    state.cwd = loaded.meta.cwd;
+    registrarRaiz(state.cwd);
+  } else if (!(await esDirectorio(state.cwd))) {
+    state.cwd = cwdInicial();
+    registrarRaiz(state.cwd);
+  }
+
+  /*
+   * Sesiones anteriores a `project` se agrupan bajo su cwd, que es lo que la
+   * interfaz mostraba antes. Las nuevas guardan null explícito para No Project.
+   */
+  const proyectoCargado = 'project' in loaded.meta ? loaded.meta.project : loaded.meta.cwd;
+  state.project =
+    typeof proyectoCargado === 'string' && (await esDirectorio(proyectoCargado))
+      ? path.resolve(proyectoCargado)
+      : null;
+  if (state.project) registrarProyecto(state.project);
+
+  return { meta: loaded.meta, project: state.project, messages: loaded.messages };
 });
 
 /// Control de cancelación de la ejecución en curso.
@@ -3236,7 +3987,27 @@ async function readScheduled() {
 
 /** Guarda las tareas programadas. */
 async function writeScheduled(tasks) {
-  await fsp.writeFile(scheduledPath(), JSON.stringify(tasks, null, 2), 'utf8');
+  // Atómico y en cola: el tick del minuto y el guardado del usuario escriben el
+  // mismo fichero, y con writeFile directo el último ganaba con datos viejos.
+  await guardarEnCola(scheduledPath(), tasks);
+}
+
+/**
+ * Lee, muta y guarda las tareas programadas en una sola operación serializada.
+ *
+ * Sin esto, dos writers (el tick y un guardado del usuario) leen la misma lista
+ * y el segundo escribe su copia vieja: la tarea nueva desaparece. `mutar`
+ * devuelve `{ escribir, resultado }`.
+ */
+function mutarScheduled(mutar) {
+  return serializar(async () => {
+    const tareas = await readScheduled();
+    const salida = await mutar(tareas);
+    if (!salida || salida.escribir !== false) {
+      await escribirAtomico(scheduledPath(), tareas);
+    }
+    return salida?.resultado;
+  });
 }
 
 /** Lista las tareas programadas. */
@@ -3250,7 +4021,6 @@ ipcMain.handle('scheduled:list', async () => {
 
 /** Crea o actualiza una tarea programada. */
 ipcMain.handle('scheduled:save', async (_event, task) => {
-  const tasks = await readScheduled();
   const id = task.id ?? `t${Date.now().toString(36)}`;
 
   const modo = task.mode === 'once' || task.mode === 'cron' ? task.mode : 'interval';
@@ -3284,30 +4054,32 @@ ipcMain.handle('scheduled:save', async (_event, task) => {
     lastRunAt: task.lastRunAt ?? null,
   };
 
-  const index = tasks.findIndex((entry) => entry.id === id);
-  if (index >= 0) tasks[index] = { ...tasks[index], ...next };
-  else tasks.push(next);
-
-  await writeScheduled(tasks);
-  return { ok: true, id };
+  return mutarScheduled((tasks) => {
+    const index = tasks.findIndex((entry) => entry.id === id);
+    if (index >= 0) tasks[index] = { ...tasks[index], ...next };
+    else tasks.push(next);
+    return { resultado: { ok: true, id } };
+  });
 });
 
 /** Borra una tarea programada. */
 ipcMain.handle('scheduled:delete', async (_event, id) => {
-  const tasks = await readScheduled();
-  await writeScheduled(tasks.filter((task) => task.id !== id));
-  return { ok: true };
+  return mutarScheduled((tasks) => {
+    const sobran = tasks.filter((task) => task.id !== id);
+    tasks.length = 0;
+    tasks.push(...sobran);
+    return { resultado: { ok: true } };
+  });
 });
 
 /** Activa o desactiva una tarea. */
 ipcMain.handle('scheduled:toggle', async (_event, id, enabled) => {
-  const tasks = await readScheduled();
-  const found = tasks.find((task) => task.id === id);
-  if (found) {
+  return mutarScheduled((tasks) => {
+    const found = tasks.find((task) => task.id === id);
+    if (!found) return { escribir: false, resultado: { ok: true } };
     found.enabled = Boolean(enabled);
-    await writeScheduled(tasks);
-  }
-  return { ok: true };
+    return { resultado: { ok: true } };
+  });
 });
 
 /** Ejecuta ahora una tarea, sin esperar a su hora. */
@@ -3322,21 +4094,21 @@ ipcMain.handle('scheduled:run', async (_event, id) => {
 
 /** Cancela los avisos únicos marcados con cancelOn "any". */
 async function cancelarAvisosPendientes() {
-  const tareas = await readScheduled();
-  let cambiado = false;
+  return mutarScheduled((tareas) => {
+    let cambiado = false;
 
-  for (const tarea of tareas) {
-    if (tarea.mode !== 'once') continue;
-    if (tarea.enabled === false) continue;
-    if (tarea.cancelOn !== 'any') continue;
+    for (const tarea of tareas) {
+      if (tarea.mode !== 'once') continue;
+      if (tarea.enabled === false) continue;
+      if (tarea.cancelOn !== 'any') continue;
 
-    tarea.enabled = false;
-    tarea.canceladoEn = new Date().toISOString();
-    cambiado = true;
-  }
+      tarea.enabled = false;
+      tarea.canceladoEn = new Date().toISOString();
+      cambiado = true;
+    }
 
-  if (cambiado) await writeScheduled(tareas);
-  return cambiado;
+    return { escribir: cambiado, resultado: cambiado };
+  });
 }
 
 /** Comprueba cada minuto si hay tareas vencidas. */
@@ -3468,7 +4240,7 @@ ipcMain.handle('chat:revert-preview', async (_event, keepCount) => {
   if (files.size === 0 && state.sessionId) {
     try {
       await trayectoria.asegurar(state.sessionId);
-      const plan = trayectoria.planDeReversion(state.sessionId, keep);
+      const plan = trayectoria.planDeReversionPorMensaje(state.sessionId, keep);
       if (plan.ok) {
         for (const cambio of plan.cambios ?? []) {
           files.set(cambio.ruta, {
@@ -3529,8 +4301,93 @@ ipcMain.handle('chat:abort', async () => {
   return { ok: false };
 });
 
+/*
+ * Servidores MCP: se arrancan una vez por workspace y configuración, no en
+ * cada turno. Antes cada mensaje pagaba el handshake de npx/uvx y la lista de
+ * herramientas; con varios plugins eso son segundos por turno.
+ */
+let cachePlugins = {
+  clave: null,
+  clientes: [],
+  porNombre: new Map(),
+  herramientas: [],
+  errores: [],
+};
+
+/** Resúmenes de subagentes pendientes de entregar al turno activo o a uno nuevo. */
+const colaResultadosSubagentes = [];
+
+function entregarResultadoSubagente(texto) {
+  if (!texto) return;
+  if (state.busy) {
+    colaResultadosSubagentes.push(texto);
+    return;
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('task:wake', { texto });
+  }
+}
+
+async function cerrarPlugins() {
+  const actual = cachePlugins;
+  cachePlugins = { clave: null, clientes: [], porNombre: new Map(), herramientas: [], errores: [] };
+  await Promise.all(actual.clientes.map((client) => client.close().catch(() => {})));
+}
+
+async function cargarPlugins(cwd, prefs) {
+  const activos = (prefs.plugins ?? []).filter((entry) => entry.enabled !== false);
+  const clave = JSON.stringify({ cwd, plugins: activos });
+  if (cachePlugins.clave === clave) return { ...cachePlugins, nuevo: false };
+
+  await cerrarPlugins();
+
+  const { StdioMcpClient } = await import('../dist/mcp/stdio-client.js');
+  const { toolsFromMcpServer } = await import('../dist/tools/mcp-adapter.js');
+  const clientes = [];
+  const porNombre = new Map();
+  const herramientas = [];
+  const errores = [];
+
+  for (const plugin of activos) {
+    const nombre = String(plugin.name ?? plugin.id ?? 'plugin');
+    try {
+      const client = await StdioMcpClient.start({
+        command: plugin.command,
+        args: Array.isArray(plugin.args) ? plugin.args : [],
+        cwd,
+        onStderr: (chunk) => console.error(`[plugin ${nombre}] ${chunk}`),
+      });
+      clientes.push(client);
+      porNombre.set(nombre, client);
+      herramientas.push(...(await toolsFromMcpServer(client)));
+    } catch (error) {
+      errores.push({
+        nombre,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  cachePlugins = { clave, clientes, porNombre, herramientas, errores };
+  return { ...cachePlugins, nuevo: true };
+}
+
 /** Envía un turno al agente y transmite los eventos por `chat:event`. */
 ipcMain.handle('chat:send', async (event, payload) => {
+  /*
+   * Con un plan pendiente, escribir en el composer es la forma de pedir
+   * cambios: su artefacto solo ofrece «Proceed». El mensaje se usa como motivo
+   * del rechazo y el turno en curso sigue con el plan revisado.
+   */
+  const textoEntrante = (typeof payload === 'string' ? payload : String(payload?.text ?? '')).trim();
+  if (pendingPlans.size > 0 && textoEntrante.length > 0) {
+    for (const [id, resolver] of [...pendingPlans]) {
+      pendingPlans.delete(id);
+      resolver({ approved: false, feedback: textoEntrante.slice(0, 2000), steps: null });
+    }
+    return { ok: true, planFeedback: true };
+  }
+
   if (state.busy) {
     return { ok: false, error: 'el agente ya está trabajando' };
   }
@@ -3538,8 +4395,9 @@ ipcMain.handle('chat:send', async (event, payload) => {
   const text = typeof payload === 'string' ? payload : String(payload?.text ?? '');
   const mentions = Array.isArray(payload?.mentions) ? payload.mentions.slice(0, 20) : [];
 
-  // Esfuerzo de razonamiento y preset llegan desde el composer.
-  const effort = typeof payload?.effort === 'string' ? payload.effort : 'Medium';
+  // El botón de pensamiento decide si el nivel de esfuerzo llega al proveedor.
+  const effort =
+    payload?.thinking === true && typeof payload?.effort === 'string' ? payload.effort : null;
   if (typeof payload?.preset === 'string') {
     state.prefs.permissionPreset = payload.preset;
   }
@@ -3563,7 +4421,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
   if (mentions.length > 0) {
     const blocks = [];
     for (const relative of mentions) {
-      const absolute = path.resolve(state.cwd, String(relative));
+      const absolute = rutaAutorizada(state.cwd, relative);
       const mime = imageMimeType(relative);
 
       if (mime) {
@@ -3592,7 +4450,21 @@ ipcMain.handle('chat:send', async (event, payload) => {
     input = `${input}\n\nFicheros adjuntos:\n\n${blocks.join('\n\n')}`;
   }
 
-  const { runAgent, createProvider, ToolRegistry, fileSystemTools } = await getEngine();
+  if (!(await esDirectorio(state.cwd))) {
+    return {
+      ok: false,
+      error: 'El workspace ya no existe. Abre otra carpeta antes de enviar el mensaje.',
+    };
+  }
+
+  const {
+    runAgent,
+    createProvider,
+    ToolRegistry,
+    fileSystemTools,
+    PROVIDER_CATALOG,
+    soportaPensamiento,
+  } = await getEngine();
 
   if (!state.providerId) {
     return { ok: false, error: 'selecciona un proveedor de modelo' };
@@ -3603,14 +4475,40 @@ ipcMain.handle('chat:send', async (event, payload) => {
   if (!state.model) {
     try {
       const models = await provider.listModels();
-      state.model = models[0] ? models[0].id : null;
+      const elegido = models[0];
+      state.model = elegido ? elegido.id : null;
+      // La ventana del modelo elegido, para el presupuesto de contexto.
+      if (elegido) recordarVentana(state.providerId, elegido.id, elegido.contextWindow);
     } catch {
       state.model = null;
     }
   }
 
+  /*
+   * Ollama no declara la ventana en `/api/tags`: se pregunta aparte. De la
+   * misma respuesta salen sus capacidades (`tools`, `vision`). Es una consulta
+   * cacheada; solo la primera vez cuesta hasta 2,5 s.
+   */
+  if (state.providerId === 'ollama' && state.model) {
+    await recordarVentanaOllama(state.model);
+  }
+
   if (!state.model) {
     return { ok: false, error: 'el proveedor no reporta modelos' };
+  }
+
+  const capacidades = capacidadesOllama.get(state.model);
+  if (capacidades?.tools === false) {
+    return {
+      ok: false,
+      error: `El modelo «${state.model}» no declara soporte de herramientas en Ollama. Elige uno con tools.`,
+    };
+  }
+  if (capacidades?.vision === false && images.length > 0) {
+    return {
+      ok: false,
+      error: `El modelo «${state.model}» no admite imágenes. Quita los adjuntos o elige un modelo de visión.`,
+    };
   }
 
   // Sesión: se crea la primera vez, salvo que el historial esté desactivado.
@@ -3621,6 +4519,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
         provider: state.providerId,
         model: state.model,
         cwd: state.cwd,
+        project: state.project,
       });
       state.sessionId = created.id;
     } catch {
@@ -3646,6 +4545,8 @@ ipcMain.handle('chat:send', async (event, payload) => {
   const baseTools = [
     ...fileSystemTools,
     makeSearchFilesTool(() => state.cwd),
+    makeFileSearchTool(() => state.cwd),
+    makeCodeSearchTool(codeIndex, () => state.cwd),
     makeEditFileTool(() => state.cwd),
     makeMultiReplaceTool(() => state.cwd),
     makeEditNotebookTool(() => state.cwd),
@@ -3657,8 +4558,8 @@ ipcMain.handle('chat:send', async (event, payload) => {
     makeViewCodeItemTool(() => state.cwd),
     makeMemoryTool(getMemoria(), () => state.cwd),
     makeSkillTool(() => descubrirSkills(state.cwd)),
-    makeRunWorkflowTool(() => state.cwd, (a) => makeRunCommandTool(() => state.cwd, () => state.prefs).execute(a)),
-    makeRunExtensionCodeTool(() => state.cwd, (a) => makeRunCommandTool(() => state.cwd, () => state.prefs).execute(a)),
+    makeRunWorkflowTool(() => state.cwd, (a, c) => makeRunCommandTool(() => state.cwd, () => state.prefs).execute(a, c)),
+    makeRunExtensionCodeTool(() => state.cwd, (a, c) => makeRunCommandTool(() => state.cwd, () => state.prefs).execute(a, c)),
     ...makeBrowserTools(() => state.prefs, (message, detail) =>
       askPermission(mainWindow, message, detail),
     ),
@@ -3717,6 +4618,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
               'Cuando termines, responde con un resumen conciso de lo que encontraste o hiciste: ' +
               'hechos, datos y URLs relevantes. No incluyas la transcripción de cada clic.',
             maxSteps: 14,
+            contextWindow: ventanaDelTurno(state.model),
             onEvent: subSend,
           },
           entrada,
@@ -4238,14 +5140,13 @@ ipcMain.handle('chat:send', async (event, payload) => {
         };
       }
 
-      const tareas = await readScheduled();
       const id = `n${Date.now().toString(36)}`;
 
       if (tieneDuracion) {
         const segundos = Math.max(5, Math.min(30 * 24 * 3600, Number(args.durationSeconds)));
         const cancelOn = typeof args?.cancelOn === 'string' ? args.cancelOn.trim() : 'never';
 
-        tareas.push({
+        const aviso = {
           id,
           prompt: mensaje,
           mode: 'once',
@@ -4257,9 +5158,12 @@ ipcMain.handle('chat:send', async (event, payload) => {
           createdBy: 'agent',
           enabled: true,
           lastRunAt: null,
-        });
+        };
 
-        await writeScheduled(tareas);
+        await mutarScheduled((tareas) => {
+          tareas.push(aviso);
+          return { resultado: null };
+        });
 
         const cuando = new Date(Date.now() + segundos * 1000);
         return {
@@ -4286,7 +5190,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
 
       const jitter = Math.max(0, Math.min(600, Number(args?.jitterSeconds ?? 0) || 0));
 
-      tareas.push({
+      const recurrente = {
         id,
         prompt: mensaje,
         mode: 'cron',
@@ -4298,9 +5202,12 @@ ipcMain.handle('chat:send', async (event, payload) => {
         createdBy: 'agent',
         enabled: true,
         lastRunAt: null,
-      });
+      };
 
-      await writeScheduled(tareas);
+      await mutarScheduled((tareas) => {
+        tareas.push(recurrente);
+        return { resultado: null };
+      });
 
       return {
         content:
@@ -4330,6 +5237,14 @@ ipcMain.handle('chat:send', async (event, payload) => {
    * Por defecto solo llevan herramientas de lectura. Escribir en el proyecto desde
    * un subagente es algo que se pide explícitamente, no lo que pasa por defecto.
    */
+  /** Un fallo de resolución del modelo sí justifica reintentar con el default. */
+  function esErrorDeModelo(error) {
+    const texto = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    return /(model|modelo).*(not found|no existe|does not exist|unknown|invalid|unsupported|not available)|404/.test(
+      texto,
+    );
+  }
+
   /** Presupuesto compartido por el turno, incluidos los subagentes anidados. */
   const presupuestoSubagentes = {
     usados: 0,
@@ -4339,9 +5254,10 @@ ipcMain.handle('chat:send', async (event, payload) => {
   const invokeSubagentTool = {
     name: 'invoke_subagent',
     description:
-      'Lanza uno o varios subagentes en paralelo. Cada uno tiene su propio contexto y ' +
-      'devuelve solo un resumen, así que sirve para investigar o verificar varias cosas ' +
-      'a la vez sin llenar tu contexto. Por defecto solo pueden leer. ' +
+      'Lanza uno o varios subagentes en paralelo. Devuelve el control al instante: los ' +
+      'resúmenes llegan como mensajes del sistema en los siguientes pasos, y mientras ' +
+      'tanto puedes usar send_message y manage_subagent. Cada uno tiene su propio contexto. ' +
+      'Por defecto solo pueden leer. ' +
       'IMPORTANTE: el subagente no comparte tu contexto. En `prompt` dale la RUTA COMPLETA ' +
       'de cada fichero relativa al directorio de trabajo (por ejemplo ' +
       '`prueba-nucleo/src/carrito.mjs`, no `src/carrito.mjs`) y dile exactamente qué debe ' +
@@ -4401,7 +5317,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
       },
       required: ['subagents'],
     },
-    async execute(args) {
+    async execute(args, ctx) {
       const pedidos = Array.isArray(args?.subagents) ? args.subagents.slice(0, 5) : [];
       if (pedidos.length === 0) {
         return { content: 'No hay subagentes que lanzar.', isError: true };
@@ -4436,7 +5352,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
       const deLectura = baseTools.filter((tool) => HERRAMIENTAS_DE_LECTURA.has(tool.name));
       const deEscritura = baseTools.filter((tool) => !HERRAMIENTAS_DE_LECTURA.has(tool.name));
 
-      const lanzar = async (sub, indice) => {
+      const lanzar = async (sub, indice, senalExterna, senalPadre) => {
         // Si viene `definition`, se resuelve contra las guardadas con define_subagent.
         let definicion = null;
         const referencia = sub?.definition ?? sub?.name;
@@ -4501,6 +5417,14 @@ ipcMain.handle('chat:send', async (event, payload) => {
         }
 
         const controlador = new AbortController();
+        // Si el usuario cancela el turno padre, sus subagentes también paran.
+        senalPadre?.addEventListener('abort', () => controlador.abort(), { once: true });
+        /*
+         * El presupuesto de fusión cancela este subagente concreto a través de
+         * su señal. El registro conserva su propio controlador para que
+         * `manage_subagent` lo siga viendo y pueda cancelarlo a mano.
+         */
+        senalExterna?.addEventListener('abort', () => controlador.abort(), { once: true });
         const identificador = subagentes.registrar({
           nombre,
           rol,
@@ -4522,7 +5446,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
               'Lanza subagentes de SOLO LECTURA desde este subagente. No pueden escribir, ' +
               'usar MCP ni delegar a su vez; el presupuesto del turno es compartido.',
             parameters: invokeSubagentTool.parameters,
-            async execute(nietos) {
+            async execute(nietos, ctxNietos) {
               const lista = (Array.isArray(nietos?.subagents) ? nietos.subagents : []).map(
                 (nieto) => ({
                   ...nieto,
@@ -4538,7 +5462,8 @@ ipcMain.handle('chat:send', async (event, payload) => {
                 __padre: identificador,
                 __profundidad: profundidad + 1,
                 __soloLectura: true,
-              });
+                __bloquear: true,
+              }, ctxNietos);
             },
           });
         }
@@ -4562,11 +5487,10 @@ ipcMain.handle('chat:send', async (event, payload) => {
           });
         };
 
-        try {
-          const resultado = await runAgent(
+        const ejecutarAgente = (modelo) => runAgent(
             {
               provider,
-              model: state.model,
+              model: modelo,
               tools: herramientas,
               system:
                 (definicion?.systemPrompt && definicion.systemPrompt.length > 0
@@ -4575,6 +5499,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
                     'para el usuario. Completa la tarea con las herramientas que tienes y ' +
                     'responde con un resumen conciso de lo que encontraste: hechos, rutas y ' +
                     'datos concretos. No incluyas la transcripción de cada paso.') +
+                bloqueReglas +
                 (permiteEscritura
                   ? ''
                   : ' No puedes modificar ficheros ni ejecutar comandos: si algo requiere ' +
@@ -4594,7 +5519,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
               mensajeFinalObligatorio:
                 'Te quedan pocos pasos. Responde AHORA con lo que hayas averiguado, ' +
                 'aunque sea parcial: qué encontraste, qué rutas y qué no pudiste ver.',
-              maxContextChars: contextBudget(state.model),
+              contextWindow: ventanaDelTurno(modelo),
               onEvent: emitir,
               // Recoge lo que le manden con send_message entre pasos.
               mensajeDeSistema: () => subagentes.recogerMensajes(identificador),
@@ -4602,6 +5527,17 @@ ipcMain.handle('chat:send', async (event, payload) => {
             tarea,
             { cwd: cwdSubagente, signal: controlador.signal },
           );
+
+        try {
+          let resultado;
+          try {
+            resultado = await ejecutarAgente(state.model);
+          } catch (error) {
+            // El modelo del padre puede no existir en el proveedor del
+            // subagente; solo ese fallo se reintenta con el default.
+            if (!state.model || !esErrorDeModelo(error)) throw error;
+            resultado = await ejecutarAgente('');
+          }
 
           subagentes.marcarTerminado(identificador, 'terminado');
 
@@ -4632,21 +5568,62 @@ ipcMain.handle('chat:send', async (event, payload) => {
         }
       };
 
-      const resultados = await Promise.all(pedidos.map(lanzar));
+      /*
+       * Ramas en paralelo con espera máxima (el `merge_subagents_latency_ms` del
+       * original): lo que no llegue a tiempo se cancela y se fusiona el resto.
+       *
+       * No se espera aquí: el padre recupera el control y puede usar
+       * send_message/manage_subagent mientras trabajan. El resumen entra como
+       * mensaje de sistema en el siguiente paso o despierta un turno nuevo.
+       */
+      const presupuestoFusion = Number(prefs.subagentMergeLatencyMs ?? 180_000);
+      const tareas = pedidos.map((sub, indice) => ({
+        nombre: String(sub?.name ?? sub?.definition ?? `subagente-${indice + 1}`),
+        ejecutar: (senal) => lanzar(sub, indice, senal, ctx?.signal),
+      }));
+      const formatear = (carrera) => {
+        const resultados = carrera.resultados.map(
+          (r) =>
+            r.valor ?? { nombre: r.nombre, rol: '', resumen: '', error: r.error ?? 'sin resultado' },
+        );
+        const partes = resultados.map((r) =>
+          r.error
+            ? `## ${r.nombre} (${r.rol}) — FALLÓ\n${r.error}`
+            : `## ${r.nombre} (${r.rol})\n${r.resumen.length > 0 ? r.resumen : '(sin resumen)'}`,
+        );
+        const fallos = resultados.filter((r) => r.error).length;
+        return (
+          `${resultados.length} subagente(s) terminaron` +
+          (carrera.vencidos > 0 ? `, ${carrera.vencidos} cancelado(s) por tiempo` : '') +
+          (fallos > carrera.vencidos ? `, ${fallos - carrera.vencidos} con error` : '') +
+          `:\n\n${partes.join('\n\n')}`
+        );
+      };
 
-      const partes = resultados.map((r) =>
-        r.error
-          ? `## ${r.nombre} (${r.rol}) — FALLÓ\n${r.error}`
-          : `## ${r.nombre} (${r.rol})\n${r.resumen.length > 0 ? r.resumen : '(sin resumen)'}`,
-      );
+      /*
+       * Los nietos de un subagente bloquean: su padre necesita el resumen en el
+       * mismo turno y no tiene la supervisión del usuario. El agente principal,
+       * en cambio, recupera el control y puede mandar mensajes o matarlos.
+       */
+      if (args?.__bloquear === true) {
+        const carrera = await correrEnParalelo(tareas, { presupuestoMs: presupuestoFusion });
+        return { content: formatear(carrera), isError: false };
+      }
 
-      const fallos = resultados.filter((r) => r.error).length;
+      void correrEnParalelo(tareas, { presupuestoMs: presupuestoFusion })
+        .then((carrera) => entregarResultadoSubagente(formatear(carrera)))
+        .catch((error) => {
+          entregarResultadoSubagente(
+            `Los subagentes fallaron: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+
       return {
         content:
-          `${resultados.length} subagente(s) en paralelo` +
-          (fallos > 0 ? `, ${fallos} con error` : '') +
-          `:\n\n${partes.join('\n\n')}`,
-        isError: fallos === resultados.length,
+          `Lanzados ${pedidos.length} subagente(s) en paralelo. ` +
+          'Siguen trabajando; usa manage_subagent para ver sus ids y send_message para ' +
+          'corregirles el rumbo. Los resúmenes llegarán como mensajes del sistema.',
+        isError: false,
       };
     },
   };
@@ -4744,11 +5721,18 @@ ipcMain.handle('chat:send', async (event, payload) => {
 
       // Turno real del planner: otro system prompt y solo herramientas de lectura.
       entregaDelPlanner = null;
+      const invokeSubagentBlocking = {
+        ...invokeSubagentTool,
+        async execute(args, ctx) {
+          return invokeSubagentTool.execute({ ...args, __bloquear: true }, ctx);
+        },
+      };
       const herramientasDelPlanner = new ToolRegistry().registerAll(
         [
           exitPlanTool,
           // El planner puede mandar verificaciones en paralelo sin ejecutar él nada.
-          invokeSubagentTool,
+          // Bloquea: necesita los resúmenes para decidir en este mismo turno.
+          invokeSubagentBlocking,
           ...baseTools.filter((t) => HERRAMIENTAS_DE_LECTURA.has(t.name)),
         ].map((tool) => guardTool(tool, preset, prefs, () => mainWindow)),
       );
@@ -4760,9 +5744,11 @@ ipcMain.handle('chat:send', async (event, payload) => {
             provider,
             model: state.model,
             tools: herramientasDelPlanner,
-            system: SYSTEM_PROMPT + PROMPT_PLANNER + handback,
+            // La persona también manda en el sub-turno del planificador.
+            system:
+              SYSTEM_PROMPT + bloqueReglas + buildPromptExtras(state.prefs) + PROMPT_PLANNER + handback,
             maxSteps: 6,
-            maxContextChars: contextBudget(state.model),
+            contextWindow: ventanaDelTurno(state.model),
             onEvent: (payload) => {
               // Todo el turno del planner se marca para que la UI lo agrupe.
               if (payload.type === 'usage' || payload.type === 'done') return;
@@ -4824,6 +5810,13 @@ ipcMain.handle('chat:send', async (event, payload) => {
     },
   };
 
+  const hookOptions = {
+    getCwd: () => state.cwd,
+    getReglas: () => prefs.hookRules ?? [],
+    getLimite: () => Number(prefs.toolOutputLimit ?? 16000),
+    getRestringir: () => state.prefs.restrictToWorkspace === true,
+  };
+
   const guardedTools = [planTool, askUserTool, enterPlanTool, invokeSubagentTool, defineSubagentTool, manageSubagentTool, makeSendMessageTool(), notifyUserTool, runTestsTool, browserSubagent, ...baseTools].map((tool) =>
     conHooks(conMonitorDeSeguridad(guardTool(tool, preset, prefs, () => mainWindow), {
       modo: modoMonitor,
@@ -4866,12 +5859,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
 
         return respuesta.response === 1;
       },
-    }), {
-      getCwd: () => state.cwd,
-      getReglas: () => prefs.hookRules ?? [],
-      getLimite: () => Number(prefs.toolOutputLimit ?? 16000),
-      getRestringir: () => state.prefs.restrictToWorkspace === true,
-    }),
+    }), hookOptions),
   );
 
   const tools = new ToolRegistry().registerAll(guardedTools);
@@ -4884,37 +5872,28 @@ ipcMain.handle('chat:send', async (event, payload) => {
     }
   };
 
-  // Plugins: servidores MCP definidos por el usuario y activados.
-  const pluginClients = [];
-  /** Clientes MCP por nombre, para las herramientas de recursos y prompts. */
-  const mcpClients = new Map();
+  // Plugins: servidores MCP persistentes, reutilizados entre turnos.
+  const plugins = await cargarPlugins(state.cwd, prefs);
+  const mcpClients = plugins.porNombre;
 
-  for (const plugin of (prefs.plugins ?? []).filter((entry) => entry.enabled !== false)) {
-    try {
-      const { StdioMcpClient } = await import('../dist/mcp/stdio-client.js');
-      const { toolsFromMcpServer } = await import('../dist/tools/mcp-adapter.js');
-
-      const client = await StdioMcpClient.start({
-        command: plugin.command,
-        args: Array.isArray(plugin.args) ? plugin.args : [],
-        cwd: state.cwd,
-        onStderr: (chunk) => console.error(`[plugin ${plugin.name}] ${chunk}`),
-      });
-      pluginClients.push(client);
-      mcpClients.set(String(plugin.name ?? plugin.id), client);
-
-      const pluginTools = await toolsFromMcpServer(client);
-      mcpToolDefs.push(...pluginTools);
-      for (const tool of pluginTools) {
-        const name = tools.has(tool.name) ? `${plugin.id}_${tool.name}` : tool.name;
-        tools.register(guardTool({ ...tool, name }, preset, prefs, () => mainWindow));
-      }
-
-      send({ type: 'tool_start', call: { id: `plugin-${plugin.id}`, name: `plugin:${plugin.name}`, arguments: { tools: pluginTools.length } } });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      send({ type: 'error', message: `Plugin ${plugin.name}: ${message}` });
+  if (plugins.nuevo) {
+    for (const error of plugins.errores) {
+      send({ type: 'error', message: `Plugin ${error.nombre}: ${error.message}` });
     }
+  }
+
+  for (const tool of plugins.herramientas) {
+    let name = tool.name;
+    let sufijo = 2;
+    while (tools.has(name)) {
+      name = `${tool.name}_${sufijo}`;
+      sufijo += 1;
+    }
+    const conNombre = { ...tool, name };
+    mcpToolDefs.push(conNombre);
+    tools.register(
+      conHooks(guardTool(conNombre, preset, prefs, () => mainWindow), hookOptions),
+    );
   }
   // Recursos y prompts de MCP: herramientas genéricas que reciben el servidor.
   if (mcpClients.size > 0) {
@@ -5133,9 +6112,11 @@ ipcMain.handle('chat:send', async (event, payload) => {
     }
   }
 
+  /** Memorias activadas por tocar un fichero, pendientes de entrar en el siguiente paso. */
+  const memoriasPorGlob = new Map();
+
   const initialCount = state.messages.length;
   currentTurnKey = initialCount;
-  indiceDePaso = 0;
   cambiosDelTurno = [];
 
   // Acumuladores para los hooks de texto.
@@ -5150,26 +6131,58 @@ ipcMain.handle('chat:send', async (event, payload) => {
   } catch {
     skillsDelProyecto = [];
   }
+
+  /*
+   * Reglas del proyecto: AGENTS.md y .agents/rules, con presupuesto propio.
+   * Antes no se cargaban y el agente ignoraba las convenciones del repo.
+   */
+  let bloqueReglas = '';
+  if (state.prefs.rulesEnabled !== false) {
+    try {
+      const reglas = await descubrirReglas(state.cwd);
+      const tokens = Number(state.prefs.rulesBudget ?? RULES_BUDGET_TOKENS);
+      bloqueReglas = bloqueDeReglas(reglas, tokens * 4);
+    } catch {
+      bloqueReglas = '';
+    }
+  }
   if (!turnCheckpoints.has(initialCount)) turnCheckpoints.set(initialCount, new Map());
 
   state.busy = true;
   send({ type: 'busy', busy: true });
 
+  // El nivel elegido se traduce al campo que entiende este proveedor, solo
+  // cuando el usuario ha encendido el pensamiento.
+  const nivelDePensamientoDelTurno = ajustesDePensamientoDelTurno(effort, state.model);
+
   try {
+    const systemPrompt =
+      SYSTEM_PROMPT +
+      bloqueReglas +
+      planReviewInstruction(state.prefs.planReviewPolicy ?? 'Always Ask') +
+      bloqueDeSkills(skillsDelProyecto) +
+      effortInstruction(effort, nivelDePensamientoDelTurno) +
+      buildPromptExtras(state.prefs) +
+      bloqueMemorias;
+
+    /*
+     * Depuración: el interruptor de Ajustes promete enseñar el prompt de cada
+     * turno. Se manda como evento propio, una vez, y la interfaz lo pliega.
+     */
+    if (state.prefs.debugShowSystemPrompt === true) {
+      send({ type: 'system_prompt', text: systemPrompt });
+    }
+
     const result = await runAgent(
       {
         provider,
         model: state.model,
         tools,
-        system:
-          SYSTEM_PROMPT +
-          planReviewInstruction(state.prefs.planReviewPolicy ?? 'Always Ask') +
-          bloqueDeSkills(skillsDelProyecto) +
-          effortInstruction(effort) +
-          buildPromptExtras(state.prefs) +
-          bloqueMemorias,
+        system: systemPrompt,
+        ...nivelDePensamientoDelTurno,
         maxSteps: Number(state.prefs.maxSteps ?? 40),
-        maxContextChars: contextBudget(state.model),
+
+        contextWindow: ventanaDelTurno(state.model),
         maxToolChars: 16_000,
         toolTimeoutMs: Number(state.prefs.toolTimeoutMs ?? 120_000),
         // Plan mode: la compuerta rechaza herramientas según la fase del ciclo.
@@ -5179,13 +6192,25 @@ ipcMain.handle('chat:send', async (event, payload) => {
           return rechazo;
         },
         mensajeDeSistema: () => {
+          const partes = [];
+          // Memorias por patrón de fichero: entran una sola vez, en el paso siguiente.
+          if (memoriasPorGlob.size > 0) {
+            partes.push([...memoriasPorGlob.values()].join('\n'));
+            memoriasPorGlob.clear();
+          }
           // Una tarea terminada mientras el turno seguía abierto entra aquí.
           if (notaDeTareaPendiente) {
-            const nota = notaDeTareaPendiente;
+            partes.push(notaDeTareaPendiente);
             notaDeTareaPendiente = null;
-            return nota;
           }
-          return ciclo.mensajePendiente();
+          const avisoDelPlan = ciclo.mensajePendiente();
+          if (avisoDelPlan) partes.push(avisoDelPlan);
+          // Resúmenes de subagentes que terminaron entre pasos, aunque el
+          // turno que los lanzó ya haya cerrado.
+          if (colaResultadosSubagentes.length > 0) {
+            partes.push(...colaResultadosSubagentes.splice(0));
+          }
+          return partes.length > 0 ? partes.join('\n\n') : null;
         },
         ...(images.length > 0 ? { images } : {}),
         ...(state.messages.length > 0 ? { initialMessages: state.messages } : {}),
@@ -5195,6 +6220,13 @@ ipcMain.handle('chat:send', async (event, payload) => {
            * romper el streaming; al terminar se aplican las reglas y, si algo cambió,
            * se manda el texto definitivo para que la UI lo repinte.
            */
+          if (payload.type === 'stream_reset') {
+            textoDelTurno = '';
+            razonamientoDelTurno = '';
+            send({ type: 'stream_reset' });
+            return;
+          }
+
           if (payload.type === 'text') {
             textoDelTurno += payload.text;
           } else if (payload.type === 'reasoning') {
@@ -5225,18 +6257,41 @@ ipcMain.handle('chat:send', async (event, payload) => {
 
           // Trayectoria: cada llamada a herramienta es un paso con sus snapshots.
           if (payload.type === 'tool_start') {
-            indiceDePaso += 1;
-            trayectoria.abrirPaso(claveDeTrayectoria(), {
-              indice: indiceDePaso,
+            // La trayectoria asigna el índice: es monotónico por conversación.
+            const paso = trayectoria.abrirPaso(claveDeTrayectoria(), {
               herramienta: payload.call?.name ?? '',
               argumentos: payload.call?.arguments ?? {},
+              llamadaId: payload.call?.id ?? null,
               mensaje: null,
+              turno: currentTurnKey,
             });
+            /*
+             * Memoria por patrón de fichero (`CORTEX_MEMORY_TRIGGER_GLOB`): si la
+             * herramienta escribe en un fichero que una memoria declara, esa
+             * memoria entra en el siguiente paso. Solo al escribir, para no
+             * inundar el contexto con cada lectura.
+             */
+            if (['write_file', 'edit_file', 'multi_replace'].includes(payload.call?.name)) {
+              const args = payload.call?.arguments ?? {};
+              const ruta = args.path ?? args.file_path ?? args.filePath;
+              if (typeof ruta === 'string' && ruta.length > 0 && memoriasPorGlob.size < 3) {
+                const relativa = path.isAbsolute(ruta) ? path.relative(state.cwd, ruta) : ruta;
+                void getMemoria()
+                  .porGlob([relativa, ruta])
+                  .then((encontradas) => {
+                    for (const memoria of encontradas) {
+                      if (memoriasPorGlob.has(memoria.id)) continue;
+                      memoriasPorGlob.set(memoria.id, `[memoria activada por ${memoria.ruta}] ${memoria.texto}`);
+                    }
+                  })
+                  .catch(() => {});
+              }
+            }
             // La fila de la UI necesita saber a qué paso corresponde para el revert.
-            send({ ...payload, stepIndex: indiceDePaso });
+            send({ ...payload, stepIndex: paso?.indice ?? null });
             return;
           } else if (payload.type === 'tool_end') {
-            trayectoria.cerrarPaso(claveDeTrayectoria(), {
+            trayectoria.cerrarPasoPorLlamada(claveDeTrayectoria(), payload.call?.id ?? null, {
               contenido: payload.content,
               esError: payload.isError,
             });
@@ -5255,7 +6310,8 @@ ipcMain.handle('chat:send', async (event, payload) => {
     if (state.sessionId && state.prefs.saveHistory !== false) {
       try {
         const sessions = await getStore();
-        await sessions.append(state.sessionId, result.messages.slice(initialCount));
+        // En disco, sin secretos evidentes: el historial se relee al reabrir.
+        await sessions.append(state.sessionId, mensajesParaDisco(result.appended));
       } catch {
         // guardar es best-effort: no rompe la conversación
       }
@@ -5319,7 +6375,14 @@ ipcMain.handle('chat:send', async (event, payload) => {
     currentTurnKey = null;
     state.busy = false;
     send({ type: 'busy', busy: false });
-    await Promise.all(pluginClients.map((client) => client.close().catch(() => {})));
+
+    // Si un subagente terminó justo cuando el turno cerraba, su resumen no
+    // puede quedarse en el array: se entrega como despertar.
+    if (colaResultadosSubagentes.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('task:wake', {
+        texto: colaResultadosSubagentes.splice(0).join('\n\n'),
+      });
+    }
   }
 });
 
@@ -5337,6 +6400,67 @@ app.whenReady().then(async () => {
 
   await loadSettings();
 
+  /*
+   * Reparación única: sesiones guardadas con el contenido como objeto
+   * ({ texto, encontrados }) se quedaban en «[object Object]» al reabrir.
+   */
+  try {
+    const store = await getStore();
+    if (typeof store.repararContenidoObjeto === 'function') {
+      const arreglo = await store.repararContenidoObjeto();
+      if (arreglo.mensajes > 0) {
+        console.log();
+      }
+    }
+  } catch (error) {
+    console.error('[sesiones] no se pudo reparar el contenido:', error);
+  }
+
+  /*
+   * Descargas del navegador integrado: van a la carpeta elegida en Ajustes o a
+   * la de Descargas del sistema, sin preguntar cada vez.
+   */
+  try {
+    const { session } = require('electron');
+    const sesionNavegador = session.fromPartition('persist:opengravity-browser');
+    sesionNavegador.on('will-download', (_event, item) => {
+      const carpeta = state.prefs.downloadPath || app.getPath('downloads');
+      const destino = path.join(carpeta, item.getFilename());
+      item.setSavePath(destino);
+      contadorDescargas += 1;
+      const entrada = {
+        id: `dl-${Date.now()}-${contadorDescargas}`,
+        filename: item.getFilename(),
+        url: item.getURL(),
+        path: destino,
+        totalBytes: item.getTotalBytes(),
+        receivedBytes: item.getReceivedBytes(),
+        state: 'progressing',
+        startedAt: new Date().toISOString(),
+      };
+      descargas.unshift(entrada);
+      if (descargas.length > 20) descargas.length = 20;
+      const emitir = () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('downloads:update', descargas);
+        }
+      };
+      emitir();
+      item.on('updated', () => {
+        entrada.receivedBytes = item.getReceivedBytes();
+        entrada.totalBytes = item.getTotalBytes();
+        emitir();
+      });
+      item.once('done', (_e, estado) => {
+        entrada.state = String(estado);
+        entrada.receivedBytes = item.getReceivedBytes();
+        emitir();
+      });
+    });
+  } catch {
+    // sin sesión de navegador no hay descargas que redirigir
+  }
+
   // Tareas programadas: revisa cada minuto.
   startScheduler();
 
@@ -5353,9 +6477,15 @@ app.whenReady().then(async () => {
 
   // Sirve el renderer bajo app:// para habilitar workers.
   protocol.handle('app', async (request) => {
-    const url = new URL(request.url);
-    const relative = decodeURIComponent(url.pathname).replace(/^\/+/, '');
-    const filePath = path.join(app.getAppPath(), relative);
+    /* Contención: resolverRutaApp resuelve la ruta contra la raíz de la app y
+     * comprueba que no se salga. Sin esto, `app://local/..%5C..%5CUsers%5Cx`
+     * (barra invertida codificada) se resolvía fuera y devolvía ficheros
+     * ajenos a la aplicación. */
+    const raizApp = path.resolve(app.getAppPath());
+    const filePath = resolverRutaApp(raizApp, request.url);
+    if (filePath === null) {
+      return new Response('no encontrado', { status: 404 });
+    }
     return net.fetch(pathToFileURL(filePath).href);
   });
 
@@ -5370,17 +6500,39 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
-  // Los snapshots de trayectoria se vuelcan aquí para no perder el último turno.
-  trayectoria.volcarTodo().catch(() => {});
-  void stopRemote();
-  cerrarTodasLasPty();
+/**
+ * Limpieza de salida. Devuelve una promesa que hay que esperar.
+ *
+ * El orden importa: primero se cierran las terminales y los comandos (que son
+ * los que tienen hijos vivos), y solo después se suelta lo demás.
+ */
+async function limpiezaAlSalir() {
+  try {
+    cerrarTodasLasPty();
+  } catch {
+    // sin terminales abiertas
+  }
+
   try {
     // Mata también los comandos en segundo plano y sus árboles de procesos.
-    require('./tools-extra.cjs').matarTodasLasTareas();
+    await require('./tools-extra.cjs').matarTodasLasTareas();
   } catch {
     // sin tareas o módulo no cargado
   }
+
+  // La terminal simple no está en el mapa de tareas del agente: se cierra aquí.
+  if (terminalProcess) {
+    try {
+      await require('./tools-extra.cjs').matarTarea({
+        id: 'terminal',
+        pid: terminalProcess.pid,
+      });
+    } catch {
+      // ya terminado
+    }
+    terminalProcess = null;
+  }
+
   for (const [, client] of lspClients) {
     try {
       client.stop();
@@ -5389,4 +6541,39 @@ app.on('before-quit', () => {
     }
   }
   lspClients.clear();
+
+  // Los servidores MCP persistentes mueren con la app.
+  await cerrarPlugins().catch(() => {});
+
+  // Los snapshots de trayectoria se vuelcan aquí para no perder el último turno.
+  try {
+    await trayectoria.volcarTodo();
+  } catch {
+    // sin nada que volcar
+  }
+
+  await stopRemote();
+}
+
+let saliendo = false;
+
+/*
+ * Al cerrar, la app aplaza su salida hasta que la limpieza termina. Antes
+ * lanzaba `taskkill` y salía sin esperar: el proceso moría primero y los
+ * comandos en segundo plano se quedaban vivos, sin ventana que los cerrara.
+ * El plazo es la red de seguridad: pase lo que pase, la app se cierra.
+ */
+app.on('before-quit', (event) => {
+  if (saliendo) return;
+  event.preventDefault();
+  saliendo = true;
+
+  const plazo = new Promise((listo) => {
+    const t = setTimeout(listo, 4000);
+    t.unref?.();
+  });
+
+  Promise.race([limpiezaAlSalir(), plazo])
+    .catch(() => {})
+    .finally(() => app.exit(0));
 });

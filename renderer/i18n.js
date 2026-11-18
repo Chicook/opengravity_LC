@@ -24,8 +24,19 @@
     '[contenteditable="true"]',
     '.conversation__title',
     '.pane__title',
+    // El selector de proyecto usa los literales del original, también en español.
+    '.project-menu',
+    '#btn-project-selector-inline',
     '.work-row__cmd',
     '.work-row__output',
+    // Datos del proyecto: un fichero llamado «Settings» no es el botón Settings,
+    // y una coincidencia de búsqueda debe mostrar el texto real del código.
+    '.tree__label',
+    '.search-hit',
+    '.git-file__name',
+    // Solo el contenido del modelo: las etiquetas y los botones sí se traducen.
+    '.ask-card__label',
+    '.ask-card__question',
   ].join(',');
 
   const ATTRS = ['placeholder', 'aria-label', 'title', 'alt'];

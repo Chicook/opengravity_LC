@@ -1,25 +1,23 @@
-# Herramientas excluidas y por qué
+# Herramientas: qué hay y qué no
 
-El inventario de Antigravity tiene dos herramientas que no se han replicado. Las
-dos por motivos distintos, y conviene dejarlo escrito para no confundirlo con un
-olvido.
+El inventario de Antigravity tiene una herramienta que se replicó con otro
+mecanismo. Conviene dejarlo escrito para no confundirlo con un olvido.
 
-## `generate_image` — excluida por la regla de coste cero
+## `generate_image` — existe, pero no por la vía del original
 
-Su `generate_image` (`Prompt`, `AspectRatio`, `Images[]` hasta 3 referencias)
-genera imágenes con un servicio de Google.
+**Corrección:** este documento decía que la herramienta no existía. Sí existe
+(`electron/tools-extra.cjs`, registrada en `electron/main.cjs`), y genera imágenes
+conduciendo Google Flow en el navegador integrado con la sesión de Google del
+usuario.
 
-**No se puede replicar sin gastar dinero.** Opengravity funciona con la API del
-modelo que el usuario ya paga; generar imágenes requiere un proveedor aparte
-(Imagen, DALL·E, Stable Diffusion) con su propia cuenta y su propia factura.
+Por qué no gasta dinero: no hay clave de API ni servicio propio; se usa la sesión
+que el usuario ya tiene abierta. Lo que sí hay que asumir es que depende de una
+interfaz web ajena (la de Flow), que puede cambiar sin aviso: por eso la
+herramienta es la parte más frágil del catálogo, no una parte ausente.
 
-Eso choca de frente con la regla 2 del proyecto: *«nada de telemetría, ni
-servidores propios, ni servicios de pago. Lo único que puede costar dinero es la
-API del modelo que el usuario ya paga»*.
-
-**Qué haría falta para tenerla**: que el usuario configure un proveedor de
-imágenes propio y asuma su coste. Mientras tanto, la herramienta no existe — es
-preferible a tener una que siempre devuelva error.
+Su `generate_image` original acepta `Prompt`, `AspectRatio` y `Images[]` hasta 3
+referencias; la nuestra acepta prompt y proporción. Las imágenes de referencia no
+están cubiertas.
 
 ## `list_peers` en `manage_subagent` — no es una exclusión
 
@@ -38,4 +36,4 @@ de búsqueda.
 
 | Antigravity | Opengravity |
 |---|---|
-| 27 herramientas | 26 replicadas + `generate_image` excluida |
+| 27 herramientas | 27 replicadas; `generate_image` por otra vía (Google Flow) |

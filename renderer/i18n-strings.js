@@ -14,6 +14,18 @@ window.I18N_STRINGS = [
   { en: 'General', es: 'General' },
   { en: 'Language', es: 'Idioma' },
   { en: 'Interface language.', es: 'Idioma de la interfaz.' },
+  { en: 'Interface Layout', es: 'Disposición de la interfaz' },
+  { en: 'Subagent wait', es: 'Espera de subagentes' },
+  { en: 'How long the turn waits for parallel subagents before merging what arrived.', es: 'Cuánto espera el turno a los subagentes en paralelo antes de fusionar lo que haya llegado.' },
+  { en: '1 minute', es: '1 minuto' },
+  { en: '2 minutes', es: '2 minutos' },
+  { en: '3 minutes', es: '3 minutos' },
+  { en: '5 minutes', es: '5 minutos' },
+  { en: 'No limit', es: 'Sin límite' },
+  { en: 'Knowledge Work', es: 'Trabajo de conocimiento' },
+  { en: 'Software Engineering', es: 'Ingeniería de software' },
+  { en: 'Simplified interface for research, writing, and everyday tasks.', es: 'Interfaz sencilla para investigación, redacción y tareas cotidianas.' },
+  { en: 'Full interface for coding, developer tools, and managing agents.', es: 'Interfaz completa para código, herramientas de desarrollo y agentes.' },
   { en: 'Auto', es: 'Automático' },
   { en: 'English', es: 'English' },
   { en: 'Español', es: 'Español' },
@@ -93,7 +105,6 @@ window.I18N_STRINGS = [
   { en: 'Add', es: 'Añadir' },
 
   // --- Hilo y mensajes ---
-  { en: 'Hi, what shall we do today?', es: 'Hola, ¿qué hacemos hoy?' },
   { en: 'Copy', es: 'Copiar' },
   { en: 'Undo to this point', es: 'Deshacer hasta este punto' },
   { en: 'There is nothing to undo up to that step.', es: 'No hay nada que deshacer hasta ese paso.' },
@@ -131,9 +142,6 @@ window.I18N_STRINGS = [
   { en: 'Plan rejected', es: 'Plan rechazado' },
   { en: 'What will be done', es: 'Qué se hará' },
   { en: 'Detail (optional)', es: 'Detalle (opcional)' },
-  { en: 'Move up', es: 'Subir' },
-  { en: 'Move down', es: 'Bajar' },
-  { en: 'Remove this step', es: 'Quitar este paso' },
   { en: 'Collapse', es: 'Plegar' },
   { en: 'I need a decision', es: 'Necesito una decisión' },
   { en: 'Other (write your answer)', es: 'Otro (escribe tu respuesta)' },
@@ -146,9 +154,6 @@ window.I18N_STRINGS = [
     en: 'You can edit the steps before approving. The agent will receive the plan exactly as you leave it.',
     es: 'Puedes editar los pasos antes de aprobar. El agente recibirá el plan tal como lo dejes.',
   },
-  { en: '+ Add step', es: '+ Añadir paso' },
-  { en: 'Want to change anything? (optional)', es: '¿Quieres cambiar algo? (opcional)' },
-  { en: 'Approve and run', es: 'Aprobar y ejecutar' },
 
   // --- Composer y popovers ---
   { en: 'Ask anything, @ to mention, / for actions', es: 'Pregunta lo que sea, @ para mencionar, / para acciones' },
@@ -297,6 +302,21 @@ window.I18N_STRINGS = [
   { en: 'Shortcuts', es: 'Atajos' },
   { en: 'Notifications', es: 'Notificaciones' },
   { en: 'Models', es: 'Modelos' },
+  { en: 'Models & Usage', es: 'Modelos y uso' },
+  { en: 'Workspace rules', es: 'Reglas del workspace' },
+  {
+    en: 'AGENTS.md and .agents/rules/*.md go into the system prompt with their own budget. They are read at every turn.',
+    es: 'AGENTS.md y .agents/rules/*.md entran al prompt de sistema con su propio presupuesto. Se leen en cada turno.',
+  },
+  { en: 'Load workspace rules', es: 'Cargar reglas del workspace' },
+  { en: "If off, the agent won't see the project's conventions.", es: 'Si está apagado, el agente no ve las convenciones del proyecto.' },
+  { en: 'Budget', es: 'Presupuesto' },
+  {
+    en: 'Tokens reserved for rules. What does not fit is replaced by the file path.',
+    es: 'Tokens reservados para las reglas. Lo que no cabe se sustituye por la ruta del fichero.',
+  },
+  { en: 'Extended thinking', es: 'Pensamiento extendido' },
+  { en: 'Think', es: 'Pensar' },
   { en: 'Give Feedback', es: 'Enviar comentarios' },
   { en: 'Account', es: 'Cuenta' },
   { en: 'Show All', es: 'Mostrar todos' },
@@ -381,16 +401,34 @@ window.I18N_STRINGS = [
   },
   { en: 'Open Links In', es: 'Abrir enlaces en' },
   { en: 'Where links open by default when clicked.', es: 'Dónde se abren los enlaces al pulsarlos.' },
+  { en: 'Choose where links open by default when clicked.', es: 'Elige dónde se abren los enlaces al pulsarlos.' },
   { en: 'External Browser', es: 'Navegador externo' },
+  { en: 'Download Location', es: 'Carpeta de descargas' },
+  {
+    en: 'Folder where files downloaded in the built-in browser are saved.',
+    es: 'Carpeta donde se guardan los ficheros descargados en el navegador integrado.',
+  },
+  { en: 'Browsing History', es: 'Historial de navegación' },
+  {
+    en: 'Clear visited URLs and autocomplete suggestions from the built-in browser.',
+    es: 'Borra las URL visitadas y las sugerencias del navegador integrado.',
+  },
+  { en: 'Clear', es: 'Borrar' },
+  { en: 'Change…', es: 'Cambiar…' },
+  { en: 'Forward', es: 'Adelante' },
+  {
+    en: 'Configure built-in browser, link opening, and browser subagent preferences.',
+    es: 'Configura el navegador integrado, la apertura de enlaces y el subagente de navegador.',
+  },
+  {
+    en: 'Configure allowed and denied URLs for the browser subagent. It runs in the built-in browser, so no separate browser install is needed.',
+    es: 'Configura las URL permitidas y denegadas del subagente de navegador. Usa el navegador integrado, así que no hace falta instalar otro.',
+  },
+  { en: 'Enter a URL (e.g. http://localhost:8080)', es: 'Escribe una URL (p. ej. http://localhost:8080)' },
   { en: 'Browser Subagent', es: 'Subagente de navegador' },
   {
     en: 'The browser subagent requires Google Chrome to be installed. Invoke it by typing /browser in the input box.',
     es: 'El subagente de navegador requiere Google Chrome instalado. Se invoca escribiendo /browser en el cuadro de entrada.',
-  },
-  { en: 'Browser Javascript Execution Policy', es: 'Política de ejecución de JavaScript del navegador' },
-  {
-    en: 'Whether the agent may run its own JavaScript to automate complex actions.',
-    es: 'Si el agente puede ejecutar su propio JavaScript para automatizar acciones complejas.',
   },
   { en: 'Browser Actuation Rules', es: 'Reglas de actuación del navegador' },
   {
@@ -461,7 +499,30 @@ window.I18N_STRINGS = [
     en: 'Paste your key. It is saved in settings.json on your machine.',
     es: 'Pega tu clave. Se guarda en settings.json de tu equipo.',
   },
+  {
+    en: 'Optional. Only if you enabled "Require Authentication" on the local server.',
+    es: 'Opcional. Solo si activaste «Require Authentication» en el servidor local.',
+  },
   { en: 'Endpoint URL', es: 'URL del endpoint' },
+  { en: 'Choose a provider', es: 'Elige un proveedor' },
+  { en: 'Proceed', es: 'Continuar' },
+  { en: 'Keyboard shortcuts', es: 'Atajos de teclado' },
+  {
+    en: 'Keyboard shortcuts for quick navigation and control.',
+    es: 'Atajos de teclado para navegar y controlar la app.',
+  },
+  { en: 'Detection', es: 'Detección' },
+  { en: 'Detect again', es: 'Detectar de nuevo' },
+  { en: 'Close tab', es: 'Cerrar pestaña' },
+  {
+    en: 'Using a saved key shared with the other OpenCode provider.',
+    es: 'Usando una clave guardada compartida con el otro proveedor de OpenCode.',
+  },
+  { en: 'not running', es: 'no está en marcha' },
+  { en: 'could not connect', es: 'no se pudo conectar' },
+  { en: 'reports no models', es: 'no reporta modelos' },
+  { en: 'set the endpoint URL', es: 'configura la URL del endpoint' },
+  { en: 'missing the API key', es: 'falta la clave de API' },
   {
     en: 'Base without trailing slash, for example https://api.example.com/v1',
     es: 'Base sin barra final, por ejemplo https://api.ejemplo.com/v1',
@@ -603,7 +664,7 @@ window.I18N_STRINGS = [
   { en: 'Maximum CPU time before the tree is killed.', es: 'Tiempo de CPU máximo antes de terminar el árbol.' },
   { en: 'Debugging', es: 'Depuración' },
   { en: 'Show the system prompt', es: 'Mostrar el prompt del sistema' },
-  { en: 'Includes the prompt the model receives each turn in the thread.', es: 'Incluye en el hilo el prompt que recibe el modelo en cada turno.' },
+  { en: 'Adds the turn prompt to the thread, collapsed under its character count.', es: 'Añade al hilo el prompt del turno, plegado bajo su recuento de caracteres.' },
   { en: 'Show token usage per turn', es: 'Mostrar el uso de tokens por turno' },
   { en: 'Adds model input and output at the end of each response.', es: 'Añade entradas y salidas del modelo al pie de cada respuesta.' },
   { en: 'Trajectory', es: 'Trayectoria' },
@@ -768,9 +829,9 @@ window.I18N_STRINGS.push(
   },
   {
     en: 'Runs JavaScript in the open page and returns the result. ' +
-      'Subject to the “Browser Javascript Execution Policy” in Settings.',
+      'May ask for approval before running.',
     es: 'Ejecuta JavaScript en la página abierta y devuelve el resultado. ' +
-      'Sujeto a la política «Browser Javascript Execution Policy» de Ajustes.',
+      'Puede pedir aprobación antes de ejecutar.',
   },
   {
     en: 'Navigates the built-in browser tab to another URL and waits for it to load. ' +
@@ -1141,4 +1202,25 @@ window.I18N_STRINGS.push(
 window.I18N_PATTERNS.push(
   { re: /^(\d+) files changed$/, toEs: '$1 ficheros cambiados' },
   { re: /^(\d+) ficheros cambiados$/, toEn: '$1 files changed' },
+  // Estados y detalles de la sección Models.
+  { re: /^(\d+) de (\d+) disponibles\.$/, toEn: '$1 of $2 available.' },
+  { re: /^(\d+) of (\d+) available\.$/, toEs: '$1 de $2 disponibles.' },
+  { re: /^(\d+) modelos detectados en (.+)\.$/, toEn: '$1 models detected in $2.' },
+  { re: /^(\d+) models detected in (.+)\.$/, toEs: '$1 modelos detectados en $2.' },
+  { re: /^No se pudo consultar (.+): (.+)\.$/, toEn: 'Could not query $1: $2.' },
+  { re: /^Could not query (.+): (.+)\.$/, toEs: 'No se pudo consultar $1: $2.' },
+  { re: /^falta (\S+) o una clave guardada$/, toEn: 'missing $1 or a saved key' },
+  { re: /^missing (\S+) or a saved key$/, toEs: 'falta $1 o una clave guardada' },
+  { re: /^detectada en (\S+)$/, toEn: 'detected in $1' },
+  { re: /^detected in (\S+)$/, toEs: 'detectada en $1' },
+  { re: /^Usando la variable de entorno (\S+)\.$/, toEn: 'Using the environment variable $1.' },
+  { re: /^Using the environment variable (\S+)\.$/, toEs: 'Usando la variable de entorno $1.' },
+  {
+    re: /^El modelo guardado \((.+)\) no está en la lista; elige otro\.$/,
+    toEn: 'The saved model ($1) is not in the list; choose another.',
+  },
+  {
+    re: /^The saved model \((.+)\) is not in the list; choose another\.$/,
+    toEs: 'El modelo guardado ($1) no está en la lista; elige otro.',
+  },
 );

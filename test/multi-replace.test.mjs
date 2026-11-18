@@ -53,6 +53,17 @@ test('aplicarReemplazos: varios trozos en orden', () => {
   assert.equal(r.aplicados, 2);
 });
 
+test('aplicarReemplazos: un trozo previo no invalida las líneas del original', () => {
+  const texto = 'a\nb\nc\nd\ne\nf\ng\nh';
+  const r = aplicarReemplazos(texto, [
+    { startLine: 2, endLine: 3, targetContent: 'b\nc', replacementContent: 'B' },
+    { startLine: 8, endLine: 8, targetContent: 'h', replacementContent: 'H' },
+  ]);
+  assert.equal(r.error, undefined);
+  assert.equal(r.texto, 'a\nB\nd\ne\nf\ng\nH');
+  assert.equal(r.aplicados, 2);
+});
+
 test('aplicarReemplazos: el segundo ve el resultado del primero', () => {
   const texto = 'a';
   const r = aplicarReemplazos(texto, [

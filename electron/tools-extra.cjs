@@ -1,7 +1,7 @@
 'use strict';
 
 const { makeEditNotebookTool } = require('./notebook.cjs');
-const { dentroDelWorkspace, sanearEntorno } = require('./hooks.cjs');
+const { dentroDelWorkspace, dentroDeRaices, sanearEntorno } = require('./hooks.cjs');
 const { argumentosGuardWin, argumentosHelperWin, limitesDeSandbox, obtenerHelperWin, prefijoPosix } = require('./sandbox.cjs');
 
 /**
@@ -11,7 +11,49 @@ const { argumentosGuardWin, argumentosHelperWin, limitesDeSandbox, obtenerHelper
  * (`shell`, `BrowserWindow`) y las preferencias del usuario.
  */
 
-const { shell, BrowserWindow } = require('electron');
+/*
+ * Electron no está disponible cuando estas fábricas se usan desde el CLI en
+ * Node. Las herramientas que lo necesitan (navegador, abrir URL, Flow) no se
+ * registran en ese contexto; las de fichero, búsqueda y comandos funcionan.
+ */
+let shell;
+let BrowserWindow;
+try {
+  const electron = require('electron');
+  if (electron && typeof electron === 'object') {
+    shell = electron.shell;
+    BrowserWindow = electron.BrowserWindow;
+  }
+} catch {
+  // CLI sin Electron
+}
+
+/** Carpetas que no aportan a una búsqueda de código ni de nombres. */
+const CARPETAS_IGNORADAS = new Set([
+  'node_modules', '.git', 'dist', 'build', 'out', '.next', 'target', '__pycache__',
+  '.venv', 'venv', 'vendor', 'coverage', '.worktrees', '.idea', '.vscode',
+]);
+
+/**
+ * Coincidencia de globs para `includes`/`excludes` de búsqueda.
+ * Cubre `*`, `**` y `?` sin añadir dependencias.
+ */
+function coincideGlob(patron, ruta) {
+  const normal = (valor) => String(valor ?? '').replace(/\\/g, '/').replace(/^\.\//, '');
+  const p = normal(patron).trim();
+  const r = normal(ruta).trim();
+  if (p.length === 0 || r.length === 0) return false;
+  const escapar = (texto) => texto.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  // `**/` también vale con cero directorios: `src/**/*.ts` casa con `src/a.ts`.
+  const cuerpo = p
+    .replace(/\*\*\//g, '\u0001')
+    .split('**')
+    .map((trozo) => escapar(trozo).replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]'))
+    .join('.*')
+    .replace(/\u0001/g, '(?:.*/)?');
+  const ancla = p.includes('/') ? `^${cuerpo}$` : `(^|.*/)${cuerpo}$`;
+  return new RegExp(ancla, 'i').test(r);
+}
 
 /**
  * Comprueba una URL contra las listas de permitidas y denegadas.
@@ -246,6 +288,32 @@ function makeBrowserTools(getPrefs, askUser) {
     return null;
   };
 
+  /**
+   * Expresión JS que resuelve el elemento interactivo. Antigravity prefiere el
+   * UID estable del HUD; el selector CSS sigue sirviendo de respaldo.
+   */
+  const elementoDe = (args) => {
+    const uid = String(args?.uid ?? '').trim();
+    if (uid.length > 0) {
+      return `document.querySelector('[data-agy-uid="' + CSS.escape(${JSON.stringify(uid)}) + '"]')`;
+    }
+    const x = Number(args?.x);
+    const y = Number(args?.y);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return `document.elementFromPoint((${x} / 1000) * window.innerWidth, (${y} / 1000) * window.innerHeight)`;
+    }
+    return `document.querySelector(${JSON.stringify(String(args?.selector ?? ''))})`;
+  };
+
+  const etiquetaDe = (args) => {
+    const uid = String(args?.uid ?? '').trim();
+    if (uid.length > 0) return `UID ${uid}`;
+    if (Number.isFinite(Number(args?.x)) && Number.isFinite(Number(args?.y))) {
+      return `coordenadas ${args.x},${args.y}`;
+    }
+    return String(args?.selector ?? '');
+  };
+
   const tools = [
     {
       name: 'browser_open',
@@ -309,30 +377,37 @@ ${clipped || '(sin texto visible)'}` };
 
     {
       name: 'browser_click',
-      description: 'Hace clic en el primer elemento que coincida con un selector CSS.',
+      description:
+        'Hace clic en un elemento por UID del HUD (preferido), selector CSS o coordenadas ' +
+        'normalizadas [0,1000].',
       parameters: {
         type: 'object',
-        properties: { selector: { type: 'string', description: 'Selector CSS del elemento.' } },
-        required: ['selector'],
+        properties: {
+          uid: { type: 'string', description: 'UID devuelto por browser_snapshot.' },
+          selector: { type: 'string', description: 'Selector CSS del elemento.' },
+          x: { type: 'number', description: 'Coordenada X normalizada 0-1000.' },
+          y: { type: 'number', description: 'Coordenada Y normalizada 0-1000.' },
+        },
+        required: [],
       },
       async execute(args) {
         const missing = requirePage();
         if (missing) return { content: missing, isError: true };
 
-        const selector = String(args.selector ?? '');
-        if (selector.length === 0) return { content: 'Falta el selector.', isError: true };
+        const etiqueta = etiquetaDe(args);
+        if (etiqueta.length === 0) return { content: 'Falta uid, selector o coordenadas.', isError: true };
 
         const result = await evalInBrowser(
-          `(() => { const el = document.querySelector(${JSON.stringify(selector)}); ` +
-            `if (!el) return { found: false }; el.click(); return { found: true }; })()`,
+          `(() => { const el = ${elementoDe(args)}; ` +
+            `if (!el) return { found: false }; el.click(); return { found: true, tag: el.tagName.toLowerCase(), uid: el.getAttribute('data-agy-uid') }; })()`,
         );
 
         if (!result.ok) return { content: result.error, isError: true };
         if (!result.value?.found) {
-          return { content: `No se encontró ningún elemento con ${selector}.`, isError: true };
+          return { content: `No se encontró ningún elemento con ${etiqueta}.`, isError: true };
         }
 
-        return { content: `Clic hecho en ${selector}.` };
+        return { content: `Clic hecho en ${etiqueta} (${result.value.tag}).` };
       },
     },
 
@@ -340,7 +415,7 @@ ${clipped || '(sin texto visible)'}` };
       name: 'browser_eval',
       description:
         'Ejecuta JavaScript en la página abierta y devuelve el resultado. ' +
-        'Sujeto a la política «Browser Javascript Execution Policy» de Ajustes.',
+        'Puede pedir aprobación antes de ejecutar.',
       parameters: {
         type: 'object',
         properties: { script: { type: 'string', description: 'Expresión JavaScript.' } },
@@ -404,8 +479,8 @@ ${clipped || '(sin texto visible)'}` };
     {
       name: 'browser_snapshot',
       description:
-        'Lista los elementos interactivos visibles de la página con un selector CSS, su texto y ' +
-        'posición. Úsala antes de hacer clic o rellenar algo, en vez de adivinar selectores.',
+        'Lista los elementos interactivos visibles con un UID estable, selector CSS, texto y ' +
+        'posición. Prefiere el UID para clicar o rellenar; el selector sigue disponible.',
       parameters: {
         type: 'object',
         properties: {
@@ -443,9 +518,20 @@ ${clipped || '(sin texto visible)'}` };
               return r.width > 0 && r.height > 0;
             })
             .slice(0, ${limite});
+          let siguiente = 0;
+          for (const previo of document.querySelectorAll('[data-agy-uid]')) {
+            const numero = Number(String(previo.getAttribute('data-agy-uid') || '').replace(/^e/, ''));
+            if (Number.isFinite(numero)) siguiente = Math.max(siguiente, numero);
+          }
           return visibles.map((el) => {
             const r = el.getBoundingClientRect();
+            let uid = el.getAttribute('data-agy-uid');
+            if (!uid) {
+              uid = 'e' + (++siguiente);
+              el.setAttribute('data-agy-uid', uid);
+            }
             return {
+              uid,
               selector: ruta(el),
               tag: el.tagName.toLowerCase(),
               type: el.getAttribute('type') || null,
@@ -471,7 +557,7 @@ ${clipped || '(sin texto visible)'}` };
             e.aria ? `aria="${e.aria}"` : '',
             e.href ? `href="${e.href}"` : '',
           ].filter(Boolean).join(' · ');
-          return `${i + 1}. ${e.selector} · <${e.tag}> · ${extra || '(sin texto)'} · @(${e.x},${e.y}) ${e.w}x${e.h}`;
+          return `${i + 1}. [${e.uid}] ${e.selector} · <${e.tag}> · ${extra || '(sin texto)'} · @(${e.x},${e.y}) ${e.w}x${e.h}`;
         });
         return { content: lineas.join('\n') };
       },
@@ -485,21 +571,22 @@ ${clipped || '(sin texto visible)'}` };
       parameters: {
         type: 'object',
         properties: {
+          uid: { type: 'string', description: 'UID devuelto por browser_snapshot.' },
           selector: { type: 'string', description: 'Selector CSS del campo.' },
           text: { type: 'string', description: 'Texto a escribir.' },
         },
-        required: ['selector', 'text'],
+        required: ['text'],
       },
       async execute(args) {
         const missing = requirePage();
         if (missing) return { content: missing, isError: true };
 
-        const selector = String(args.selector ?? '');
+        const etiqueta = etiquetaDe(args);
         const texto = String(args.text ?? '');
-        if (selector.length === 0) return { content: 'Falta el selector.', isError: true };
+        if (etiqueta.length === 0) return { content: 'Falta uid o selector.', isError: true };
 
         const result = await evalInBrowser(`(() => {
-          const el = document.querySelector(${JSON.stringify(selector)});
+          const el = ${elementoDe(args)};
           if (!el) return { found: false };
           el.focus();
           if (el.tagName === 'SELECT') {
@@ -520,10 +607,10 @@ ${clipped || '(sin texto visible)'}` };
 
         if (!result.ok) return { content: result.error, isError: true };
         if (!result.value?.found) {
-          return { content: `No se encontró ningún campo con ${selector}.`, isError: true };
+          return { content: `No se encontró ningún campo con ${etiqueta}.`, isError: true };
         }
         return {
-          content: `Campo ${selector} rellenado con «${texto}» (${result.value.tag}).`,
+          content: `Campo ${etiqueta} rellenado con «${texto}» (${result.value.tag}).`,
         };
       },
     },
@@ -537,6 +624,7 @@ ${clipped || '(sin texto visible)'}` };
         type: 'object',
         properties: {
           text: { type: 'string', description: 'Texto a escribir.' },
+          uid: { type: 'string', description: 'UID devuelto por browser_snapshot.' },
           selector: { type: 'string', description: 'Selector CSS del campo. Opcional.' },
         },
         required: ['text'],
@@ -546,17 +634,17 @@ ${clipped || '(sin texto visible)'}` };
         if (missing) return { content: missing, isError: true };
 
         const texto = String(args.text ?? '');
-        const selector = String(args.selector ?? '');
+        const etiqueta = etiquetaDe(args);
         if (texto.length === 0) return { content: 'Falta el texto.', isError: true };
 
-        if (selector.length > 0) {
+        if (etiqueta.length > 0) {
           const foco = await evalInBrowser(
-            `(() => { const el = document.querySelector(${JSON.stringify(selector)}); ` +
+            `(() => { const el = ${elementoDe(args)}; ` +
               'if (!el) return false; el.focus(); return true; })()',
           );
           if (!foco.ok) return { content: foco.error, isError: true };
           if (!foco.value) {
-            return { content: `No se encontró ningún campo con ${selector}.`, isError: true };
+            return { content: `No se encontró ningún campo con ${etiqueta}.`, isError: true };
           }
         }
 
@@ -578,6 +666,7 @@ ${clipped || '(sin texto visible)'}` };
         type: 'object',
         properties: {
           key: { type: 'string', description: 'Tecla a pulsar.' },
+          uid: { type: 'string', description: 'UID devuelto por browser_snapshot. Opcional.' },
           selector: { type: 'string', description: 'Selector CSS del elemento que recibe el foco. Opcional.' },
         },
         required: ['key'],
@@ -596,15 +685,15 @@ ${clipped || '(sin texto visible)'}` };
           return { content: `Tecla no válida: «${tecla}».`, isError: true };
         }
 
-        const selector = String(args.selector ?? '');
-        if (selector.length > 0) {
+        const etiqueta = etiquetaDe(args);
+        if (etiqueta.length > 0) {
           const foco = await evalInBrowser(
-            `(() => { const el = document.querySelector(${JSON.stringify(selector)}); ` +
+            `(() => { const el = ${elementoDe(args)}; ` +
               'if (!el) return false; el.focus(); return true; })()',
           );
           if (!foco.ok) return { content: foco.error, isError: true };
           if (!foco.value) {
-            return { content: `No se encontró ningún elemento con ${selector}.`, isError: true };
+            return { content: `No se encontró ningún elemento con ${etiqueta}.`, isError: true };
           }
         }
 
@@ -622,19 +711,21 @@ ${clipped || '(sin texto visible)'}` };
       parameters: {
         type: 'object',
         properties: {
+          uid: { type: 'string', description: 'UID devuelto por browser_snapshot.' },
           selector: { type: 'string', description: 'Selector CSS del select.' },
           value: { type: 'string', description: 'Value de la opción.' },
         },
-        required: ['selector', 'value'],
+        required: ['value'],
       },
       async execute(args) {
         const missing = requirePage();
         if (missing) return { content: missing, isError: true };
 
-        const selector = String(args.selector ?? '');
+        const etiqueta = etiquetaDe(args);
         const value = String(args.value ?? '');
+        if (etiqueta.length === 0) return { content: 'Falta uid o selector.', isError: true };
         const result = await evalInBrowser(`(() => {
-          const el = document.querySelector(${JSON.stringify(selector)});
+          const el = ${elementoDe(args)};
           if (!el || el.tagName !== 'SELECT') return { found: false };
           el.value = ${JSON.stringify(value)};
           el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -644,9 +735,9 @@ ${clipped || '(sin texto visible)'}` };
 
         if (!result.ok) return { content: result.error, isError: true };
         if (!result.value?.found) {
-          return { content: `No se encontró un <select> con ${selector}.`, isError: true };
+          return { content: `No se encontró un <select> con ${etiqueta}.`, isError: true };
         }
-        return { content: `Seleccionado «${result.value.valor}» en ${selector}.` };
+        return { content: `Seleccionado «${result.value.valor}» en ${etiqueta}.` };
       },
     },
 
@@ -684,19 +775,26 @@ ${clipped || '(sin texto visible)'}` };
 
     {
       name: 'browser_hover',
-      description: 'Mueve el ratón real sobre un elemento (para abrir menús o tooltips).',
+      description:
+        'Mueve el ratón real sobre un elemento por UID, selector o coordenadas normalizadas.',
       parameters: {
         type: 'object',
-        properties: { selector: { type: 'string', description: 'Selector CSS del elemento.' } },
-        required: ['selector'],
+        properties: {
+          uid: { type: 'string', description: 'UID devuelto por browser_snapshot.' },
+          selector: { type: 'string', description: 'Selector CSS del elemento.' },
+          x: { type: 'number', description: 'Coordenada X normalizada 0-1000.' },
+          y: { type: 'number', description: 'Coordenada Y normalizada 0-1000.' },
+        },
+        required: [],
       },
       async execute(args) {
         const missing = requirePage();
         if (missing) return { content: missing, isError: true };
 
-        const selector = String(args.selector ?? '');
+        const etiqueta = etiquetaDe(args);
+        if (etiqueta.length === 0) return { content: 'Falta uid, selector o coordenadas.', isError: true };
         const result = await evalInBrowser(`(() => {
-          const el = document.querySelector(${JSON.stringify(selector)});
+          const el = ${elementoDe(args)};
           if (!el) return { found: false };
           const r = el.getBoundingClientRect();
           return { found: true, x: r.x + r.width / 2, y: r.y + r.height / 2 };
@@ -704,14 +802,14 @@ ${clipped || '(sin texto visible)'}` };
 
         if (!result.ok) return { content: result.error, isError: true };
         if (!result.value?.found) {
-          return { content: `No se encontró ningún elemento con ${selector}.`, isError: true };
+          return { content: `No se encontró ningún elemento con ${etiqueta}.`, isError: true };
         }
         builtInBrowser.webContents.sendInputEvent({
           type: 'mouseMove',
           x: Math.round(result.value.x),
           y: Math.round(result.value.y),
         });
-        return { content: `Ratón sobre ${selector}.` };
+        return { content: `Ratón sobre ${etiqueta}.` };
       },
     },
 
@@ -865,32 +963,62 @@ function makeSearchFilesTool(getCwd) {
   return {
     name: 'search_files',
     description:
-      'Busca una expresión regular en los ficheros del proyecto y devuelve coincidencias con ' +
-      'ruta y número de línea. Es la forma de encontrar dónde se usa algo.',
+      'Busca texto en los ficheros del proyecto y devuelve coincidencias con ruta y número ' +
+      'de línea. Acepta regex o texto literal, distingue mayúsculas si se pide y filtra por ' +
+      'globs de fichero. Con matchPerLine=false devuelve solo las rutas que coinciden.',
     parameters: {
       type: 'object',
       properties: {
-        pattern: { type: 'string', description: 'Expresión regular (JavaScript) a buscar.' },
+        pattern: { type: 'string', description: 'Texto o expresión regular (JavaScript) a buscar.' },
         path: { type: 'string', description: 'Subdirectorio donde buscar. Por defecto la raíz.' },
+        isRegex: {
+          type: 'boolean',
+          description: 'true (por defecto) interpreta pattern como regex; false lo trata literal.',
+        },
+        caseSensitive: {
+          type: 'boolean',
+          description: 'true distingue mayúsculas y minúsculas; por defecto no.',
+        },
+        includes: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Globs de fichero a incluir, por ejemplo ["src/**/*.ts"].',
+        },
+        excludes: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Globs de fichero a excluir, por ejemplo ["**/*.test.ts"].',
+        },
+        matchPerLine: {
+          type: 'boolean',
+          description: 'true (por defecto) devuelve cada línea; false solo rutas únicas.',
+        },
         maxResults: { type: 'number', description: 'Máximo de coincidencias. Por defecto 60.' },
       },
       required: ['pattern'],
     },
-    async execute(args) {
+    async execute(args, ctx) {
       const fsp = require('node:fs/promises');
       const path = require('node:path');
+      const base = ctx?.cwd ?? getCwd();
 
-      const root = path.resolve(getCwd(), String(args.path ?? '.'));
-      const maxResults = Math.min(400, Number(args.maxResults ?? 60));
+      const root = path.resolve(base, String(args.path ?? '.'));
+      const maxResults = Math.max(1, Math.min(400, Number(args.maxResults ?? 60)));
+      const matchPerLine = args.matchPerLine !== false;
+      const includes = Array.isArray(args.includes) ? args.includes.map(String) : [];
+      const excludes = Array.isArray(args.excludes) ? args.excludes.map(String) : [];
 
       let regex;
       try {
-        regex = new RegExp(String(args.pattern ?? ''), 'i');
+        const patron = String(args.pattern ?? '');
+        const cuerpo = args.isRegex === false
+          ? patron.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          : patron;
+        regex = new RegExp(cuerpo, args.caseSensitive === true ? '' : 'i');
       } catch (error) {
         return { content: `Expresión no válida: ${error.message}`, isError: true };
       }
 
-      const IGNORED = new Set(['node_modules', '.git', 'dist', 'build', 'out', '.next', 'target', '__pycache__']);
       const BINARY = /\.(png|jpg|jpeg|gif|webp|ico|pdf|zip|gz|exe|dll|so|dylib|node|woff2?|ttf|mp[34]|wasm)$/i;
 
       const results = [];
@@ -908,7 +1036,7 @@ function makeSearchFilesTool(getCwd) {
 
         for (const entry of entries) {
           if (results.length >= maxResults) return;
-          if (IGNORED.has(entry.name) || entry.name.startsWith('.git')) continue;
+          if (CARPETAS_IGNORADAS.has(entry.name) || entry.name.startsWith('.git')) continue;
 
           const absolute = path.join(directory, entry.name);
 
@@ -921,6 +1049,12 @@ function makeSearchFilesTool(getCwd) {
           if (scanned > 8000) return;
           scanned += 1;
 
+          const relative = path.relative(base, absolute).split(path.sep).join('/');
+          if (includes.length > 0 && !includes.some((glob) => coincideGlob(glob, relative))) {
+            continue;
+          }
+          if (excludes.some((glob) => coincideGlob(glob, relative))) continue;
+
           let text;
           try {
             const info = await fsp.stat(absolute);
@@ -930,7 +1064,12 @@ function makeSearchFilesTool(getCwd) {
             continue;
           }
 
-          const relative = path.relative(getCwd(), absolute).split(path.sep).join('/');
+          if (!matchPerLine) {
+            if (!regex.test(text)) continue;
+            results.push(relative);
+            continue;
+          }
+
           const lines = text.split('\n');
 
           for (let index = 0; index < lines.length; index += 1) {
@@ -953,34 +1092,157 @@ function makeSearchFilesTool(getCwd) {
   };
 }
 
+/**
+ * Herramienta: buscar ficheros por nombre.
+ *
+ * `search_files` busca contenido; esta busca nombres, que es lo que hace
+ * `file_search` en Antigravity. Acepta un fragmento (`carrito`) o un patrón
+ * con `*` y `?` dentro del nombre (`*.test.ts`).
+ */
+function makeFileSearchTool(getCwd) {
+  return {
+    name: 'file_search',
+    description:
+      'Busca ficheros por nombre en el proyecto. Acepta un fragmento (`config`) o un ' +
+      'patrón con `*` y `?` (`*.test.ts`). Devuelve rutas relativas o absolutas.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Fragmento del nombre o patrón con * y ?.' },
+        path: { type: 'string', description: 'Subdirectorio donde buscar. Por defecto la raíz.' },
+        includes: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Globs de ruta a incluir, por ejemplo ["src/**/*.ts"].',
+        },
+        excludes: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Globs de ruta a excluir, por ejemplo ["**/*.test.ts"].',
+        },
+        fullPath: {
+          type: 'boolean',
+          description: 'true devuelve rutas absolutas; por defecto relativas.',
+        },
+        maxResults: { type: 'number', description: 'Máximo de resultados. Por defecto 80.' },
+      },
+      required: ['query'],
+    },
+    async execute(args, ctx) {
+      const fsp = require('node:fs/promises');
+      const path = require('node:path');
+      const base = ctx?.cwd ?? getCwd();
+
+      const consulta = String(args.query ?? '').trim();
+      if (consulta.length === 0) return { content: 'Falta la consulta.', isError: true };
+
+      const root = path.resolve(base, String(args.path ?? '.'));
+      const maxResults = Math.max(1, Math.min(400, Number(args.maxResults ?? 80)));
+      const includes = Array.isArray(args.includes) ? args.includes.map(String) : [];
+      const excludes = Array.isArray(args.excludes) ? args.excludes.map(String) : [];
+      const fullPath = args.fullPath === true;
+      const esGlob = consulta.includes('*') || consulta.includes('?');
+      const patron = esGlob
+        ? new RegExp(
+            `^${consulta
+              .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+              .replace(/\*/g, '.*')
+              .replace(/\?/g, '.')}$`,
+            'i',
+          )
+        : null;
+      const aguja = consulta.toLowerCase();
+      const resultados = [];
+      let escaneados = 0;
+
+      async function walk(directory, depth) {
+        if (resultados.length >= maxResults || depth > 8 || escaneados > 8000) return;
+        let entries;
+        try {
+          entries = await fsp.readdir(directory, { withFileTypes: true });
+        } catch {
+          return;
+        }
+
+        for (const entry of entries) {
+          if (resultados.length >= maxResults || escaneados > 8000) return;
+          if (CARPETAS_IGNORADAS.has(entry.name) || entry.name.startsWith('.git')) continue;
+          const absolute = path.join(directory, entry.name);
+
+          if (entry.isDirectory()) {
+            await walk(absolute, depth + 1);
+            continue;
+          }
+          if (!entry.isFile()) continue;
+          escaneados += 1;
+
+          const coincide = patron
+            ? patron.test(entry.name)
+            : entry.name.toLowerCase().includes(aguja);
+          if (!coincide) continue;
+
+          const relative = path.relative(base, absolute).split(path.sep).join('/');
+          if (includes.length > 0 && !includes.some((glob) => coincideGlob(glob, relative))) {
+            continue;
+          }
+          if (excludes.some((glob) => coincideGlob(glob, relative))) continue;
+          resultados.push(fullPath ? absolute : relative);
+        }
+      }
+
+      await walk(root, 0);
+      if (resultados.length === 0) {
+        return { content: `Sin ficheros que coincidan con «${consulta}» en ${args.path ?? '.'}.` };
+      }
+      return { content: resultados.join('\n') };
+    },
+  };
+}
+
 /** Herramienta: editar un fichero reemplazando un fragmento exacto. */
 function makeEditFileTool(getCwd) {
   return {
     name: 'edit_file',
     description:
       'Reemplaza un fragmento exacto de un fichero por otro. Mucho más seguro que write_file: ' +
-      'solo cambia lo indicado y conserva el resto. `oldText` debe aparecer exactamente una vez.',
+      'solo cambia lo indicado y conserva el resto. Por defecto `oldText` debe aparecer una vez; ' +
+      'con allowMultiple se reemplazan todas sus apariciones. También acepta `edits[]` para ' +
+      'aplicar varios tramos en una sola llamada, como multi_replace.',
     parameters: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'Ruta del fichero.' },
-        oldText: { type: 'string', description: 'Texto exacto a reemplazar (único en el fichero).' },
+        oldText: { type: 'string', description: 'Texto exacto a reemplazar.' },
         newText: { type: 'string', description: 'Texto nuevo. Vacío para borrar.' },
+        allowMultiple: {
+          type: 'boolean',
+          description: 'true reemplaza todas las apariciones de oldText; por defecto exige una sola.',
+        },
+        edits: {
+          type: 'array',
+          description: 'Varios tramos a reemplazar de forma transaccional. Alternativa a oldText/newText.',
+          items: {
+            type: 'object',
+            properties: {
+              startLine: { type: 'number', description: 'Primera línea del tramo (1-based).' },
+              endLine: { type: 'number', description: 'Última línea del tramo (1-based, inclusiva).' },
+              targetContent: { type: 'string', description: 'Texto exacto a sustituir dentro del tramo.' },
+              replacementContent: { type: 'string', description: 'Texto nuevo. Vacío para borrar.' },
+            },
+            required: ['startLine', 'targetContent', 'replacementContent'],
+          },
+        },
       },
-      required: ['path', 'oldText', 'newText'],
+      required: ['path'],
     },
-    async execute(args) {
+    async execute(args, ctx) {
       const fsp = require('node:fs/promises');
       const path = require('node:path');
 
       const relative = String(args.path ?? '');
       const oldText = String(args.oldText ?? '');
       const newText = String(args.newText ?? '');
-      const absolute = path.resolve(getCwd(), relative);
-
-      if (oldText.length === 0) {
-        return { content: 'oldText no puede estar vacío.', isError: true };
-      }
+      const absolute = path.resolve(ctx?.cwd ?? getCwd(), relative);
 
       let current;
       try {
@@ -989,19 +1251,40 @@ function makeEditFileTool(getCwd) {
         return { content: `No se pudo leer ${relative}: ${error.message}`, isError: true };
       }
 
+      const edits = Array.isArray(args.edits) ? args.edits : [];
+      if (edits.length > 0) {
+        const { aplicarReemplazos } = require('./multi-replace.cjs');
+        const resultado = aplicarReemplazos(current, edits);
+        if (resultado.error) {
+          return { content: `${resultado.error} No se cambió nada.`, isError: true };
+        }
+        await fsp.writeFile(absolute, resultado.texto, 'utf8');
+        return { content: `Editado ${relative} (${resultado.aplicados} tramos).` };
+      }
+
+      if (oldText.length === 0) {
+        return { content: 'oldText no puede estar vacío.', isError: true };
+      }
+
       const occurrences = current.split(oldText).length - 1;
       if (occurrences === 0) {
         return { content: `oldText no aparece en ${relative}. Léelo con read_file y copia el fragmento exacto.`, isError: true };
       }
-      if (occurrences > 1) {
+      const allowMultiple = args.allowMultiple === true;
+      if (occurrences > 1 && !allowMultiple) {
         return {
-          content: `oldText aparece ${occurrences} veces en ${relative}. Incluye más contexto para que sea único.`,
+          content: `oldText aparece ${occurrences} veces en ${relative}. Incluye más contexto o usa allowMultiple.`,
           isError: true,
         };
       }
 
-      await fsp.writeFile(absolute, current.replace(oldText, newText), 'utf8');
-      return { content: `Editado ${relative}.` };
+      const siguiente = allowMultiple
+        ? current.split(oldText).join(newText)
+        : current.replace(oldText, newText);
+      await fsp.writeFile(absolute, siguiente, 'utf8');
+      return {
+        content: `Editado ${relative}${occurrences > 1 ? ` (${occurrences} apariciones)` : ''}.`,
+      };
     },
   };
 }
@@ -1037,9 +1320,10 @@ function makeGenerateImageTool(getCwd) {
       },
       required: ['prompt'],
     },
-    async execute(args) {
+    async execute(args, ctx) {
       const { generarEnFlow, URL_FLOW, cuentaGoogleConectada, errorDeLogin } = require('./flow.cjs');
       const nodePath = require('node:path');
+      const base = ctx?.cwd ?? getCwd();
 
       const prompt = String(args?.prompt ?? '').trim();
       if (prompt.length === 0) return { content: 'Falta el parámetro `prompt`.', isError: true };
@@ -1068,9 +1352,9 @@ function makeGenerateImageTool(getCwd) {
        * URL remotas de Flow. Con solo la URL, la imagen no se vería.
        */
       const destino = args?.path
-        ? nodePath.resolve(getCwd(), String(args.path))
+        ? nodePath.resolve(base, String(args.path))
         : nodePath.join(
-            getCwd(),
+            base,
             '.opengravity',
             'images',
             `flow-${new Date().toISOString().replace(/[:.]/g, '-')}`,
@@ -1127,13 +1411,13 @@ function makeMultiReplaceTool(getCwd) {
       },
       required: ['path', 'edits'],
     },
-    async execute(args) {
+    async execute(args, ctx) {
       const fsp = require('node:fs/promises');
       const path = require('node:path');
       const { aplicarReemplazos } = require('./multi-replace.cjs');
 
       const relative = String(args.path ?? '');
-      const absolute = path.resolve(getCwd(), relative);
+      const absolute = path.resolve(ctx?.cwd ?? getCwd(), relative);
 
       let current;
       try {
@@ -1197,7 +1481,14 @@ function resumenSalida(tarea, limite) {
  * En POSIX, el comando corre en su propio grupo (`detached`) y se mata el grupo.
  * El guard del Job Object se mata también: al cerrar su handle se libera el job.
  */
-function matarTarea(tarea) {
+/**
+ * Termina una tarea y todo su árbol, y **espera** a que el sistema lo confirme.
+ *
+ * Devolver una promesa no es un lujo: al cerrar la app, `before-quit` lanzaba
+ * `taskkill` y salía sin mirar atrás, así que el proceso moría antes que sus
+ * hijos y quedaban vivos. Quien quiera cerrar limpio tiene que poder esperar.
+ */
+async function matarTarea(tarea) {
   if (!tarea) return;
 
   const pid = tarea.pid;
@@ -1234,14 +1525,40 @@ function matarTarea(tarea) {
       console.log(`[sandbox] matar ${tarea.id} pid=${pid} guard=${tarea.guard?.pid ?? 'ninguno'}`);
     }
     try {
+      /*
+       * Se espera a que `taskkill /T /F` termine: sus hijos no existen hasta
+       * que regresa, y al cerrar la app eso es justo lo que hay que asegurar.
+       * El plazo evita quedarse colgado si el sistema no responde.
+       */
       const tk = require('node:child_process').spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
         windowsHide: true,
         stdio: 'ignore',
       });
-      if (process.env.OG_SANDBOX_DEBUG === '1') {
-        tk.on('close', (code) => console.log(`[sandbox] taskkill ${pid} → ${code}`));
-        tk.on('error', (error) => console.log(`[sandbox] taskkill ${pid} error: ${error.message}`));
-      }
+      await new Promise((listo) => {
+        const plazo = setTimeout(() => {
+          try {
+            tk.kill();
+          } catch {
+            // ya terminado
+          }
+          listo();
+        }, 5000);
+        plazo.unref?.();
+        tk.on('close', (code) => {
+          clearTimeout(plazo);
+          if (process.env.OG_SANDBOX_DEBUG === '1') {
+            console.log(`[sandbox] taskkill ${pid} → ${code}`);
+          }
+          listo();
+        });
+        tk.on('error', (error) => {
+          clearTimeout(plazo);
+          if (process.env.OG_SANDBOX_DEBUG === '1') {
+            console.log(`[sandbox] taskkill ${pid} error: ${error.message}`);
+          }
+          listo();
+        });
+      });
     } catch {
       // taskkill no disponible
     }
@@ -1313,7 +1630,7 @@ function makeRunExtensionCodeTool(getCwd, ejecutarComando) {
       },
       required: ['code'],
     },
-    async execute(args) {
+    async execute(args, ctx) {
       const codigo = String(args?.code ?? '');
       if (codigo.trim().length === 0) {
         return { content: 'No hay código que ejecutar.', isError: true };
@@ -1327,14 +1644,20 @@ function makeRunExtensionCodeTool(getCwd, ejecutarComando) {
         language: 'node',
         args: args?.args ?? {},
         waitMillis: args?.waitMillis,
-      });
+      }, ctx);
     },
   };
 }
 
-/** Termina todas las tareas, por ejemplo al cerrar la app. */
-function matarTodasLasTareas() {
-  for (const tarea of tareas.values()) matarTarea(tarea);
+/**
+ * Termina todas las tareas, por ejemplo al cerrar la app.
+ *
+ * Espera a que cada árbol esté muerto de verdad. Sin esto, quien llama cree
+ * que ya limpió y sale, y los procesos hijos sobreviven a la ventana.
+ */
+async function matarTodasLasTareas() {
+  const pendientes = [...tareas.values()].map((tarea) => matarTarea(tarea));
+  await Promise.allSettled(pendientes);
 }
 
 /** Herramienta: ejecutar un comando en el workspace, sin bloquear indefinidamente. */
@@ -1385,7 +1708,7 @@ function makeRunCommandTool(getCwd, getPrefs) {
       },
       required: ['command'],
     },
-    async execute(args) {
+    async execute(args, ctx) {
       const { spawn } = require('node:child_process');
 
       const command = String(args.command ?? '');
@@ -1398,7 +1721,7 @@ function makeRunCommandTool(getCwd, getPrefs) {
       const restringir = prefs?.restrictToWorkspace === true;
 
       const path = require('node:path');
-      const workspace = getCwd();
+      const workspace = ctx?.cwd ?? getCwd();
       const cwd = args.cwd ? path.resolve(workspace, String(args.cwd)) : workspace;
 
       /*
@@ -1407,11 +1730,12 @@ function makeRunCommandTool(getCwd, getPrefs) {
        * jail del SO: un comando puede salir del directorio por su cuenta; eso
        * requiere AppContainer o namespaces y queda para la fase 2.
        */
-      if (restringir && !dentroDelWorkspace(workspace, cwd)) {
+      const raices = Array.isArray(prefs?.allowedRoots) ? prefs.allowedRoots : [];
+      if (restringir && !dentroDeRaices(workspace, raices, cwd)) {
         return {
           content:
             `El sandbox de workspace está activo y «${cwd}» queda fuera de ` +
-            `«${workspace}». Usa un directorio dentro del proyecto.`,
+            `«${workspace}» y de las raíces añadidas. Usa un directorio permitido.`,
           isError: true,
         };
       }
@@ -1465,17 +1789,34 @@ function makeRunCommandTool(getCwd, getPrefs) {
       }
 
       if (!child) {
-        const comandoFinal =
-          usaSandbox && process.platform !== 'win32'
+        if (process.platform === 'win32') {
+          /*
+           * El prompt y la tarjeta de `list_directory` hablan de PowerShell.
+           * `shell: true` lanzaba cmd.exe, así que `Get-ChildItem` y `$env:`
+           * fallaban. `-EncodedCommand` evita pelear con las comillas de la
+           * orden: la cadena viaja en base64 UTF-16LE.
+           */
+          const encoded = Buffer.from(
+            `$ProgressPreference='SilentlyContinue'; ${command}`,
+            'utf16le',
+          ).toString('base64');
+          child = spawn(
+            'powershell.exe',
+            ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
+            { cwd, windowsHide: true, env: entorno },
+          );
+        } else {
+          const comandoFinal = usaSandbox
             ? `${prefijoPosix(limites)}${command}`
             : command;
-        child = spawn(comandoFinal, {
-          cwd,
-          shell: true,
-          windowsHide: true,
-          ...(usaSandbox && process.platform !== 'win32' ? { detached: true } : {}),
-          env: entorno,
-        });
+          child = spawn(comandoFinal, {
+            cwd,
+            shell: true,
+            windowsHide: true,
+            ...(usaSandbox ? { detached: true } : {}),
+            env: entorno,
+          });
+        }
       }
 
       tarea.child = child;
@@ -1735,6 +2076,8 @@ function makeSearchWebTool(getPrefs) {
 
       const prefs = getPrefs();
       const maximo = Math.min(15, Math.max(1, Number(args.maxResults ?? 5)));
+      const dominio = String(args.domain ?? '').trim();
+      const busqueda = dominio.length > 0 ? `${consulta} site:${dominio}` : consulta;
 
       // DuckDuckGo no pide clave ni cuenta: coste cero y sin telemetría propia.
       const url = 'https://html.duckduckgo.com/html/';
@@ -1751,7 +2094,7 @@ function makeSearchWebTool(getPrefs) {
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36',
             'content-type': 'application/x-www-form-urlencoded',
           },
-          body: new URLSearchParams({ q: consulta, kl: 'wt-wt' }).toString(),
+          body: new URLSearchParams({ q: busqueda, kl: 'wt-wt' }).toString(),
           signal: AbortSignal.timeout(20_000),
         });
 
@@ -1865,15 +2208,16 @@ function makeViewCodeItemTool(getCwd) {
       },
       required: ['path'],
     },
-    async execute(args) {
+    async execute(args, ctx) {
       const fsp = require('node:fs/promises');
       const pathMod = require('node:path');
       const { listCodeItems, readCodeItem } = require('./code-items.cjs');
+      const base = ctx?.cwd ?? getCwd();
 
       const pedida = String(args.path ?? '').trim();
       if (pedida.length === 0) return { content: 'Falta la ruta.', isError: true };
 
-      const absoluta = pathMod.isAbsolute(pedida) ? pedida : pathMod.join(getCwd(), pedida);
+      const absoluta = pathMod.isAbsolute(pedida) ? pedida : pathMod.join(base, pedida);
 
       let contenido;
       try {
@@ -1882,7 +2226,7 @@ function makeViewCodeItemTool(getCwd) {
         return { content: `No se pudo leer ${pedida}: ${error.message}`, isError: true };
       }
 
-      const relativa = pathMod.relative(getCwd(), absoluta) || pedida;
+      const relativa = pathMod.relative(base, absoluta) || pedida;
       const nodePath = String(args.nodePath ?? '').trim();
 
       // Sin nodePath: tabla de contenidos del fichero.
@@ -1990,12 +2334,12 @@ function makeRunWorkflowTool(getCwd, ejecutarComando) {
         },
       },
     },
-    async execute(args) {
+    async execute(args, ctx) {
       const fsp = require('node:fs/promises');
       const os = require('node:os');
       const pathMod = require('node:path');
 
-      const cwd = getCwd();
+      const cwd = ctx?.cwd ?? getCwd();
       const carpeta = pathMod.join(cwd, '.opengravity/workflows');
 
       const nombre = String(args.name ?? '').trim();
@@ -2081,15 +2425,18 @@ function makeRunWorkflowTool(getCwd, ejecutarComando) {
       await fsp.writeFile(ficheroArgs, JSON.stringify(args.args ?? {}), 'utf8');
 
       const interprete = lenguaje === 'python' ? 'python' : 'node';
-      const comando =
-        `"${interprete}" "${rutaScript}" "${ficheroArgs}"`;
+      /*
+       * Sin comillas alrededor del intérprete: PowerShell trata `"node"` como
+       * una cadena y no lo ejecuta. Las rutas sí van entre comillas.
+       */
+      const comando = `${interprete} "${rutaScript}" "${ficheroArgs}"`;
 
       const resultado = await ejecutarComando({
         command: comando,
         cwd,
         waitDurationSeconds: Number(args.waitMillis ?? 10000),
         taskName: `Workflow ${nombre || lenguaje}`,
-      });
+      }, ctx);
 
       // Limpieza de los temporales cuando el workflow ya terminó.
       if (temporal) {
@@ -2116,10 +2463,12 @@ module.exports = {
   navegadorIntegrado,
   makeBrowserTools,
   makeSearchFilesTool,
+  makeFileSearchTool,
   makeEditFileTool,
   makeMultiReplaceTool,
   makeRunCommandTool,
   matarTodasLasTareas,
+  matarTarea,
   setAlTerminarTarea,
   makeCommandStatusTool,
   makeManageTaskTool,

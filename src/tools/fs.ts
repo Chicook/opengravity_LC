@@ -19,7 +19,9 @@ export const readFileTool = defineTool({
   description:
     'Lee un fichero de texto y devuelve su contenido. Usa rutas relativas al directorio de trabajo.\n' +
     'Para ficheros grandes, pide un rango con startLine/endLine en vez de leerlo entero: ' +
-    'devuelve la cabecera con el total de líneas y el rango que has pedido.',
+    'devuelve la cabecera con el total de líneas y el rango que has pedido. Cada línea ' +
+    'lleva un prefijo `N | `; ese prefijo no forma parte del fichero, no lo copies a ' +
+    'edit_file ni a multi_replace.',
   parameters: {
     type: 'object',
     properties: {
@@ -35,6 +37,12 @@ export const readFileTool = defineTool({
       maxBytes: {
         type: 'number',
         description: 'Máximo de bytes a devolver. Por defecto 200000.',
+      },
+      lineNumbers: {
+        type: 'boolean',
+        description:
+          'Prefija cada línea con su número (por defecto true). Necesario para ' +
+          'multi_replace, que trabaja con rangos de línea.',
       },
     },
     required: ['path'],
@@ -64,6 +72,7 @@ export const readFileTool = defineTool({
      * cuánto queda.
      */
     const pideRango = args['startLine'] !== undefined || args['endLine'] !== undefined;
+    const numerar = args['lineNumbers'] !== false;
 
     if (pideRango) {
       const lineas = content.split('\n');
@@ -78,7 +87,10 @@ export const readFileTool = defineTool({
         };
       }
 
-      let trozo = lineas.slice(desde - 1, hasta).join('\n');
+      let trozo = lineas
+        .slice(desde - 1, hasta)
+        .map((linea, indice) => (numerar ? `${String(desde + indice).padStart(4)} | ${linea}` : linea))
+        .join('\n');
       if (trozo.length > maxBytes) trozo = trozo.slice(0, maxBytes);
 
       return {
@@ -89,14 +101,23 @@ export const readFileTool = defineTool({
       };
     }
 
-    const truncated = content.length > maxBytes;
-    const body = truncated ? content.slice(0, maxBytes) : content;
+    const total = content.split('\n').length;
+    const conNumeros = numerar
+      ? content
+          .split('\n')
+          .map((linea, indice) => `${String(indice + 1).padStart(4)} | ${linea}`)
+          .join('\n')
+      : content;
+
+    const truncated = conNumeros.length > maxBytes;
+    const body = truncated ? conNumeros.slice(0, maxBytes) : conNumeros;
+    const cabecera = numerar ? `[${path}: ${total} líneas]\n` : '';
 
     return {
       content: truncated
-        ? `${body}\n\n[truncado: ${content.length} bytes totales, mostrados ${maxBytes}. ` +
+        ? `${cabecera}${body}\n\n[truncado: ${conNumeros.length} bytes totales, mostrados ${maxBytes}. ` +
           'Pide un rango con startLine/endLine para leer el resto.]'
-        : body,
+        : `${cabecera}${body}`,
     };
   },
 });

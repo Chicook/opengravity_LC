@@ -73,12 +73,22 @@ test('con claves y cifrado escribe apiKeysEnc y no apiKeys', () => {
   assert.equal(disco.tema, 'Dark');
 });
 
-test('sin cifrado disponible guarda en claro sin romper', () => {
+test('sin cifrado disponible no escribe claves nuevas en claro', () => {
+  // Se quedan solo en memoria: escribirlas en claro dejaba la clave legible
+  // por otra cuenta local. El blob ya descifrado era viejo y se descarta.
   const prefs = { apiKeys: { a: 'b' } };
   const disco = prepararPrefsParaDisco(prefs, { apiKeysEnc: 'blob-viejo' }, sinCifrado);
 
-  assert.deepEqual(disco.apiKeys, { a: 'b' });
+  assert.equal('apiKeys' in disco, false);
   assert.equal(disco.apiKeysEnc, undefined);
+});
+
+test('sin cifrado conserva las claves que ya estaban en claro', () => {
+  // Fichero de una versión anterior: no se pierden al guardar sin cifrado.
+  const prefs = { apiKeys: { a: 'b' }, tema: 'Dark' };
+  const disco = prepararPrefsParaDisco(prefs, { apiKeys: { a: 'b' } }, sinCifrado);
+
+  assert.deepEqual(disco.apiKeys, { a: 'b' });
 });
 
 test('sin claves en memoria no toca lo que había en disco', () => {

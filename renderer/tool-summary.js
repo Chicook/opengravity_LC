@@ -14,7 +14,7 @@
     {
       plural: 'explored files',
       singular: 'explored file',
-      tools: ['search_files', 'search_code', 'search_web', 'read_file', 'view_code_item'],
+      tools: ['search_files', 'file_search', 'search_code', 'search_web', 'read_file', 'view_code_item'],
     },
     {
       plural: 'ran commands',

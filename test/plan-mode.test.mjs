@@ -170,6 +170,7 @@ describe('límites', () => {
     ciclo.mensajePendiente();
     ciclo.devolverControl('y');
     assert.equal(ciclo.sinRevisiones(), true);
+    assert.equal(ciclo.revisionVencida(), false, 'no debe pedir más revisiones');
   });
 });
 

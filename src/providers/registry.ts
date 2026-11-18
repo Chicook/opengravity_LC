@@ -6,7 +6,14 @@
  */
 
 import { AnthropicProvider, type AnthropicOptions } from './anthropic.js';
-import { PROVIDER_CATALOG, findProvider, hasCredentials, resolveApiKey, resolveBaseUrl } from './catalog.js';
+import {
+  PROVIDER_CATALOG,
+  findProvider,
+  hasCredentials,
+  resolveApiKey,
+  resolveBaseUrl,
+  type ProviderKind,
+} from './catalog.js';
 import { GeminiProvider, type GeminiOptions } from './gemini.js';
 import { OllamaProvider, type OllamaOptions } from './ollama.js';
 import { OpenAIProvider, type OpenAIOptions } from './openai.js';
@@ -81,6 +88,43 @@ export function createProvider(id: ProviderId, config: ProviderConfig = {}): Mod
   }
 }
 
+/**
+ * ¿Este modelo admite pensamiento extendido explícito?
+ *
+ * Solo se ofrece donde el adaptador sabe pedirlo y el modelo lo soporta:
+ * Claude 3.7+ y Gemini 2.5+. En el resto el razonamiento, si existe, lo emite
+ * el propio modelo sin configuración; no se le pide nada ni se cambia de modelo.
+ */
+export function soportaPensamiento(
+  kind: ProviderKind,
+  model: string,
+  providerId?: string,
+): boolean {
+  const id = String(model ?? '').toLowerCase();
+  if (kind === 'openai') {
+    /*
+     * Solo los modelos de razonamiento de OpenAI aceptan `reasoning_effort`.
+     * Se exige el proveedor `openai`: las pasarelas compatibles (Groq,
+     * OpenRouter, un servidor local) no tienen por qué aceptar el campo.
+     */
+    return providerId === 'openai' && /^(o[134]|gpt-5)/.test(id);
+  }
+  if (kind === 'anthropic') {
+    /*
+     * El adaptador pide `thinking: {type:"enabled", budget_tokens}`, que solo
+     * aceptan 3.7–4.6. Claude 4.7+ y 5.x solo admiten `adaptive` y rechazan
+     * `enabled` con 400, así que ahí el botón no se ofrece.
+     */
+    const version = id.match(/claude-(?:[a-z]+-)?(\d+)(?:[.-](\d+))?/);
+    if (!version) return false;
+    const mayor = Number(version[1]);
+    const menor = Number(version[2] ?? 0);
+    return (mayor === 3 && menor >= 7) || (mayor === 4 && menor <= 6);
+  }
+  if (kind === 'gemini') return /gemini-(?:2\.5|[3-9])/.test(id);
+  return false;
+}
+
 /** Proveedores del catálogo que tienen credenciales ahora mismo. */
 export function providersWithCredentials(): string[] {
   return PROVIDER_CATALOG.filter(hasCredentials).map((entry) => entry.id);
@@ -95,23 +139,32 @@ export function providersWithCredentials(): string[] {
 export async function detectAvailableProviders(
   config: ProviderConfig = {},
 ): Promise<string[]> {
-  const available: string[] = [];
-
-  for (const spec of PROVIDER_CATALOG) {
-    if (!hasCredentials(spec)) continue;
+  /*
+   * Las claves guardadas en Ajustes cuentan igual que las del entorno: antes
+   * solo se miraba el entorno y un usuario que pegaba su clave aparecía sin
+   * proveedores. Se consultan en paralelo y cada fallo se descarta solo.
+   */
+  const candidatos = PROVIDER_CATALOG.filter((spec) => {
+    const guardada = config.apiKeys?.[spec.id];
+    const delEntorno = spec.envKey ? process.env[spec.envKey] : undefined;
+    if (spec.envKey !== null && !guardada && !delEntorno) return false;
     // Los personalizables solo se prueban si el usuario ya puso una URL.
-    if (spec.custom && !(config.baseUrls?.[spec.id] ?? resolveBaseUrl(spec))) continue;
+    if (spec.custom && !(config.baseUrls?.[spec.id] ?? resolveBaseUrl(spec))) return false;
+    return true;
+  });
 
-    try {
-      const provider = createProvider(spec.id, config);
-      const models = await provider.listModels();
-      if (models.length > 0) available.push(spec.id);
-    } catch {
-      // sin respuesta: el proveedor queda fuera
-    }
-  }
+  const resultados = await Promise.all(
+    candidatos.map(async (spec) => {
+      try {
+        const models = await createProvider(spec.id, config).listModels();
+        return models.length > 0 ? spec.id : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
 
-  return available;
+  return resultados.filter((id): id is string => id !== null);
 }
 
 export { AnthropicProvider, GeminiProvider, OllamaProvider, OpenAIProvider };
