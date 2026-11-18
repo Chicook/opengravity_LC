@@ -1,8 +1,362 @@
 <p align="center">
-  <img src="assets/readme-header.png" alt="Opengravity — IDE open source con agentes para cualquier modelo" width="100%">
+  <img src="assets/readme-header.png" alt="Opengravity — open-source AI IDE with agents, built for any model" width="100%">
 </p>
 
-# Opengravity
+<h1 align="center">Opengravity</h1>
+
+<p align="center">
+  <a href="#english">English</a> ·
+  <a href="#spanish">Español</a>
+</p>
+
+<a id="english"></a>
+
+## English
+
+A **multi-provider** desktop IDE with agents: the same coding-assistant
+experience, working with local or cloud models, without vendor lock-in.
+
+A standalone Electron app — not an extension — with **Monaco** as the editor,
+**LSP** for code intelligence, **MCP** for tools, and integrated **git** and
+**terminal**.
+
+> Independent project. It contains no code, assets or branding from any
+> proprietary product. See `docs/analysis/` and `docs/design-tokens.md` for the
+> reference analysis that informed the design decisions.
+
+### Getting started
+
+Requires **Node 22+**.
+
+```bash
+npm install
+node node_modules/electron/install.js   # if npm blocks the postinstall
+npm run app
+```
+
+`npm run app` compiles the TypeScript engine, bundles Monaco and opens the
+window.
+
+### Google account and Flow
+
+Image generation uses **Google Flow** with the integrated browser session.
+There is no API key and no extra cost:
+
+1. Open **Settings › Google** and click **Connect**.
+2. Sign in with your account in the window that opens. Flow opens when you
+   finish.
+3. Return to the app and ask for an image with `generate_image`.
+
+The session is stored in the integrated browser's persistent partition, so you
+only need to sign in once. If no account is connected, the tool returns
+instructions instead of opening a hidden login.
+
+### Build the executables (Windows)
+
+```bash
+npm run dist
+```
+
+This leaves two files in `release/`:
+
+- **`Opengravity Setup 0.1.0.exe`**: installer (choose a folder, create Start
+  Menu and desktop shortcuts).
+- **`Opengravity 0.1.0.exe`**: portable, runs without installing.
+
+`npm run dist:dir` builds only the unpacked app (`release/win-unpacked`), useful
+for inspecting the contents without installing. Executables are not versioned:
+`release/` is in `.gitignore`.
+
+Before distributing the result, `npm run verify:release` checks that the
+executables contain the current code (by comparing bytes, not dates), that the
+fonts ship with their license, and writes **SHA-256 hashes** to
+`release/SHA256SUMS.txt`. **What is still missing and why: see
+[`docs/estado.md`](docs/estado.md).**
+
+#### Download without surprises (and without paying for a certificate)
+
+The executables are **not signed**: an Authenticode certificate costs money
+every year and this project is free. Windows will show “unknown publisher” during
+installation; that is expected, not an error. You can verify that the file you
+downloaded is the one that was published:
+
+```powershell
+# 1) Hash of the downloaded file
+Get-FileHash "Opengravity Setup 0.1.0.exe" -Algorithm SHA256
+
+# 2) Compare it with the published release hash
+Get-Content SHA256SUMS.txt
+
+# 3) If they match, remove the “downloaded from the internet” mark
+Unblock-File "Opengravity Setup 0.1.0.exe"
+```
+
+If the hash does not match, do not install it: it is not the published file.
+And if you prefer not to install anything, you can always build from source
+(`npm run dist`) and compare.
+
+### What's included
+
+#### Agent
+
+- **22 model providers** with automatic model detection and API keys pasted
+  from Settings (see `docs/proveedores.md`); parallel detection with timeout,
+  manual refresh and keys shared between OpenCode Zen and Go
+- **Workspace rules**: `AGENTS.md` and `.agents/rules/*.md` enter the system
+  prompt with their own budget (20,000 tokens by default)
+- **Work profiles** (`Interface Layout`): *Knowledge Work* responds like a
+  document (report, summary, plan) and *Software Engineering* reads, edits and
+  verifies code. It changes the prompt's instruction block
+  (`electron/personas.cjs`), the same with a local or cloud model. It does not
+  restrict tools: measured against the original, neither does it
+- **Extended thinking** with a chat button that only appears when the current
+  model supports it (Claude 3.7+/4/5 and Gemini 2.5+); it does not switch models
+  or enable thinking on other models
+- **Parallel subagents with a maximum wait**: several branches at once, each in
+  its own worktree when writing, and whatever misses the budget is cancelled
+  while the rest is merged (Settings › Execution › *Subagent wait*)
+- **File-pattern memory**: a memory can declare `globs` and activates by itself
+  when the agent writes a matching file, instead of repeating it every turn
+- Open tool catalog: code and notebook reading/writing, search, background
+  terminal, MCP, memory, skills, subagents (parallel and read-only nested with a
+  budget), plans, `run_extension_code` for temporary extensions, image
+  generation and **14 browser actions** (`open`, `read`, `snapshot`, `click`,
+  `fill`, `type`, `press`, `select`, `scroll`, `hover`, `wait`, `batch`,
+  `navigate`, `eval`) on the integrated Chromium
+- Permissions: global preset, per-tool permissions and network rules
+- **Optional workspace sandbox**: file paths inside the project, command cwd
+  fixed, credentials removed from the environment and process limits (Job Object
+  on Windows; process group + `ulimit` on POSIX), with process-tree termination.
+  AppContainer is out of scope: a normal command needs the system toolchain, so
+  it would require a container with its own Node
+- **Diffs with approval** before writing
+- **Checkpoints**: undo restores files on disk
+- Injectable skills, local profile and MCP servers as plugins, with a **local
+  catalog** installable from Settings (no accounts, plans or payments)
+
+#### Editor
+
+- **Monaco** with its own dark theme and per-language highlighting
+- **LSP**: completion, diagnostics, go-to-definition, rename, format
+  (TypeScript/JavaScript bundled with the project; python/go/rust configurable)
+- **Project selector**: recent projects, This Computer with search, New Project
+  and No Project; each conversation stores its project separately from the
+  workspace
+- Tabs, save state, `Ctrl+S`
+
+##### LSP servers
+
+The app does not bundle external language servers. Python, Go and Rust need to
+be installed and visible:
+
+- **Go**: `go` and `gopls`. The app adds the standard locations to `PATH`,
+  including `GOROOT`, `GOPATH/bin`, `GOBIN` and SDKs under
+  `%USERPROFILE%\sdk`. For an arbitrary installation, define `GOROOT`, add its
+  `bin` folder to `PATH`, or set the path in **Settings › Developer › Go**.
+- **Python**: `pylsp` or `pyright-langserver`. The app prefers the former; if
+  neither exists, it shows an error when opening a `.py` file.
+- **Rust**: `rust-analyzer` on `PATH`.
+
+The app does not scan disks for these binaries: a path outside the environment
+or the locations above is not detected. `lspServers` can pin each server's
+command and arguments.
+
+#### Rest of the IDE
+
+- **Terminal** integrated with persistent `cd` (`Ctrl+\``)
+- **Git**: branch, modified files, stage, commit and per-file diff
+- Summary panel with Files, Plugins, Review and Terminal
+- Turn navigator, per-response action bar, reactions
+- `/` commands and `@` mentions in the composer
+- **Bilingual interface**: English and Spanish, with system-language detection
+  and a selector in Settings › Application
+- Conversation search and persistent sessions in JSONL
+
+### Shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+Enter` | Send message |
+| `Ctrl+N` | New conversation |
+| `Ctrl+M` | Model selector |
+| `Ctrl+\`` | Terminal |
+| `/` | Command palette |
+| `@` | Mention a file |
+| `Ctrl+S` | Save (editor) |
+| `Ctrl+Space` | Autocomplete |
+| `F12` | Go to definition |
+| `F2` | Rename symbol |
+| `Shift+Alt+F` | Format |
+
+### Structure
+
+```
+app
+├── electron/
+│   ├── main.cjs          window, IPC, agent, git, terminal, LSP, app:// protocol
+│   ├── preload.cjs       contextBridge bridge
+│   ├── tools-extra.cjs   main-process tools
+│   ├── diff.cjs          line diff
+│   └── lsp.cjs           LSP client (Content-Length)
+├── renderer/
+│   ├── index.html        interface structure
+│   ├── styles.css        tokens and layout
+│   ├── app.js            UI logic
+│   ├── settings.js       settings panel
+│   ├── markdown.js       markdown → HTML
+│   ├── highlight.js      chat highlighting
+│   ├── icons.js          SVG icon set
+│   ├── monaco-entry.js   Monaco entry point (bundled)
+│   └── monaco/           bundle generated by build:monaco
+├── scripts/build-monaco.mjs
+├── src/                  engine: providers, agent, MCP, persistence
+└── docs/
+    ├── analysis/         reference architecture
+    ├── design-tokens.md  UI palette, metrics and structure
+    └── proveedores.md    endpoint catalog
+```
+
+The renderer has no Node access: everything goes through IPC named
+`domain:action`. The engine lives in the main process.
+
+### CLI
+
+To automate or debug the engine without the UI:
+
+```bash
+npm run dev -- "summarize this project"
+npm run dev -- --provider openai --model gpt-4o-mini "list the files"
+npm run dev -- --list-providers
+npm run dev -- --provider groq --list
+npm run dev -- --mcp-command npx --mcp-arg -y \
+  --mcp-arg @modelcontextprotocol/server-filesystem --mcp-arg . --tools
+npm run dev -- --list-sessions
+```
+
+#### Headless (`agy -p` style)
+
+```bash
+# Clean response on stdout; diagnostics on stderr.
+npm run dev -- -p "what does src/agent/loop.ts do?" --output-format text
+
+# A JSON envelope with conversation, state and tokens.
+npm run dev -- -p "summarize the project" --output-format json
+
+# NDJSON: init → step_update → result.
+npm run dev -- -p "find the TODOs" --output-format stream-json
+
+# Persistent conversation over stdin: one result per prompt.
+printf '%s\n' \
+  '{"event":"user","message":{"content":"what does src/agent/loop.ts do?"}}' \
+  '{"event":"user","message":{"content":"summarize the above"}}' \
+  | npm run dev -- --input-format stream-json --output-format stream-json
+
+# Continue the latest conversation.
+npm run dev -- -p "now fix the first one" -c
+
+# Change effort/mode and allow writes in headless mode.
+npm run dev -- -p "fix the test" --effort high --mode accept-edits
+npm run dev -- -p "run the tests" --sandbox --mode auto
+```
+
+#### TUI
+
+With no prompt and an interactive terminal, `npm run dev` opens the full-screen
+chat TUI:
+
+```bash
+npm run dev
+```
+
+The full TUI accepts `/model`, `/mode`, `/tools`, `/clear`, `/help` and `/exit`.
+To return to the line TUI with every session command:
+
+```bash
+OPENGRAVITY_LINE_TUI=1 npm run dev
+```
+
+In the **line TUI**:
+
+- `/model <id>` changes the model; `/tools` lists the catalog.
+- `/mode default|accept-edits|auto|plan` changes permissions on the fly.
+- `/permissions`, `/mcp`, `/skills`, `/agents`, `/context` and `/config` show
+  the current state.
+- `/panel` opens a full-screen panel TUI (Status, Sessions, Tools, Skills,
+  Agents, Permissions and MCP); `←/→` switches tabs, `↑/↓` scrolls and `q` exits.
+- `/diff`, `/resume`, `/rename`, `/fork`, `/rewind` and `/open` work on the
+  workspace; `/rewind` restores files touched by editing tools and, in git
+  repositories, changes made by `run_command` (not binaries, ignored files or
+  files outside git).
+- `/btw` asks a side question without touching the thread; `/swarm` and
+  `/teamwork` launch three subagents; `/plan` and `/goal` guide the turn.
+- `/help` and `/exit`.
+- Sensitive actions ask for `[y/N]` confirmation; `plan` is read-only.
+- The app's encrypted keys (`apiKeysEnc`) are decrypted with `safeStorage` when
+  the CLI starts; you do not need to enter them again.
+
+#### Permissions and settings
+
+The CLI reads the same `settings.json` as the app (`%APPDATA%/Opengravity` on
+Windows, `~/.config/Opengravity` on Linux, `~/Library/Application Support/Opengravity`
+on macOS). Explicit flags win. `--sandbox` confines tools to the workspace and
+`--add-dir` adds extra roots.
+
+There is no prompt in headless mode: an action that needs approval is rejected.
+Use `--dangerously-skip-permissions`, a broader mode (`accept-edits`, `auto`
+with `--sandbox`) or rules in `settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": ["command(git)", "command(regex:^npm run (build|lint|test))"],
+    "deny": ["write_file(.env)"]
+  }
+}
+```
+
+The catalog includes editing, search, background commands, tests, workflows,
+memory, skills, `invoke_subagent` and `present_plan`; browser and Flow need
+Electron and are not registered in the CLI. `--json-schema` validates JSON with
+Ajv; it does not just parse it.
+
+### Tests
+
+```bash
+npm test
+```
+
+`pretest` compiles first, so the suite never tests an old `dist`. No new
+dependencies: it uses `node:test`, included with Node 22.
+
+It covers the agent engine, not the interface:
+
+| File | What it tests |
+|---|---|
+| `cron.test.mjs` | Five-field expressions, validation and next run |
+| `guardian.test.mjs` | A–M rubric severity and monitor modes |
+| `hooks.test.mjs` | Path rewriting, secret redaction, truncation and text hooks |
+| `skills.test.mjs` | Frontmatter, discovery and keeping the body out of the prompt |
+| `code-items.test.mjs` | Symbols in TypeScript, Python and Go |
+| `trajectory.test.mjs` | Snapshots, revert and persistence after restart |
+| `subagents.test.mjs` | Definitions, discovery and selective `kill` |
+| `plan-mode.test.mjs` | The four cycle phases and their gates |
+| `loop.test.mjs` | Gate, injection, pace monitor, parallelism and timeouts |
+
+### License
+
+MIT. See `LICENSE`.
+
+### Notice
+
+This project is for building your own software. If you use it as a reference
+for interoperability with another product, respect its licenses and do not copy
+its code, assets or trademarks.
+
+---
+
+<a id="spanish"></a>
+
+## Español
 
 IDE de escritorio con agentes **multi-proveedor**: la misma experiencia de
 asistente de código, funcionando con modelos locales o en la nube, sin atarte a
@@ -16,7 +370,7 @@ Aplicación Electron propia — no una extensión — con **Monaco** como editor
 > producto propietario. Ver `docs/analysis/` y `docs/design-tokens.md` para el
 > análisis de referencia que motivó las decisiones de diseño.
 
-## Arrancar
+### Arrancar
 
 Requiere **Node 22+**.
 
@@ -28,7 +382,7 @@ npm run app
 
 `npm run app` compila el motor TypeScript, empaqueta Monaco y abre la ventana.
 
-## Cuenta de Google y Flow
+### Cuenta de Google y Flow
 
 La generación de imágenes usa **Google Flow** con la sesión del navegador
 integrado. No hay clave de API ni coste adicional:
@@ -42,7 +396,7 @@ La sesión se guarda en la partición persistente del navegador integrado, así
 que solo hay que iniciar sesión una vez. Si no hay cuenta conectada, la
 herramienta devuelve las instrucciones en vez de abrir un login oculto.
 
-## Crear los ejecutables (Windows)
+### Crear los ejecutables (Windows)
 
 ```bash
 npm run dist
@@ -64,7 +418,7 @@ las fuentes vayan con su licencia y deja las **huellas SHA-256** en
 `release/SHA256SUMS.txt`. **Qué falta todavía y por qué: ver
 [`docs/estado.md`](docs/estado.md).**
 
-### Descargar sin sustos (y sin pagar un certificado)
+#### Descargar sin sustos (y sin pagar un certificado)
 
 Los ejecutables **no van firmados**: un certificado Authenticode cuesta dinero
 cada año y este proyecto es libre. Windows mostrará «editor desconocido» al
@@ -86,9 +440,9 @@ Si la huella no coincide, no lo instales: no es el fichero publicado. Y si
 prefieres no instalar nada, siempre puedes compilar desde el código
 (`npm run dist`) y comparar.
 
-## Qué incluye
+### Qué incluye
 
-### Agente
+#### Agente
 
 - **22 proveedores** de modelo con autodetección de modelos y claves pegables
   desde Ajustes (ver `docs/proveedores.md`); detección en paralelo con timeout,
@@ -126,7 +480,7 @@ prefieres no instalar nada, siempre puedes compilar desde el código
 - Skills inyectables, perfil local y servidores MCP como plugins, con
   **catálogo local** instalable desde Ajustes (sin cuentas, planes ni pagos)
 
-### Editor
+#### Editor
 
 - **Monaco** con tema oscuro propio y resaltado por lenguaje
 - **LSP**: completado, diagnósticos, ir a definición, renombrar, formatear
@@ -135,7 +489,7 @@ prefieres no instalar nada, siempre puedes compilar desde el código
   y No Project; la conversación guarda su proyecto aparte del workspace.
 - Pestañas, estado de guardado, `Ctrl+S`
 
-#### Servidores LSP
+##### Servidores LSP
 
 La app no empaqueta servidores externos. Para Python, Go y Rust hay que tenerlos
 instalados y visibles:
@@ -152,7 +506,7 @@ No se escanean discos en busca de estos binarios: una ruta que no esté en el
 entorno o en las rutas anteriores no se detecta. `lspServers` permite fijar el
 comando y los argumentos de cada servidor.
 
-### Resto del IDE
+#### Resto del IDE
 
 - **Terminal** integrada con `cd` persistente (`Ctrl+\``)
 - **Git**: rama, ficheros modificados, stage, commit y diff por fichero
@@ -162,7 +516,7 @@ comando y los argumentos de cada servidor.
 - **Interfaz bilingüe**: inglés y español, con detección del idioma del sistema y selector en Ajustes › Application
 - Búsqueda de conversaciones, sesiones persistentes en JSONL
 
-## Atajos
+### Atajos
 
 | Atajo | Acción |
 |---|---|
@@ -178,7 +532,7 @@ comando y los argumentos de cada servidor.
 | `F2` | Renombrar símbolo |
 | `Shift+Alt+F` | Formatear |
 
-## Estructura
+### Estructura
 
 ```
 app
@@ -209,7 +563,7 @@ app
 El renderer no tiene acceso a Node: todo pasa por IPC con nombres
 `dominio:accion`. El motor vive en el proceso principal.
 
-## CLI
+### CLI
 
 Para automatizar o depurar el motor sin interfaz:
 
@@ -223,7 +577,7 @@ npm run dev -- --mcp-command npx --mcp-arg -y \
 npm run dev -- --list-sessions
 ```
 
-### Headless (estilo `agy -p`)
+#### Headless (estilo `agy -p`)
 
 ```bash
 # Respuesta limpia por stdout; diagnósticos por stderr.
@@ -249,7 +603,7 @@ npm run dev -- -p "arregla el test" --effort high --mode accept-edits
 npm run dev -- -p "ejecuta los tests" --sandbox --mode auto
 ```
 
-### TUI
+#### TUI
 
 Sin encargo y con una terminal interactiva, `npm run dev` abre la TUI de chat
 a pantalla completa:
@@ -281,7 +635,7 @@ En la **TUI de línea**:
 - Las claves cifradas de la app (`apiKeysEnc`) se descifran con `safeStorage` al
   arrancar el CLI; no hace falta volver a escribirlas.
 
-### Permisos y ajustes
+#### Permisos y ajustes
 
 El CLI lee el mismo `settings.json` que la app (`%APPDATA%/Opengravity` en
 Windows, `~/.config/Opengravity` en Linux, `~/Library/Application Support/Opengravity`
@@ -306,18 +660,17 @@ workflows, memoria, skills, `invoke_subagent` y `present_plan`; navegador y Flow
 necesitan Electron y no se registran en el CLI. `--json-schema` valida el JSON
 con Ajv, no solo lo parsea.
 
-## Licencia
+### Licencia
 
 MIT. Ver `LICENSE`.
 
-## Aviso
+### Aviso
 
 Este proyecto es para construir software propio. Si lo usas como referencia para
 interoperar con otro producto, respeta sus licencias y no copies su código,
 assets ni marcas.
 
-
-## Tests
+### Tests
 
 ```bash
 npm test
