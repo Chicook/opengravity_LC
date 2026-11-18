@@ -855,6 +855,8 @@ async function changeWorkspace() {
 function clearThread() {
   els.threadInner.replaceChildren();
   ui.streamingEl = null;
+  ui.streamingText = '';
+  ui.huboHerramientasEnTurno = false;
   ui.toolGroup = null;
   ui.workWrapper = null;
   ui.subagentGroups = new Map();
@@ -3376,8 +3378,8 @@ function handleChatEvent(event) {
       if (!ui.streamingEl) addAssistantMessage();
 
       // Si hubo herramientas intermedias en este turno, asegurar separación de párrafo limpio
-      if (ui.streamingText.length > 0 && ui.huboHerramientasEnTurno) {
-        if (!ui.streamingText.endsWith('\n\n')) {
+      if (ui.huboHerramientasEnTurno) {
+        if (ui.streamingText.length > 0 && !ui.streamingText.endsWith('\n\n')) {
           ui.streamingText = ui.streamingText.trimEnd() + '\n\n';
         }
         ui.huboHerramientasEnTurno = false;
@@ -3794,6 +3796,7 @@ async function sendText(texto) {
   }
   ui.streamingEl = null;
   ui.streamingText = '';
+  ui.huboHerramientasEnTurno = false;
   return true;
 }
 
