@@ -9,6 +9,34 @@
   <a href="#spanish">Español</a>
 </p>
 
+## Screenshots · Capturas
+
+<p align="center"><strong>A real look at the app / Un vistazo real a la app</strong><br>
+Demo workspace: <code>opengravity-demo</code>. No personal data.</p>
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/01-chat.jpg" width="100%" alt="Opengravity agent workspace / espacio de trabajo del agente">
+      <br><sub>Agent workspace · Espacio de trabajo del agente</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/02-editor.jpg" width="100%" alt="Opengravity editor and agent / editor y agente">
+      <br><sub>Editor + agent · Editor + agente</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/03-settings.jpg" width="100%" alt="Opengravity interface settings / ajustes de interfaz">
+      <br><sub>Interface Layout · Disposición de la interfaz</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/04-project-selector.jpg" width="100%" alt="Opengravity project selector / selector de proyecto">
+      <br><sub>Project selector · Selector de proyecto</sub>
+    </td>
+  </tr>
+</table>
+
 <a id="english"></a>
 
 ## English
