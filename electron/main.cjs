@@ -466,60 +466,76 @@ const ENTORNO =
       'relativas al directorio de trabajo.'
     : `Entorno: ${process.platform}. Shell POSIX.`;
 
-const SYSTEM_PROMPT = ENTORNO + `
+const SYSTEM_PROMPT = `<identity>
+You are Antigravity, a powerful agentic AI assistant designed by the Google Deepmind team.
+You are working with a USER to solve their task.
+The USER will send you requests, which you must always prioritize addressing. User requests are enclosed within <USER_REQUEST> tags.
+</identity>
 
-Eres un asistente de programación integrado en un IDE.
+<environment>
+${ENTORNO}
+</environment>
 
-Reglas:
-- Inspecciona el código antes de afirmar cosas sobre él.
-- Cita rutas de fichero concretas cuando hables de código.
-- Si algo no lo has comprobado, dilo explícitamente en lugar de suponerlo.
-- Responde en el idioma del usuario.
+<guidelines>
+Follow these behavioral guidelines at all times:
+- Inspect code before making assertions about it. Cite concrete file paths when discussing code.
+- If you have not verified something directly, state it explicitly rather than making assumptions.
+- Responde siempre en el idioma del usuario (por defecto español si el usuario escribe en español).
+- Comprueba la premisa antes de trabajar (importante):
+  Muchas tareas afirman algo que puede no ser cierto ("los tests fallan", "esto está roto", "el bug está en X"). Compruébalo en los primeros pasos.
+  Si lo que observas contradice la premisa, PARA y dilo. No busques otra explicación ni supongas tests ocultos.
+- Eficiencia: cada llamada a herramienta cuenta. Cuando tengas suficiente información para responder, DEJA de usar herramientas y responde. No leas ficheros innecesarios.
+- Never defeat or bypass an access control, permission check, credential requirement, network/proxy restriction, or sandbox/environment boundary.
+</guidelines>
 
-Comprueba la premisa antes de trabajar (importante):
-- Muchas tareas afirman algo que puede no ser cierto: "los tests fallan", "esto
-  está roto", "el bug está en X". Compruébalo en los primeros pasos.
-- Si lo que observas contradice la premisa, PARA y dilo. No busques otra
-  explicación ni supongas tests ocultos, otra rama u otro fichero.
-- Un ejemplo real: te dicen que falla una suite, la ejecutas y pasa. La respuesta
-  correcta es "la suite pasa ahora mismo; ¿esperabas otro resultado?" y terminar.
-  No es seguir buscando un bug que no existe: eso quema pasos y no encuentra nada.
-- Vale más una respuesta de dos líneas diciendo que la premisa no se cumple, que
-  veinte pasos explorando una hipótesis que ya sabes que es falsa.
+<communication_style>
+- Keep your responses concise.
+- Format your responses in github-style markdown.
+- LaTeX math (KaTeX) is rendered inline with \\(...\\) or $...$, and display with \\[...\\] or $$...$$. Escape literal dollars in prose as \\$ (\\$100).
+- You MUST create clickable links for all files you reference. Use github style markdown links with the file:// scheme (e.g., [notes.md](file:///path/to/notes.md), or [notes.md](file:///path/to/notes.md#L10-L20) to link to specific lines). For Windows, use forward slashes for paths.
+</communication_style>
 
-Eficiencia (importante):
-- Cada llamada a herramienta cuesta un paso. Tienes un presupuesto limitado.
-- Cuando ya tengas suficiente información para responder, DEJA de usar herramientas y responde.
-- No leas ficheros que no necesites para la pregunta. No repitas una llamada que ya hiciste.
-- Si la pregunta es general ("¿qué es esto?", "analiza el proyecto"), bastan 2-4 lecturas: estructura, README y el fichero de entrada.
-- Si llevas muchas llamadas y aún no has respondido, para y contesta con lo que sepas, indicando qué falta.
+<messaging>
+You are connected to a messaging system where you may receive messages from: agents, background tasks, user-queued messages.
+
+## Receiving Messages
+You receive messages automatically at the start of each invocation. All messages are delivered in full directly into your context — no manual retrieval is needed.
+
+## Reactive Wakeup (No Polling Needed)
+The system automatically resumes your execution when:
+- A message arrives from a subagent or peer agent
+- A background task completes or sends you a notification
+- A user-queued message is ready to be dequeued
+
+This means you do NOT need to poll in a loop while waiting for messages or updates. After launching anything that performs work asynchronously, you may continue other work or simply stop by calling no more tools. The system will notify you when there is something to process.
+</messaging>
+
+<subagents>
+## Invoking Subagents
+Subagents can be invoked using the invoke_subagent tool. Standard available subagents:
+- self: Subagent that inherits the parent agent's full configuration including tools, system prompt, and model. Use when you need isolated execution with write permissions.
+- research: Research subagent with read-only tools for exploring the codebase, searching the web, and reading files. Delegate when broad code inspection is required without altering files.
+- browser: Browser subagent that operates the built-in browser to navigate and interact with live web pages (clicking, filling forms, scrolling, inspecting UI state).
+
+## Communicating with Another Agent
+Use the send_message tool to send a message to another agent by its conversation ID (returned by invoke_subagent). Do NOT use send_message to communicate with the user.
+</subagents>
+
+<artifacts>
+Artifacts are special markdown (.md) documents that you can create to present structured information to the user.
+# When to Use Artifacts
+- Extensive reports and analysis summaries
+- Persistent information you'll update over time (task lists, experiment logs)
+- Don't use artifacts for simple one-off answers or asking questions.
+After creating or updating an artifact, DO NOT re-summarize the artifact contents in your response to the user. Instead, point the user to the artifact and highlight only key open questions or decisions that need their input.
+</artifacts>
 
 Herramientas de código:
 - search_files busca una expresión regular en el proyecto. Úsala para encontrar dónde se usa algo antes de leer ficheros a ciegas.
 - edit_file reemplaza un fragmento exacto. Prefiérelo siempre a write_file: conserva el resto del fichero.
-- multi_replace hace VARIOS reemplazos acotados por rango en una sola llamada. Si vas a cambiar
-  el mismo fichero en más de un sitio —renombrar un parámetro, cambiar varias firmas, ajustar
-  varios tramos—, usa multi_replace y NO write_file. Reescribir el fichero entero para tocar
-  cuatro líneas es el camino más frágil: si te falta un byte, lo pierdes.
+- multi_replace hace VARIOS reemplazos acotados por rango en una sola llamada.
 - run_command ejecuta comandos (tests, build, git). Úsala para comprobar que tu cambio funciona.
-- write_file solo para ficheros nuevos o reescrituras completas deliberadas. Si la tarea dice
-  «en una sola operación» sobre un fichero existente, es multi_replace, no write_file.
-
-Navegador:
-- browser_open abre una URL en el navegador integrado y espera a que cargue.
-- browser_read devuelve el texto visible y el título de la página.
-- browser_snapshot lista los elementos interactivos con su selector CSS, texto y posición.
-- browser_click hace clic en un selector; browser_fill rellena un campo y browser_type escribe
-  con entrada real (para editores enriquecidos). browser_press pulsa teclas reales.
-- browser_select elige una opción de un <select>; browser_scroll y browser_hover mueven la página
-  o el ratón; browser_wait espera a que aparezca un selector, un texto o una URL.
-- browser_batch ejecuta varios de esos pasos en orden y se detiene en el primer error.
-- browser_eval ejecuta JavaScript arbitrario (sujeto a la política de Ajustes).
-- Respeta las reglas de red: los dominios denegados no se abren.
-
-Subagentes:
-- invoke_subagent lanza uno o varios en paralelo; send_message les corrige el rumbo mientras
-  trabajan (@children difunde a todos); manage_subagent los lista o los cancela.`;
+- write_file solo para ficheros nuevos o reescrituras completas deliberadas.`;
 
 /**
  * Instrucción extra según la política de revisión de planes.
@@ -4640,57 +4656,54 @@ ipcMain.handle('chat:send', async (event, payload) => {
   };
 
   // Preguntas al usuario: bloquea el turno hasta que responda.
-  const askUserTool = {
-    name: 'ask_user_question',
+  const askQuestionTool = {
+    name: 'ask_question',
     description:
-      'Hace una o varias preguntas al usuario con opciones concretas y espera su respuesta. ' +
-      'Úsala cuando falte una decisión que no puedes tomar tú y no hay una opción obviamente correcta.',
+      'Ask the user one or more multiple-choice questions, e.g. to clarify requirements, and wait for the answers. ' +
+      "Don't use it for trivial yes/no questions; ask those in plain text.",
     parameters: {
       type: 'object',
       properties: {
         questions: {
           type: 'array',
-          description:
-            'Las preguntas a hacer. Puedes hacer varias a la vez si son independientes.',
+          description: 'The questions to ask the user.',
           items: {
             type: 'object',
             properties: {
               question: {
                 type: 'string',
-                description:
-                  'La pregunta completa, terminada en signo de interrogación. No añadas ' +
-                  '"selecciona todas las que apliquen" ni texto parecido: lo pone la interfaz.',
+                description: "The question, without 'select all that apply' or similar; the UI adds that.",
               },
               header: {
                 type: 'string',
-                description: 'Etiqueta muy corta de la pregunta (máximo 16 caracteres).',
+                description: 'Short header label for the question (max 16 chars).',
               },
               options: {
                 type: 'array',
                 description:
-                  'De 2 a 4 opciones. No añadas una opción "Otro": la interfaz ya la pone. ' +
-                  'Si recomiendas una, ponla la primera y añade "(Recommended)" al final de ' +
-                  'su etiqueta, con una razón corta en recommendedReason.',
+                  "Answers to choose from, unnumbered and without an 'Other' option; the UI adds both. " +
+                  "Put a recommended answer first, prefixed with '(Recommended)'.",
                 items: {
-                  type: 'object',
-                  properties: {
-                    label: { type: 'string', description: 'Texto corto de la opción (1-5 palabras).' },
-                    description: {
-                      type: 'string',
-                      description: 'Qué significa esta opción y su contrapartida.',
+                  anyOf: [
+                    { type: 'string' },
+                    {
+                      type: 'object',
+                      properties: {
+                        label: { type: 'string' },
+                        description: { type: 'string' },
+                        recommendedReason: { type: 'string' },
+                      },
                     },
-                    recommendedReason: {
-                      type: 'string',
-                      description:
-                        'Una frase corta de por qué la recomiendas. Solo en la opción recomendada.',
-                    },
-                  },
-                  required: ['label', 'description'],
+                  ],
                 },
+              },
+              is_multi_select: {
+                type: 'boolean',
+                description: 'Whether the user can select several options.',
               },
               allowMultiple: {
                 type: 'boolean',
-                description: 'Si el usuario puede marcar varias opciones.',
+                description: 'Alias for is_multi_select.',
               },
             },
             required: ['question', 'options'],
@@ -4700,10 +4713,37 @@ ipcMain.handle('chat:send', async (event, payload) => {
       required: ['questions'],
     },
     async execute(args) {
-      const preguntas = Array.isArray(args?.questions) ? args.questions : [];
-      if (preguntas.length === 0) {
+      const crudas = Array.isArray(args?.questions) ? args.questions : [];
+      if (crudas.length === 0) {
         return { content: 'No hay preguntas que hacer.', isError: true };
       }
+
+      // Normaliza tanto strings de Antigravity como objetos con label/description
+      const preguntas = crudas.map((p) => {
+        const allowMultiple = Boolean(p.is_multi_select ?? p.isMultiSelect ?? p.allowMultiple);
+        const options = (Array.isArray(p.options) ? p.options : []).map((opt) => {
+          if (typeof opt === 'string') {
+            const esRec = /^\(recommended\)/i.test(opt.trim());
+            return {
+              label: opt.trim(),
+              description: '',
+              recommended: esRec,
+            };
+          }
+          return {
+            label: String(opt?.label ?? opt ?? ''),
+            description: String(opt?.description ?? ''),
+            recommended: Boolean(opt?.recommended ?? /recommended/i.test(String(opt?.label ?? ''))),
+            recommendedReason: opt?.recommendedReason ? String(opt.recommendedReason) : '',
+          };
+        });
+        return {
+          question: String(p.question ?? ''),
+          header: p.header ? String(p.header) : '',
+          allowMultiple,
+          options,
+        };
+      });
 
       const respuesta = await requestUserQuestion(mainWindow, preguntas);
       if (respuesta === null) {
@@ -4721,6 +4761,11 @@ ipcMain.handle('chat:send', async (event, payload) => {
 
       return { content: `Respuestas del usuario:\n${lineas.join('\n')}` };
     },
+  };
+
+  const askUserTool = {
+    ...askQuestionTool,
+    name: 'ask_user_question',
   };
 
   // Plan mode: el agente propone pasos y el usuario decide antes de ejecutar.
@@ -5067,7 +5112,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
   // -------------------------------------------------------------------------
 
   /**
-   * Herramienta con la que el agente se programa a sí mismo.
+   * Herramienta con la que el agente se programa a sí mismo (schedule / notify_user).
    *
    * Un aviso crea una tarea en el planificador de siempre, así que dispara igual que
    * las que crea el usuario: conversación nueva con el mensaje dentro.
@@ -5080,42 +5125,65 @@ ipcMain.handle('chat:send', async (event, payload) => {
     parameters: {
       type: 'object',
       properties: {
+        Prompt: {
+          type: 'string',
+          description: 'Message sent to you as a high-priority notification when the timer fires or the cron triggers.',
+        },
         message: {
           type: 'string',
           description:
             'El mensaje que te llegará cuando se dispare. Escríbelo como una instrucción ' +
             'para ti, no como un texto para el usuario: tiene que entenderse sin esta conversación.',
         },
+        DurationSeconds: {
+          type: 'number',
+          description: 'Seconds to wait for a one-shot timer. Mutually exclusive with CronExpression.',
+        },
         durationSeconds: {
           type: 'number',
           description:
             'Segundos a esperar para un aviso único. Mutuamente excluyente con cronExpression.',
         },
-        cronExpression: {
+        CronExpression: {
           type: 'string',
           description:
             'Expresión cron de 5 campos para un aviso recurrente, por ejemplo "*/5 * * * *" ' +
             'cada cinco minutos o "0 9 * * 1-5" a las 9 de lunes a viernes. ' +
             'Mutuamente excluyente con durationSeconds.',
         },
-        maxTriggers: {
+        cronExpression: {
+          type: 'string',
+        },
+        MaxIterations: {
           type: 'number',
           description: 'Cuántas veces puede dispararse antes de apagarse. Por defecto, sin límite.',
         },
-        isStanding: {
+        maxTriggers: {
+          type: 'number',
+        },
+        IsDaemon: {
           type: 'boolean',
           description:
             'true solo si es un trabajo independiente que debe seguir disparándose cuando ' +
             'esta tarea ya haya terminado. Por defecto false.',
         },
-        cancelOn: {
+        isStanding: {
+          type: 'boolean',
+        },
+        TimerCondition: {
           type: 'string',
           enum: ['never', 'any'],
           description:
             'Para un aviso único: "any" lo cancela si el usuario escribe antes de que ' +
-            'llegue. "never" (por defecto) lo deja llegar siempre. ' +
-            'La cancelación por remitente concreto aún no está disponible: no hay canal ' +
-            'de mensajes entrantes de subagentes.',
+            'llegue. "never" (por defecto) lo deja llegar siempre.',
+        },
+        cancelOn: {
+          type: 'string',
+          enum: ['never', 'any'],
+        },
+        ExactTiming: {
+          type: 'boolean',
+          description: 'Cron only. Set true only when the schedule must fire without jitter.',
         },
         jitterSeconds: {
           type: 'number',
@@ -5124,18 +5192,19 @@ ipcMain.handle('chat:send', async (event, payload) => {
             'programadas a la misma hora no salgan todas de golpe.',
         },
       },
-      required: ['message'],
     },
     async execute(args) {
-      const mensaje = String(args?.message ?? '').trim();
-      if (mensaje.length === 0) return { content: 'Falta el mensaje.', isError: true };
+      const mensaje = String(args?.Prompt ?? args?.prompt ?? args?.message ?? '').trim();
+      if (mensaje.length === 0) return { content: 'Falta el mensaje (Prompt).', isError: true };
 
-      const tieneDuracion = Number.isFinite(Number(args?.durationSeconds));
-      const tieneCron = typeof args?.cronExpression === 'string' && args.cronExpression.trim().length > 0;
+      const duracionVal = args?.DurationSeconds ?? args?.durationSeconds;
+      const tieneDuracion = Number.isFinite(Number(duracionVal));
+      const cronVal = args?.CronExpression ?? args?.cronExpression;
+      const tieneCron = typeof cronVal === 'string' && cronVal.trim().length > 0;
 
       if (tieneDuracion === tieneCron) {
         return {
-          content: 'Da exactamente uno de durationSeconds o cronExpression.',
+          content: 'Da exactamente uno de DurationSeconds o CronExpression.',
           isError: true,
         };
       }
@@ -5143,8 +5212,9 @@ ipcMain.handle('chat:send', async (event, payload) => {
       const id = `n${Date.now().toString(36)}`;
 
       if (tieneDuracion) {
-        const segundos = Math.max(5, Math.min(30 * 24 * 3600, Number(args.durationSeconds)));
-        const cancelOn = typeof args?.cancelOn === 'string' ? args.cancelOn.trim() : 'never';
+        const segundos = Math.max(5, Math.min(30 * 24 * 3600, Number(duracionVal)));
+        const condicion = String(args?.TimerCondition ?? args?.timerCondition ?? args?.cancelOn ?? 'never').trim();
+        const cancelOn = condicion.length > 0 ? condicion : 'never';
 
         const aviso = {
           id,
@@ -5154,7 +5224,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
           nextRunAt: new Date(Date.now() + segundos * 1000).toISOString(),
           triggers: 0,
           maxTriggers: 1,
-          cancelOn: cancelOn.length > 0 ? cancelOn : 'never',
+          cancelOn,
           createdBy: 'agent',
           enabled: true,
           lastRunAt: null,
@@ -5175,7 +5245,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
 
       let compilado;
       try {
-        compilado = compilarCron(args.cronExpression);
+        compilado = compilarCron(cronVal);
       } catch (error) {
         return { content: `Expresión cron inválida: ${error.message}`, isError: true };
       }
@@ -5188,7 +5258,10 @@ ipcMain.handle('chat:send', async (event, payload) => {
         };
       }
 
-      const jitter = Math.max(0, Math.min(600, Number(args?.jitterSeconds ?? 0) || 0));
+      const exact = args?.ExactTiming === true || args?.exactTiming === true;
+      const jitter = exact ? 0 : Math.max(0, Math.min(600, Number(args?.jitterSeconds ?? 0) || 0));
+      const maxIter = Number(args?.MaxIterations ?? args?.maxIterations ?? args?.maxTriggers);
+      const isDaemon = args?.IsDaemon === true || args?.isDaemon === true || args?.isStanding === true;
 
       const recurrente = {
         id,
@@ -5197,7 +5270,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
         cron: compilado.expresion,
         nextRunAt: proxima.toISOString(),
         triggers: 0,
-        maxTriggers: Number.isFinite(Number(args?.maxTriggers)) ? Number(args.maxTriggers) : null,
+        maxTriggers: Number.isFinite(maxIter) ? maxIter : null,
         jitterSeconds: jitter,
         createdBy: 'agent',
         enabled: true,
@@ -5213,11 +5286,21 @@ ipcMain.handle('chat:send', async (event, payload) => {
         content:
           `Aviso recurrente programado (${id}): ${compilado.expresion}. ` +
           `${describirCron(compilado.expresion)}. ` +
-          (args?.isStanding === true
+          (isDaemon
             ? 'Es un trabajo independiente: seguirá aunque termine la tarea actual.'
             : 'Se apagará cuando la tarea actual termine si no lo mantienes.'),
       };
     },
+  };
+
+  const scheduleTool = {
+    ...notifyUserTool,
+    name: 'schedule',
+    description:
+      'Schedule a one-shot timer (DurationSeconds) or a recurring cron job (CronExpression) that notifies you via Prompt. ' +
+      'Set IsDaemon only for a cron that should keep firing after the current task is done. ' +
+      'Set ExactTiming only when a cron must fire at the exact wall-clock time without jitter. ' +
+      'Use the manage_task tool to cancel active schedules, and never use a shell sleep command as a timer.',
   };
 
   /*
@@ -5254,22 +5337,37 @@ ipcMain.handle('chat:send', async (event, payload) => {
   const invokeSubagentTool = {
     name: 'invoke_subagent',
     description:
-      'Lanza uno o varios subagentes en paralelo. Devuelve el control al instante: los ' +
-      'resúmenes llegan como mensajes del sistema en los siguientes pasos, y mientras ' +
-      'tanto puedes usar send_message y manage_subagent. Cada uno tiene su propio contexto. ' +
-      'Por defecto solo pueden leer. ' +
-      'IMPORTANTE: el subagente no comparte tu contexto. En `prompt` dale la RUTA COMPLETA ' +
-      'de cada fichero relativa al directorio de trabajo (por ejemplo ' +
-      '`prueba-nucleo/src/carrito.mjs`, no `src/carrito.mjs`) y dile exactamente qué debe ' +
-      'devolverte. Si la ruta es ambigua, el subagente fallará y gastará pasos buscándola. ' +
-      'Para reutilizar una definición guardada, pasa `definition` (su nombre) y, si quieres, ' +
-      '`prompt`; sin prompt se usa la descripción de la definición.',
+      'Launch a subagent. It runs in the background with its own prompt and sends you a message when it completes or needs guidance; there is no need to poll. ' +
+      'Standard available types include "self" (inherits full tools), "research" (read-only codebase/web survey), and "browser" (navigates web pages). ' +
+      'Supports either direct arguments (TypeName, Role, Prompt, Model, Workspace) or multiple parallel subagents via subagents array.',
     parameters: {
       type: 'object',
       properties: {
+        TypeName: {
+          type: 'string',
+          description: "Type name of the subagent to invoke: 'self', 'research', 'browser', or a custom subagent name.",
+        },
+        Role: {
+          type: 'string',
+          description: "A 2-5 word description of the subagent's role (e.g. 'Codebase Researcher').",
+        },
+        Prompt: {
+          type: 'string',
+          description: 'A clear, actionable task description for the subagent.',
+        },
+        Model: {
+          type: 'string',
+          enum: ['inherit', 'flash_lite', 'flash', 'pro'],
+          description: "Model for the subagent: 'inherit' (default uses parent model), 'flash_lite', 'flash', 'pro'.",
+        },
+        Workspace: {
+          type: 'string',
+          enum: ['inherit', 'branch', 'share'],
+          description: "Workspace mode: 'inherit' (default) or 'share' (isolated worktree).",
+        },
         subagents: {
           type: 'array',
-          description: 'Los subagentes a lanzar. Se ejecutan a la vez.',
+          description: 'Los subagentes a lanzar en paralelo.',
           items: {
             type: 'object',
             properties: {
@@ -5303,24 +5401,45 @@ ipcMain.handle('chat:send', async (event, payload) => {
               },
               workspace: {
                 type: 'string',
-                enum: ['inherit', 'share'],
+                enum: ['inherit', 'share', 'branch'],
                 description:
                   'inherit (por defecto): trabaja en tu mismo directorio. share: trabaja en un ' +
-                  'git worktree aislado, con su propia rama, y sus cambios no tocan tu rama. ' +
-                  'Úsalo cuando varios subagentes con escritura puedan pisarse. Si el proyecto ' +
-                  'no es un repo git, se queda en inherit.',
+                  'git worktree aislado, con su propia rama, y sus cambios no tocan tu rama.',
               },
             },
             required: [],
           },
         },
       },
-      required: ['subagents'],
     },
     async execute(args, ctx) {
-      const pedidos = Array.isArray(args?.subagents) ? args.subagents.slice(0, 5) : [];
+      let pedidos = [];
+      if (Array.isArray(args?.subagents) && args.subagents.length > 0) {
+        pedidos = args.subagents.slice(0, 5);
+      } else {
+        const typeName = String(
+          args?.TypeName ?? args?.typeName ?? args?.definition ?? args?.name ?? ''
+        ).trim();
+        const prompt = String(args?.Prompt ?? args?.prompt ?? '').trim();
+        const role = String(args?.Role ?? args?.role ?? (typeName.length > 0 ? typeName : 'subagent')).trim();
+        const ws = String(args?.Workspace ?? args?.workspace ?? 'inherit').trim();
+        const model = String(args?.Model ?? args?.model ?? 'inherit').trim();
+
+        if (typeName.length > 0 || prompt.length > 0) {
+          pedidos = [{
+            name: typeName.length > 0 ? typeName : 'subagent',
+            definition: typeName.length > 0 ? typeName : undefined,
+            role,
+            prompt,
+            workspace: ws === 'branch' ? 'share' : ws,
+            model,
+            allowWrites: typeName.toLowerCase() === 'self',
+          }];
+        }
+      }
+
       if (pedidos.length === 0) {
-        return { content: 'No hay subagentes que lanzar.', isError: true };
+        return { content: 'No hay subagentes que lanzar. Especifica TypeName, Role y Prompt.', isError: true };
       }
       if (
         !pedidos.every(
@@ -5373,7 +5492,10 @@ ipcMain.handle('chat:send', async (event, payload) => {
         const nombre = String(definicion?.name ?? sub?.name ?? `subagente-${indice + 1}`);
         const rol = String(definicion?.role ?? sub?.role ?? 'investigador');
         const tarea = String(sub?.prompt ?? definicion?.description ?? '').trim();
-        const permiteEscritura = !soloLectura && (sub?.allowWrites === true || definicion?.allowWrites === true);
+        const esSelf = nombre.toLowerCase() === 'self' || definicion?.name === 'self';
+        const esBrowser = nombre.toLowerCase() === 'browser' || definicion?.name === 'browser';
+        const esResearch = nombre.toLowerCase() === 'research' || definicion?.name === 'research';
+        const permiteEscritura = !soloLectura && (esSelf || sub?.allowWrites === true || definicion?.allowWrites === true);
 
         if (tarea.length === 0) {
           return { nombre, rol, resumen: '', error: 'sin tarea' };
@@ -5381,14 +5503,25 @@ ipcMain.handle('chat:send', async (event, payload) => {
 
         const permiteMcp = !soloLectura && (sub?.allowMcp === true || definicion?.allowMcp === true);
 
-        let disponibles = permiteEscritura ? [...deLectura, ...deEscritura] : deLectura;
-        if (permiteMcp) disponibles = [...disponibles, ...mcpToolDefs];
+        let disponibles;
+        if (esBrowser) {
+          disponibles = makeBrowserTools(() => state.prefs, (message, detail) =>
+            askPermission(mainWindow, message, detail),
+          );
+        } else if (esResearch) {
+          disponibles = deLectura;
+        } else {
+          disponibles = permiteEscritura ? [...deLectura, ...deEscritura] : deLectura;
+        }
+
+        if (permiteMcp && !esBrowser) disponibles = [...disponibles, ...mcpToolDefs];
         // El grant solo puede quitar herramientas de las ya permitidas por nivel.
         disponibles = subagentes.filtrarPorGrant(disponibles, definicion?.tools);
 
         const grant = definicion?.tools ?? [];
         const permiteSubagentes =
           !soloLectura &&
+          !esBrowser &&
           (sub?.allowSubagents === true || definicion?.allowSubagents === true) &&
           (grant.length === 0 || grant.includes('invoke_subagent'));
 
@@ -5817,7 +5950,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
     getRestringir: () => state.prefs.restrictToWorkspace === true,
   };
 
-  const guardedTools = [planTool, askUserTool, enterPlanTool, invokeSubagentTool, defineSubagentTool, manageSubagentTool, makeSendMessageTool(), notifyUserTool, runTestsTool, browserSubagent, ...baseTools].map((tool) =>
+  const guardedTools = [planTool, askQuestionTool, askUserTool, enterPlanTool, invokeSubagentTool, defineSubagentTool, manageSubagentTool, makeSendMessageTool(), scheduleTool, notifyUserTool, runTestsTool, browserSubagent, ...baseTools].map((tool) =>
     conHooks(conMonitorDeSeguridad(guardTool(tool, preset, prefs, () => mainWindow), {
       modo: modoMonitor,
       ...(clasificarConModelo ? { clasificar: clasificarConModelo } : {}),
@@ -6173,6 +6306,10 @@ ipcMain.handle('chat:send', async (event, payload) => {
       send({ type: 'system_prompt', text: systemPrompt });
     }
 
+    const entradaFormateada = input.includes('<USER_REQUEST>')
+      ? input
+      : `<USER_REQUEST>\n${input}\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nThe current local time is: ${new Date().toISOString()}.\n</ADDITIONAL_METADATA>`;
+
     const result = await runAgent(
       {
         provider,
@@ -6300,7 +6437,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
           send(payload);
         },
       },
-      input,
+      entradaFormateada,
       { cwd: state.cwd, signal: controller.signal },
     );
 
@@ -6330,7 +6467,9 @@ ipcMain.handle('chat:send', async (event, payload) => {
     // interfaz. Se lanza después de «final» para no retrasar la respuesta.
     if (initialCount === 0 && state.sessionId && state.prefs.saveHistory !== false) {
       const sessionId = state.sessionId;
-      const primerUsuario = result.messages.find((m) => m.role === 'user')?.content ?? '';
+      const rawUsuario = result.messages.find((m) => m.role === 'user')?.content ?? '';
+      const matchRequest = rawUsuario.match(/<USER_REQUEST>([\s\S]*?)<\/USER_REQUEST>/);
+      const primerUsuario = matchRequest ? matchRequest[1].trim() : rawUsuario;
       const ultimoAsistente =
         [...result.messages].reverse().find((m) => m.role === 'assistant' && m.content)?.content ?? '';
       let providerTitulo;
