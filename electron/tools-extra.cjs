@@ -2317,6 +2317,51 @@ function makeViewCodeItemTool(getCwd) {
   };
 }
 
+/**
+ * Esquema de argumentos de un workflow.
+ *
+ * Antigravity valida `Args` contra el esquema de `workflow.json`. Aceptamos las
+ * claves habituales (`inputSchema`, `schema`, `argsSchema`) y también `args`,
+ * que puede ser el esquema completo o el mapa de propiedades.
+ */
+function esquemaDeWorkflow(meta) {
+  if (!meta || typeof meta !== 'object') return null;
+  for (const clave of ['inputSchema', 'InputSchema', 'schema', 'Schema', 'argsSchema', 'ArgsSchema']) {
+    const valor = meta[clave];
+    if (valor && typeof valor === 'object') return valor;
+  }
+  const args = meta.args ?? meta.Args;
+  if (args && typeof args === 'object') {
+    if (args.type || args.properties || args.required) return args;
+    return { type: 'object', properties: args };
+  }
+  return null;
+}
+
+/** Valida los argumentos y devuelve un error legible, o `null` si son válidos. */
+function validarArgsWorkflow(meta, args) {
+  const esquema = esquemaDeWorkflow(meta);
+  if (!esquema) return null;
+
+  let Ajv;
+  try {
+    Ajv = require('ajv');
+  } catch {
+    return 'no se pudo cargar el validador de esquemas';
+  }
+
+  try {
+    const ajv = new Ajv({ allErrors: true, strict: false });
+    const validar = ajv.compile(esquema);
+    if (validar(args ?? {})) return null;
+    return (validar.errors ?? [])
+      .map((error) => `${error.instancePath || '/'} ${error.message || 'inválido'}`)
+      .join('; ');
+  } catch (error) {
+    return `esquema de workflow inválido: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
 /** Herramienta: ejecutar un workflow del proyecto. */
 function makeRunWorkflowTool(getCwd, ejecutarComando) {
   return {
@@ -2408,6 +2453,7 @@ function makeRunWorkflowTool(getCwd, ejecutarComando) {
       let rutaScript;
       let lenguaje;
       let temporal = null;
+      let metadatos = {};
 
       if (enLinea.length > 0) {
         lenguaje = String(args.language ?? 'node');
@@ -2440,6 +2486,21 @@ function makeRunWorkflowTool(getCwd, ejecutarComando) {
 
         rutaScript = encontrado;
         lenguaje = encontrado.endsWith('.py') ? 'python' : 'node';
+
+        try {
+          metadatos = JSON.parse(
+            await fsp.readFile(pathMod.join(carpeta, `${nombre}.workflow.json`), 'utf8'),
+          );
+        } catch {
+          // Sin metadatos no hay esquema que validar.
+        }
+        const errorArgs = validarArgsWorkflow(metadatos, args.args ?? {});
+        if (errorArgs) {
+          return {
+            content: `Argumentos inválidos para el workflow "${nombre}": ${errorArgs}`,
+            isError: true,
+          };
+        }
       }
 
       // Los argumentos viajan en un fichero: así no hay que escapar nada en Windows.
@@ -2459,7 +2520,9 @@ function makeRunWorkflowTool(getCwd, ejecutarComando) {
       const resultado = await ejecutarComando({
         command: comando,
         cwd,
-        waitDurationSeconds: Number(args.waitMillis ?? 10000),
+        waitDurationSeconds: Number(
+          args.waitMillis ?? metadatos.workflowWaitMillis ?? metadatos.WorkflowWaitMillis ?? 10000,
+        ),
         taskName: `Workflow ${nombre || lenguaje}`,
       }, ctx);
 
@@ -2502,6 +2565,8 @@ module.exports = {
   makeEditNotebookTool,
   makeGenerateImageTool,
   makeRunWorkflowTool,
+  validarArgsWorkflow,
+  esquemaDeWorkflow,
   makeRunExtensionCodeTool,
   isUrlAllowed,
   makeFetchUrlTool,

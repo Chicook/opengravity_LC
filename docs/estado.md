@@ -3,7 +3,7 @@
 **No al 100 %: es todo lo que se puede demostrar en esta máquina.**
 Todo lo que estaba abierto tiene prueba: acceso a ficheros confinado, paridad
 visual medida contra el original, historial de git limpio, un encargo completo
-ejecutado (tres ficheros, terminal, subagente y revert) y 567 pruebas en verde.
+ejecutado (tres ficheros, terminal, subagente y revert) y 588 pruebas en verde.
 La firma no se paga: se publica la huella SHA-256 de cada ejecutable.
 
 Lo único que **no** se ha probado es macOS y Linux: el desarrollo y toda la
@@ -24,17 +24,17 @@ Comprueba que los ejecutables lleven dentro el código de hoy (comparando
 compilado. Hoy responde:
 
 ```
-OK   el asar lleva los 224 ficheros del código, idénticos byte a byte (más 38 .d.ts ignorados: son tipos)
-OK   release/Opengravity Setup 0.1.0.exe (93765 KB) es posterior al asar
-AVISO release/Opengravity Setup 0.1.0.exe: SIN firma Authenticode (Windows dirá «editor desconocido»)
-OK   release/Opengravity 0.1.0.exe (85726 KB) es posterior al asar
-AVISO release/Opengravity 0.1.0.exe: SIN firma Authenticode (Windows dirá «editor desconocido»)
+OK   el asar lleva los 230 ficheros del código, idénticos byte a byte (más 38 .d.ts ignorados: son tipos)
+OK   release/Opengravity-Setup-0.2.0.exe (96597 KB) es posterior al asar
+AVISO release/Opengravity-Setup-0.2.0.exe: SIN firma Authenticode (Windows dirá «editor desconocido»)
+OK   release/Opengravity-0.2.0.exe (88397 KB) es posterior al asar
+AVISO release/Opengravity-0.2.0.exe: SIN firma Authenticode (Windows dirá «editor desconocido»)
 OK   7 fuentes con assets/fonts/OFL.txt al lado
 OK   compilado: dist/index.js
 OK   compilado: dist/agent/loop.js
 ```
 
-Con eso el veredicto es **«entregable, con lo avisado a la vista»**: los 224
+Con eso el veredicto es **«entregable, con lo avisado a la vista»**: los 230
 ficheros del código del paquete coinciden byte a byte con el disco. Lo que queda
 en rojo es la firma, que no es código.
 
@@ -45,16 +45,17 @@ en rojo es la firma, que no es código.
 | Cosa | Cómo se comprobó |
 |---|---|
 | Compila | `npm run build`, sin errores |
-| Pruebas | 567 casos, 0 fallos (2026-11-17) |
-| El paquete lleva el código actual | 224 ficheros comparados byte a byte contra el disco (`npm run verify:release`) |
+| Pruebas | 588 casos, 0 fallos (2026-11-19) |
+| El paquete lleva el código actual | 230 ficheros comparados byte a byte contra el disco (`npm run verify:release`) |
+| Actualizador | `electron-updater` con comprobación de versión, progreso y verificación SHA-256 |
 | El cierre mata sus procesos | Un hijo real de 10 minutos murió y se confirmó antes de devolver el control, en 86 ms |
 | El nivel de pensamiento llega al proveedor | Petición `fetch` interceptada: `reasoning_effort` aparece en el cuerpo real |
 | El contexto sigue al modelo | llama3.2:8k 384 000 → 24 000 caracteres; gemini-2.5-pro → 3 000 000 |
 | Las fuentes tienen licencia | Leída la tabla de nombres dentro de cada `.woff2`: SIL OFL 1.1; KaTeX viaja con su `LICENSE` (MIT) |
 | La arena de procesos es real | Job Object de Windows, arranque con `CREATE_SUSPENDED` |
 | No se sirven ficheros fuera de la app | `protocol-path.cjs` + 6 pruebas |
-| Un encargo completo funciona | 3 ficheros, terminal con salida real, subagente y revert (2026-11-17) |
-| El binario empaquetado arranca y funciona | `release/win-unpacked/Opengravity.exe`: árbol de ficheros, Monaco, xterm, KaTeX y ajustes, sin errores (2026-11-17) |
+| Un encargo completo funciona | 3 ficheros, terminal con salida real, subagente y revert (2026-11-19) |
+| El binario empaquetado arranca y funciona | `release/win-unpacked/Opengravity.exe`: árbol de ficheros, Monaco, xterm, KaTeX y ajustes, sin errores (2026-11-19) |
 
 ---
 
@@ -130,7 +131,7 @@ mismos mensajes y fechas) quitando esas rutas de todos los commits:
 Lo que cambia para ti: **todos los hashes son nuevos**. Si tenías un clon, hay
 que volver a clonar; para eso está el bundle.
 
-### 4. El encargo completo también se ha ejecutado (2026-11-17)
+### 4. El encargo completo también se ha ejecutado (2026-11-19)
 
 Primero un turno suelto (que destapó el `ReferenceError` de `PROVIDER_CATALOG`).
 Después el encargo largo, en un workspace desechable y con proveedor real:
@@ -183,7 +184,7 @@ modelo (`electron/personas.cjs`, inyectado desde `buildPromptExtras`), tanto en 
 turno como en el sub-turno del planificador. Las tarjetas miden 305×114 frente a
 306×112. Sus `suggestions[]` con plugins oficiales no se copian.
 
-### 6. Orquestación: qué había, qué se ha cerrado (2026-11-17)
+### 6. Orquestación: qué había, qué se ha cerrado (2026-11-19)
 
 La lista anterior era **falsa en su primera línea**: los subagentes ya iban en
 paralelo (`Promise.all`, máximo 5 por llamada, presupuesto compartido, worktree

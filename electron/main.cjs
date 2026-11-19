@@ -42,6 +42,10 @@ const {
   makeRunExtensionCodeTool,
   makeBrowserTools,
 } = require('./tools-extra.cjs');
+const sshRemoto = require('./ssh.cjs');
+const { RemoteProject } = require('./remote-project.cjs');
+const sshfs = require('./sshfs.cjs');
+const remoteProject = new RemoteProject(sshRemoto.workspace);
 const { diffLines, compactDiff } = require('./diff.cjs');
 const { conMonitorDeSeguridad } = require('./guardian.cjs');
 const {
@@ -74,6 +78,7 @@ const { AlmacenDeMemoria, makeMemoryTool, bloqueDeMemorias } = require('./memory
 const { guardarEnCola, escribirAtomico, serializar } = require('./settings-store.cjs');
 const { descifrarClaves, prepararPrefsParaDisco } = require('./secret-store.cjs');
 const { puedeRenombrarAutomatico } = require('./title-policy.cjs');
+const updater = require('./updater.cjs');
 const {
   nombreProyecto: nombreDelProyecto,
   normalizarProyectos,
@@ -122,6 +127,59 @@ async function getEngine() {
   };
 
   return engine;
+}
+
+/** Ejecuta un comando en el host remoto para el modo directo. */
+function makeRemoteCommandTool() {
+  return {
+    name: 'run_command',
+    description:
+      'Ejecuta un comando de shell en el host SSH remoto. El directorio de trabajo ' +
+      'es la carpeta remota configurada. Devuelve stdout, stderr y el código de salida.',
+    parameters: {
+      type: 'object',
+      properties: {
+        command: { type: 'string', description: 'Línea de comandos exacta.' },
+        cwd: { type: 'string', description: 'Directorio relativo a la raíz remota.' },
+        waitDurationSeconds: { type: 'number', description: 'Timeout en segundos.' },
+      },
+      required: ['command'],
+    },
+    async execute(args) {
+      try {
+        const cfg = sshRemoto.configuracion(state.prefs);
+        await sshRemoto.workspace.conectar(cfg);
+        const cwd = path.posix.resolve(cfg.remotePath, String(args?.cwd ?? '.'));
+        const timeoutMs = Math.max(1000, Number(args?.waitDurationSeconds ?? 30) * 1000);
+        const salida = await sshRemoto.workspace.exec(String(args?.command ?? ''), cwd, timeoutMs);
+        const texto = [salida.stdout, salida.stderr].filter(Boolean).join('\n').trim();
+        return {
+          content: texto || `(sin salida; código ${salida.code})`,
+          isError: Number(salida.code) !== 0,
+          meta: { command: args?.command, remote: true },
+        };
+      } catch (error) {
+        return { content: `Error SSH: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+      }
+    },
+  };
+}
+
+/** Ejecuta un comando en el host y devuelve el mismo formato que run_command. */
+async function ejecutarComandoRemoto(command, cwd = null, timeoutMs = 30000) {
+  const cfg = sshRemoto.configuracion(state.prefs);
+  await sshRemoto.workspace.conectar(cfg);
+  const salida = await sshRemoto.workspace.exec(
+    String(command),
+    cwd ? path.posix.resolve(cfg.remotePath, String(cwd)) : cfg.remotePath,
+    timeoutMs,
+  );
+  const texto = [salida.stdout, salida.stderr].filter(Boolean).join('\n').trim();
+  return {
+    content: texto || `(sin salida; código ${salida.code})`,
+    isError: Number(salida.code) !== 0,
+    code: salida.code,
+  };
 }
 
 /**
@@ -336,6 +394,25 @@ async function loadSettings() {
 
       state.prefs = prefs;
 
+      if (state.cwd && state.cwd.includes(`${path.sep}remote-workspaces${path.sep}`)) {
+        try {
+          const cfg = sshRemoto.configuracion(state.prefs);
+          await sshRemoto.workspace.conectar(cfg);
+          const mirror = await remoteProject.abrirExistente(cfg, app.getPath('userData'));
+          if (mirror) {
+            state.remote = {
+              host: cfg.host,
+              port: cfg.port,
+              user: cfg.user,
+              remotePath: cfg.remotePath,
+              label: `ssh://${cfg.user}@${cfg.host}:${cfg.port}${cfg.remotePath}`,
+            };
+          }
+        } catch {
+          // Sin conexión el espejo sigue disponible en local.
+        }
+      }
+
       // Migración única: un settings.json antiguo con claves en claro se
       // reescribe cifrado. Sin cifrado disponible no se toca el disco.
       if (clavesEnClaro && !parsed.prefs.apiKeysEnc && safeStorage.isEncryptionAvailable()) {
@@ -372,6 +449,7 @@ async function saveSettings() {
     lastWorkspace: state.cwd ?? previo.lastWorkspace ?? null,
     project: state.project ?? null,
     projects: state.projects,
+    remote: state.remote ?? null,
     prefs: prefsParaDisco,
   };
 
@@ -1560,6 +1638,42 @@ ipcMain.handle('git:tracking', async () => {
   return { ok: true, ahead, behind, upstream, remote, detached: line.includes('HEAD detached') };
 });
 
+/**
+ * Pull requests del repositorio remoto. Solo lectura.
+ */
+ipcMain.handle('github:pulls', async () => {
+  const remote = await runGit(['remote', 'get-url', 'origin']);
+  if (!remote.ok) return { ok: false, error: 'este proyecto no tiene remoto origin' };
+  const match = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?$/i.exec(remote.stdout.trim());
+  if (!match) return { ok: false, error: 'el remoto no es de github.com' };
+  const owner = match[1];
+  const repo = match[2];
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'Opengravity',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+  if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=all&sort=updated&direction=desc&per_page=20`,
+      { headers },
+    );
+    if (!response.ok) return { ok: false, error: `GitHub respondió ${response.status}` };
+    const data = await response.json();
+    return {
+      ok: true,
+      repo: `${owner}/${repo}`,
+      pulls: (Array.isArray(data) ? data : []).map((pr) => ({
+        number: pr.number, title: pr.title, state: pr.state, draft: pr.draft === true,
+        url: pr.html_url, author: pr.user?.login ?? '', head: pr.head?.ref ?? '', base: pr.base?.ref ?? '',
+      })),
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
 /** Resuelve un conflicto aceptando una de las dos versiones. */
 ipcMain.handle('git:resolve', async (_event, filePath, side) => {
   const flag = side === 'ours' ? '--ours' : '--theirs';
@@ -1905,6 +2019,120 @@ ipcMain.handle('terminal:pty-status', async () => ({
   sesiones: [...ptySesiones.keys()],
 }));
 
+/** Prueba la configuración SSH y conecta el cliente SFTP. */
+ipcMain.handle('ssh:test', async () => {
+  try {
+    const cfg = sshRemoto.configuracion(state.prefs);
+    await sshRemoto.workspace.conectar(cfg);
+    const entries = await sshRemoto.workspace.listar(cfg.remotePath);
+    return { ok: true, host: cfg.host, port: cfg.port, user: cfg.user, path: cfg.remotePath, entries: entries.length };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('ssh:open-project', async () => {
+  try {
+    const cfg = sshRemoto.configuracion(state.prefs);
+    await sshRemoto.workspace.conectar(cfg);
+    const mirror = await remoteProject.abrir(cfg, app.getPath('userData'));
+    state.cwd = mirror.root;
+    state.project = mirror.root;
+    state.remote = {
+      host: cfg.host, port: cfg.port, user: cfg.user, remotePath: cfg.remotePath,
+      label: `ssh://${cfg.user}@${cfg.host}:${cfg.port}${cfg.remotePath}`,
+    };
+    registrarRaiz(state.cwd);
+    registrarProyecto(state.cwd);
+    terminalCwd = null;
+    await cerrarPlugins();
+    await actualizarProyectoDeSesion(state.project);
+    await saveSettings();
+    return { ok: true, cwd: state.cwd, project: state.project, remote: state.remote };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('ssh:list', async (_event, remotePath) => {
+  try {
+    const cfg = sshRemoto.configuracion(state.prefs);
+    await sshRemoto.workspace.conectar(cfg);
+    return { ok: true, path: remotePath || cfg.remotePath, entries: await sshRemoto.workspace.listar(remotePath || cfg.remotePath) };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('ssh:read', async (_event, remotePath) => {
+  try {
+    const cfg = sshRemoto.configuracion(state.prefs);
+    await sshRemoto.workspace.conectar(cfg);
+    return { ok: true, path: remotePath, content: await sshRemoto.workspace.leer(remotePath) };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('ssh:exec', async (_event, payload) => {
+  try {
+    const cfg = sshRemoto.configuracion(state.prefs);
+    await sshRemoto.workspace.conectar(cfg);
+    const cwd = path.posix.resolve(cfg.remotePath, String(payload?.cwd ?? '.'));
+    const result = await sshRemoto.workspace.exec(String(payload?.command ?? ''), cwd, Number(payload?.timeoutMs ?? 30000));
+    return { ok: true, ...result };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('ssh:write', async (_event, payload) => {
+  try {
+    const cfg = sshRemoto.configuracion(state.prefs);
+    await sshRemoto.workspace.conectar(cfg);
+    return await sshRemoto.workspace.escribir(String(payload?.path ?? ''), String(payload?.content ?? ''));
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('ssh:disconnect', async () => {
+  if (state.remote?.direct) await sshfs.desmontar(state.remote.drive);
+  remoteProject.cerrar();
+  state.remote = null;
+  await sshRemoto.workspace.cerrar();
+  return { ok: true };
+});
+
+/** Monta el proyecto remoto como unidad directa, sin espejo. */
+ipcMain.handle('ssh:mount-project', async () => {
+  try {
+    if (state.remote?.direct && state.remote.drive) {
+      return { ok: true, cwd: state.cwd, project: state.project, remote: state.remote };
+    }
+    const cfg = sshRemoto.configuracion(state.prefs);
+    const montado = await sshfs.montar(cfg);
+    if (!montado.ok) return montado;
+    remoteProject.cerrar();
+    state.cwd = montado.path;
+    state.project = montado.path;
+    state.remote = {
+      host: cfg.host, port: cfg.port, user: cfg.user, remotePath: cfg.remotePath,
+      drive: montado.drive, direct: true,
+      label: `ssh://${cfg.user}@${cfg.host}:${cfg.port}${cfg.remotePath}`,
+    };
+    registrarRaiz(state.cwd);
+    registrarProyecto(state.cwd);
+    terminalCwd = null;
+    await cerrarPlugins();
+    await actualizarProyectoDeSesion(state.project);
+    await saveSettings();
+    return { ok: true, cwd: state.cwd, project: state.project, remote: state.remote };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
 /** Arranca una shell interactiva en un PTY nuevo. */
 ipcMain.handle('terminal:start-pty', async (event, payload = {}) => {
   if (!nodePty) return { ok: false, error: 'PTY no disponible' };
@@ -1912,12 +2140,24 @@ ipcMain.handle('terminal:start-pty', async (event, payload = {}) => {
   const id = String(payload?.id ?? PTY_POR_DEFECTO);
   if (ptySesiones.has(id)) return { ok: true, id };
 
-  const shell =
-    process.platform === 'win32'
-      ? 'powershell.exe'
-      : process.env.SHELL || '/bin/bash';
+  let shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash';
+  let args = process.platform === 'win32' ? ['-NoLogo'] : [];
 
-  const args = process.platform === 'win32' ? ['-NoLogo'] : [];
+  if (payload?.kind === 'ssh') {
+    let cfg;
+    try { cfg = sshRemoto.configuracion(state.prefs); }
+    catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+    const comillas = (value) => `'${String(value).replace(/'/g, "'\\''")}'`;
+    const sshExe = process.platform === 'win32'
+      ? path.join(process.env.WINDIR ?? 'C:\\Windows', 'System32', 'OpenSSH', 'ssh.exe')
+      : 'ssh';
+    shell = require('node:fs').existsSync(sshExe) ? sshExe : 'ssh.exe';
+    args = ['-p', String(cfg.port), '-o', 'StrictHostKeyChecking=accept-new'];
+    if (cfg.keyPath) args.push('-i', cfg.keyPath);
+    if (cfg.remotePath) args.push('-t');
+    args.push(`${cfg.user}@${cfg.host}`);
+    if (cfg.remotePath) args.push(`cd ${comillas(cfg.remotePath)} && exec $SHELL -l`);
+  }
 
   try {
     const child = nodePty.spawn(shell, args, {
@@ -2750,6 +2990,11 @@ function createWindow() {
     mainWindow.show();
     mainWindow.focus();
     void aplicarBarraDeTitulo();
+    updater.configurar({
+      onState: (estado) => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('updates:event', estado);
+      },
+    });
   });
   // Si ready-to-show tarda por carga de recursos, forzar show
   setTimeout(() => {
@@ -2787,6 +3032,7 @@ ipcMain.handle('app:state', async () => {
     projects: [...state.projects].sort((a, b) => String(b.lastUsed).localeCompare(String(a.lastUsed))),
     providerId: state.providerId,
     model: state.model,
+    remote: state.remote ?? null,
     providers,
     models: models.map((model) => ({ id: model.id, name: model.name })),
     sessionId: state.sessionId,
@@ -2794,6 +3040,13 @@ ipcMain.handle('app:state', async () => {
     userName: state.prefs.profile?.name?.trim() || os.userInfo().username,
   };
 });
+
+/** Actualizaciones desde GitHub Releases. */
+ipcMain.handle('updates:state', () => updater.getState());
+ipcMain.handle('updates:check', () => updater.check());
+ipcMain.handle('updates:download', () => updater.download());
+ipcMain.handle('updates:install', () => updater.install());
+ipcMain.handle('updates:open-release', () => updater.openRelease());
 
 /** Detecta el framework de tests del proyecto. */
 ipcMain.handle('tests:detect', async () => testrunner.detectarFramework(state.cwd));
@@ -2805,13 +3058,22 @@ ipcMain.handle('tests:run', async () => {
     return { ok: false, error: 'no se encontró cómo correr los tests en este proyecto' };
   }
 
-  const ejecutar = makeRunCommandTool(() => state.cwd, () => state.prefs);
-  const salida = await ejecutar.execute({
-    command: detectado.comando,
-    cwd: state.cwd,
-    waitDurationSeconds: 10000,
-    taskName: 'Test run',
-  });
+  let salida;
+  if (state.remote?.direct) {
+    try {
+      salida = await ejecutarComandoRemoto(detectado.comando, null, 60000);
+    } catch (error) {
+      salida = { content: `Error SSH: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+    }
+  } else {
+    const ejecutar = makeRunCommandTool(() => state.cwd, () => state.prefs);
+    salida = await ejecutar.execute({
+      command: detectado.comando,
+      cwd: state.cwd,
+      waitDurationSeconds: 10000,
+      taskName: 'Test run',
+    });
+  }
 
   const resumen = testrunner.parsearSalida(salida.content);
   const codigo = Number((salida.content.match(/exit code: (-?\d+)/) ?? [])[1] ?? (salida.isError ? 1 : 0));
@@ -2957,6 +3219,9 @@ ipcMain.handle('project:select', async (_event, target) => {
     return { ok: false, error: 'El proyecto ya no existe o no está registrado.' };
   }
 
+  remoteProject.cerrar();
+  if (state.remote?.direct) await sshfs.desmontar(state.remote.drive);
+  state.remote = null;
   state.cwd = cwd;
   state.project = cwd;
   registrarRaiz(cwd);
@@ -3053,6 +3318,9 @@ ipcMain.handle('workspace:open', async () => {
 
   if (result.canceled || result.filePaths.length === 0) return null;
 
+  remoteProject.cerrar();
+  if (state.remote?.direct) await sshfs.desmontar(state.remote.drive);
+  state.remote = null;
   state.cwd = result.filePaths[0];
   state.project = state.cwd;
   registrarRaiz(state.cwd);
@@ -3169,6 +3437,25 @@ ipcMain.handle('fs:read', async (_event, filePath) => {
 
   const content = await fsp.readFile(target, 'utf8');
   return { path: filePath, content };
+});
+
+/** Devuelve un fichero binario como data URL para el visor de audio/PDF. */
+ipcMain.handle('fs:data-url', async (_event, filePath) => {
+  const target = rutaAutorizada(state.cwd, filePath);
+  const info = await fsp.stat(target);
+  if (info.size > 50 * 1024 * 1024) {
+    return { ok: false, error: `fichero demasiado grande (${Math.round(info.size / 1024 / 1024)} MB)` };
+  }
+  const mimes = {
+    '.pdf': 'application/pdf', '.mp3': 'audio/mpeg', '.wav': 'audio/wav',
+    '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.m4a': 'audio/mp4',
+    '.aac': 'audio/aac', '.flac': 'audio/flac', '.webm': 'audio/webm',
+  };
+  const ext = path.extname(target).toLowerCase();
+  const mime = mimes[ext];
+  if (!mime) return { ok: false, error: 'formato de medio no soportado' };
+  const buffer = await fsp.readFile(target);
+  return { ok: true, url: `data:${mime};base64,${buffer.toString('base64')}`, mime };
 });
 
 /** Escribe un fichero del workspace (guardado del editor). */
@@ -3519,7 +3806,7 @@ ipcMain.handle('tools:list', async () => {
     makeMultiReplaceTool(() => state.cwd),
     makeEditNotebookTool(() => state.cwd),
     makeGenerateImageTool(() => state.cwd),
-    makeRunCommandTool(() => state.cwd, () => state.prefs),
+    ...(state.remote?.direct ? [makeRemoteCommandTool()] : [makeRunCommandTool(() => state.cwd, () => state.prefs)]),
     makeCommandStatusTool(),
     makeManageTaskTool(),
     makeSearchWebTool(() => state.prefs),
@@ -4388,6 +4675,36 @@ async function cargarPlugins(cwd, prefs) {
   return { ...cachePlugins, nuevo: true };
 }
 
+/** Pregunta lateral sin hilo, sin tools y sin persistencia. */
+ipcMain.handle('chat:side', async (_event, payload) => {
+  const text = (typeof payload === 'string' ? payload : String(payload?.text ?? '')).trim();
+  if (text.length === 0) return { ok: false, error: 'pregunta vacía' };
+  if (!state.providerId) return { ok: false, error: 'selecciona un proveedor de modelo' };
+  const { runAgent, createProvider, ToolRegistry } = await getEngine();
+  const provider = createProvider(state.providerId, buildProviderConfig());
+  if (!state.model) {
+    try {
+      const models = await provider.listModels();
+      state.model = models[0]?.id ?? null;
+      if (state.model) recordarVentana(state.providerId, state.model, models[0].contextWindow);
+    } catch { state.model = null; }
+  }
+  if (!state.model) return { ok: false, error: 'el proveedor no reporta modelos' };
+  try {
+    const resultado = await runAgent(
+      {
+        provider, model: state.model, tools: new ToolRegistry(),
+        system: 'Responde de forma breve (máximo 3 frases) a una pregunta lateral. No modifiques ficheros, no ejecutes comandos y no uses herramientas.',
+        maxSteps: 1, contextWindow: ventanaDelTurno(state.model),
+      },
+      text, { cwd: state.cwd },
+    );
+    return { ok: true, text: (resultado.text ?? '').trim() };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
 /** Envía un turno al agente y transmite los eventos por `chat:event`. */
 ipcMain.handle('chat:send', async (event, payload) => {
   /*
@@ -4567,7 +4884,7 @@ ipcMain.handle('chat:send', async (event, payload) => {
     makeMultiReplaceTool(() => state.cwd),
     makeEditNotebookTool(() => state.cwd),
     makeGenerateImageTool(() => state.cwd),
-    makeRunCommandTool(() => state.cwd, () => state.prefs),
+    ...(state.remote?.direct ? [makeRemoteCommandTool()] : [makeRunCommandTool(() => state.cwd, () => state.prefs)]),
     makeCommandStatusTool(),
     makeManageTaskTool(),
     makeSearchWebTool(() => state.prefs),
@@ -5062,13 +5379,26 @@ ipcMain.handle('chat:send', async (event, payload) => {
         };
       }
 
-      const ejecutar = makeRunCommandTool(() => state.cwd, () => state.prefs);
-      const salida = await ejecutar.execute({
-        command: detectado.comando,
-        cwd: state.cwd,
-        waitDurationSeconds: Number(args?.waitDurationSeconds ?? 10000),
-        taskName: 'Test run',
-      });
+      let salida;
+      if (state.remote?.direct) {
+        try {
+          salida = await ejecutarComandoRemoto(
+            detectado.comando,
+            null,
+            Number(args?.waitDurationSeconds ?? 10000),
+          );
+        } catch (error) {
+          salida = { content: `Error SSH: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+        }
+      } else {
+        const ejecutar = makeRunCommandTool(() => state.cwd, () => state.prefs);
+        salida = await ejecutar.execute({
+          command: detectado.comando,
+          cwd: state.cwd,
+          waitDurationSeconds: Number(args?.waitDurationSeconds ?? 10000),
+          taskName: 'Test run',
+        });
+      }
 
       const resumen = testrunner.parsearSalida(salida.content);
       const codigo = Number((salida.content.match(/exit code: (-?\d+)/) ?? [])[1] ?? (salida.isError ? 1 : 0));
@@ -6646,6 +6976,8 @@ app.on('window-all-closed', () => {
  * los que tienen hijos vivos), y solo después se suelta lo demás.
  */
 async function limpiezaAlSalir() {
+  // Suelta la unidad SSHFS antes de que muera el proceso.
+  try { await sshfs.desmontarTodos(); } catch {}
   try {
     cerrarTodasLasPty();
   } catch {

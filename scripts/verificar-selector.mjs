@@ -43,9 +43,11 @@ function ejecutable() {
 
 function argumentos(exe) {
   const esElectron = path.basename(exe).toLowerCase().includes('electron');
-  return esElectron
+  const args = esElectron
     ? ['.', `--remote-debugging-port=${port}`]
     : [`--remote-debugging-port=${port}`];
+  args.push('--opengravity-test-new-project', proyectoNuevo);
+  return args;
 }
 
 let lanzada = null;
@@ -68,7 +70,6 @@ if (!page) {
     env: {
       ...process.env,
       OPENGRAVITY_TEST: '1',
-      OPENGRAVITY_TEST_NEW_PROJECT: proyectoNuevo,
     },
   });
   page = await buscarPagina();

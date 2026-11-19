@@ -15,7 +15,8 @@ import { join, relative } from 'node:path';
 
 const RAIZ = process.cwd();
 const ASAR = 'release/win-unpacked/resources/app.asar';
-const EXEs = ['release/Opengravity Setup 0.1.0.exe', 'release/Opengravity 0.1.0.exe'];
+const paquete = JSON.parse(readFileSync('package.json', 'utf8'));
+const EXEs = [`release/Opengravity-Setup-${paquete.version}.exe`, `release/Opengravity-${paquete.version}.exe`];
 
 const problemas = [];
 const avisos = [];
@@ -39,7 +40,6 @@ function recorrer(dir, acc = []) {
 }
 
 /** Los directorios que electron-builder copia al asar. */
-const paquete = JSON.parse(readFileSync('package.json', 'utf8'));
 const desempaquetados = (paquete.build?.asarUnpack ?? []).map((g) => g.replace(/\\/g, '/'));
 
 /*

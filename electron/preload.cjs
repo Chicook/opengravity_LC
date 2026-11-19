@@ -19,6 +19,17 @@ contextBridge.exposeInMainWorld('api', {
 
   /** Preferencias de la interfaz. */
   getPrefs: () => ipcRenderer.invoke('prefs:get'),
+  /** Actualizaciones desde GitHub Releases. */
+  updatesState: () => ipcRenderer.invoke('updates:state'),
+  checkUpdates: () => ipcRenderer.invoke('updates:check'),
+  downloadUpdate: () => ipcRenderer.invoke('updates:download'),
+  installUpdate: () => ipcRenderer.invoke('updates:install'),
+  openUpdateRelease: () => ipcRenderer.invoke('updates:open-release'),
+  onUpdateEvent: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('updates:event', handler);
+    return () => ipcRenderer.removeListener('updates:event', handler);
+  },
   setPrefs: (patch) => ipcRenderer.invoke('prefs:set', patch),
 
   /** Abre un diálogo para elegir carpeta de trabajo. */
@@ -40,6 +51,7 @@ contextBridge.exposeInMainWorld('api', {
 
   /** Lee un fichero del workspace. */
   readFile: (filePath) => ipcRenderer.invoke('fs:read', filePath),
+  readFileDataUrl: (filePath) => ipcRenderer.invoke('fs:data-url', filePath),
 
   /** Guarda un fichero del workspace. */
   writeFile: (filePath, content) => ipcRenderer.invoke('fs:write', { path: filePath, content }),
@@ -52,6 +64,8 @@ contextBridge.exposeInMainWorld('api', {
 
   /** Envía un turno al agente. Los eventos llegan por `onChatEvent`. */
   sendPrompt: (payload) => ipcRenderer.invoke('chat:send', payload),
+  /** Pregunta lateral sin tocar el hilo ni ejecutar herramientas. */
+  askSide: (payload) => ipcRenderer.invoke('chat:side', payload),
 
   /** Cancela la ejecución en curso. */
   abortChat: () => ipcRenderer.invoke('chat:abort'),
@@ -92,6 +106,16 @@ contextBridge.exposeInMainWorld('api', {
   gitLog: (payload) => ipcRenderer.invoke('git:log', payload),
   gitDiffHunks: (payload) => ipcRenderer.invoke('git:diff-hunks', payload),
   gitApplyHunk: (payload) => ipcRenderer.invoke('git:apply-hunk', payload),
+
+  // --- SSH remoto ---
+  sshTest: () => ipcRenderer.invoke('ssh:test'),
+  sshOpenProject: () => ipcRenderer.invoke('ssh:open-project'),
+  sshMountProject: () => ipcRenderer.invoke('ssh:mount-project'),
+  sshList: (remotePath) => ipcRenderer.invoke('ssh:list', remotePath),
+  sshExec: (payload) => ipcRenderer.invoke('ssh:exec', payload),
+  sshRead: (remotePath) => ipcRenderer.invoke('ssh:read', remotePath),
+  sshWrite: (payload) => ipcRenderer.invoke('ssh:write', payload),
+  sshDisconnect: () => ipcRenderer.invoke('ssh:disconnect'),
 
   // --- Terminal ---
   terminalRun: (command) => ipcRenderer.invoke('terminal:run', { command }),
@@ -254,6 +278,7 @@ contextBridge.exposeInMainWorld('api', {
   gitPull: () => ipcRenderer.invoke('git:pull'),
   gitFetch: () => ipcRenderer.invoke('git:fetch'),
   gitTracking: () => ipcRenderer.invoke('git:tracking'),
+  githubPulls: () => ipcRenderer.invoke('github:pulls'),
   gitResolve: (filePath, side) => ipcRenderer.invoke('git:resolve', filePath, side),
   gitAbortMerge: () => ipcRenderer.invoke('git:abort-merge'),
 

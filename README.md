@@ -87,9 +87,9 @@ npm run dist
 
 This leaves two files in `release/`:
 
-- **`Opengravity Setup 0.1.0.exe`**: installer (choose a folder, create Start
+- **`Opengravity-Setup-0.2.0.exe`**: installer (choose a folder, create Start
   Menu and desktop shortcuts).
-- **`Opengravity 0.1.0.exe`**: portable, runs without installing.
+- **`Opengravity-0.2.0.exe`**: portable, runs without installing.
 
 `npm run dist:dir` builds only the unpacked app (`release/win-unpacked`), useful
 for inspecting the contents without installing. Executables are not versioned:
@@ -110,18 +110,28 @@ downloaded is the one that was published:
 
 ```powershell
 # 1) Hash of the downloaded file
-Get-FileHash "Opengravity Setup 0.1.0.exe" -Algorithm SHA256
+Get-FileHash "Opengravity-Setup-0.2.0.exe" -Algorithm SHA256
 
 # 2) Compare it with the published release hash
 Get-Content SHA256SUMS.txt
 
 # 3) If they match, remove the “downloaded from the internet” mark
-Unblock-File "Opengravity Setup 0.1.0.exe"
+Unblock-File "Opengravity-Setup-0.2.0.exe"
 ```
 
 If the hash does not match, do not install it: it is not the published file.
 And if you prefer not to install anything, you can always build from source
 (`npm run dist`) and compare.
+
+#### Updates
+
+The installed Windows app checks **GitHub Releases** at startup and every six
+hours.
+0.1.0 did not include the updater: the first update to 0.2.0 must be installed
+manually. You can also check manually from **Settings › Application › Updates**.
+It downloads only after asking, verifies the published checksum and asks for a
+restart. The portable build does not self-update; it links to the new release.
+There is no telemetry.
 
 ### What's included
 
@@ -165,6 +175,10 @@ And if you prefer not to install anything, you can always build from source
 #### Editor
 
 - **Monaco** with its own dark theme and per-language highlighting
+- **Remote SSH**: direct project mount through WinFsp + SSHFS-Win (Settings ›
+  Application › SSH Remote). Files, terminal, commands and tests go to the host;
+  LSP and the index still run locally against the mounted drive. The mirror
+  project is a fallback for systems without SSHFS-Win.
 - **LSP**: completion, diagnostics, go-to-definition, rename, format
   (TypeScript/JavaScript bundled with the project; python/go/rust configurable)
 - **Project selector**: recent projects, This Computer with search, New Project
@@ -432,9 +446,9 @@ npm run dist
 
 Deja dos ficheros en `release/`:
 
-- **`Opengravity Setup 0.1.0.exe`**: instalador (elige carpeta, acceso directo
+- **`Opengravity-Setup-0.2.0.exe`**: instalador (elige carpeta, acceso directo
   en el menú Inicio y en el escritorio).
-- **`Opengravity 0.1.0.exe`**: portable, se ejecuta sin instalar.
+- **`Opengravity-0.2.0.exe`**: portable, se ejecuta sin instalar.
 
 `npm run dist:dir` genera solo la aplicación desempaquetada (`release/win-unpacked`),
 útil para comprobar el contenido sin instalar. Los ejecutables no se versionan:
@@ -455,18 +469,26 @@ el fichero que bajaste es el que se publicó:
 
 ```powershell
 # 1) Huella del fichero descargado
-Get-FileHash "Opengravity Setup 0.1.0.exe" -Algorithm SHA256
+Get-FileHash "Opengravity-Setup-0.2.0.exe" -Algorithm SHA256
 
 # 2) Compárala con la que se publicó junto a la release
 Get-Content SHA256SUMS.txt
 
 # 3) Si coincide, quita la marca de «descargado de internet»
-Unblock-File "Opengravity Setup 0.1.0.exe"
+Unblock-File "Opengravity-Setup-0.2.0.exe"
 ```
 
 Si la huella no coincide, no lo instales: no es el fichero publicado. Y si
 prefieres no instalar nada, siempre puedes compilar desde el código
 (`npm run dist`) y comparar.
+
+#### Actualizaciones
+
+La app instalada en Windows consulta **GitHub Releases** al arrancar y cada seis
+0.1.0 no incluía el actualizador: la primera actualización a 0.2.0 se instala manualmente.
+horas. También puedes comprobarlo desde **Ajustes › Application › Updates**.
+Descarga solo cuando se lo pides, verifica la huella publicada y pide reiniciar.
+El portable no se autoactualiza: enlaza a la nueva release. Sin telemetría.
 
 ### Qué incluye
 
@@ -513,6 +535,10 @@ prefieres no instalar nada, siempre puedes compilar desde el código
 - **Monaco** con tema oscuro propio y resaltado por lenguaje
 - **LSP**: completado, diagnósticos, ir a definición, renombrar, formatear
   (TypeScript/JavaScript incluido en el proyecto; python/go/rust configurables)
+- **SSH remoto**: montaje directo con WinFsp + SSHFS-Win desde Ajustes ›
+  Application › SSH Remote. Ficheros, terminal, comandos y tests van al host;
+  LSP e índice siguen siendo locales sobre la unidad montada. El proyecto espejo
+  queda como fallback para sistemas sin SSHFS-Win.
 - **Selector de proyecto**: recientes, This Computer con búsqueda, New Project
   y No Project; la conversación guarda su proyecto aparte del workspace.
 - Pestañas, estado de guardado, `Ctrl+S`

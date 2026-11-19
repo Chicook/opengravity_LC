@@ -36,7 +36,8 @@ async function leerRegla(ruta, etiqueta) {
       const tamano = Math.min(info.size, RULES_MAX_FILE_BYTES);
       const buffer = Buffer.alloc(tamano);
       await handle.read(buffer, 0, tamano, 0);
-      const contenido = buffer.toString('utf8');
+      // Un fichero guardado con BOM no debe introducir U+FEFF en el prompt.
+      const contenido = buffer.toString('utf8').replace(/^\uFEFF/, '');
       if (contenido.trim().length === 0) return null;
       const recorte =
         info.size > RULES_MAX_FILE_BYTES

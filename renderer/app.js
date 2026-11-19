@@ -191,6 +191,9 @@ const COMMANDS = [
   { id: 'clear', label: '/clear', hint: 'Empezar una conversación nueva' },
   { id: 'settings', label: '/settings', hint: 'Abrir los ajustes' },
   { id: 'browser', label: '/browser <url>', hint: 'Abrir una URL en el navegador integrado' },
+  { id: 'btw', label: '/btw <pregunta>', hint: 'Pregunta lateral sin tocar el hilo' },
+  { id: 'ssh', label: '/ssh', hint: 'Abrir una terminal SSH remota' },
+  { id: 'remote', label: '/remote [ruta]', hint: 'Abrir el navegador de ficheros remoto' },
   { id: 'stop', label: '/stop', hint: 'Detener la ejecución en curso' },
   { id: 'help', label: '/help', hint: 'Ver todos los comandos' },
 ];
@@ -496,11 +499,11 @@ async function cargarProyectos() {
 }
 
 /** Refleja en la barra y el selector el proyecto activo. */
-function reflejarProyecto(cwd) {
+function reflejarProyecto(cwd, etiqueta) {
   ui.cwd = cwd;
   ui.project = cwd;
   ui.noProject = false;
-  const nombre = nombreProyecto(cwd);
+  const nombre = etiqueta || nombreProyecto(cwd);
   els.projectName.textContent = nombre;
   if (els.projectPill) els.projectPill.textContent = nombre;
   actualizarEtiquetaProyecto(nombre);
@@ -530,6 +533,21 @@ async function seleccionarProyecto(cwd) {
   reflejarProyecto(resultado.project ?? resultado.cwd);
   await cargarProyectos();
   await refreshConversations();
+}
+
+/** Activa un proyecto remoto ya descargado en el espejo local. */
+async function abrirProyectoRemoto(resultado) {
+  if (!resultado?.ok) {
+    addNotice(resultado?.error ?? 'No se pudo abrir el proyecto remoto.', 'error');
+    return;
+  }
+  ui.remoteWorkspace = resultado.remote ?? null;
+  ui.cwd = resultado.cwd;
+  reflejarProyecto(resultado.cwd, resultado.remote?.label);
+  await cargarProyectos();
+  await refreshConversations();
+  await loadFileIndex();
+  await refreshGit();
 }
 
 /** «No Project»: no cambia el workspace; solo desasocia la conversación actual. */
@@ -2618,6 +2636,7 @@ function selectOverviewView(name) {
 
   // La fila Terminal abre la terminal real.
   if (name === 'terminal') toggleTerminal(true);
+  if (name === 'review') void refreshPullRequests();
 }
 
 /** Marca el área principal como vacía para centrar el composer. */
@@ -2726,6 +2745,7 @@ function renderOverview() {
   void refreshGit();
   void refreshGitLog();
   void refreshIndexStatus();
+  if (ui.overviewView === 'review') void refreshPullRequests();
   renderFileTree();
 
   const pluginsBody = $('overview-plugins');
@@ -4191,6 +4211,8 @@ function applyPrefs(prefs) {
   // Tema oscuro o claro (afecta a todos los tokens).
   document.documentElement.dataset.theme =
     ui.prefs.theme === 'Light' ? 'light' : 'dark';
+  document.documentElement.dataset.preset =
+    ui.prefs.theme !== 'Light' && ui.prefs.darkPreset === 'Nord' ? 'nord' : 'default';
 
   // Colores personalizados del tema oscuro.
   const colors = ui.prefs.themeColors ?? {};
@@ -4208,6 +4230,11 @@ function applyPrefs(prefs) {
     } else {
       root.removeProperty(variable);
     }
+  }
+
+  if (monacoApi?.editor?.setTheme) monacoApi.editor.setTheme(temaMonaco());
+  for (const terminal of terminales?.values?.() ?? []) {
+    terminal.xterm.options.theme = temaXterm();
   }
 
   if (window.I18n) {
@@ -4283,6 +4310,43 @@ function conectarNavegador() {
   const adelante = document.getElementById('aux-browser-forward');
   const recargar = document.getElementById('aux-browser-reload');
   const formulario = document.getElementById('aux-browser-form');
+  const findbar = document.getElementById('aux-browser-findbar');
+  const findInput = document.getElementById('aux-browser-find-input');
+  const findStatus = document.getElementById('aux-browser-find-status');
+
+  let findRequest = 0;
+
+  const cerrarFind = () => {
+    if (!findbar) return;
+    findbar.hidden = true;
+    if (findStatus) findStatus.textContent = '';
+    try {
+      vista.stopFindInPage('clearSelection');
+    } catch {
+      // webview todavía no enganchado
+    }
+  };
+
+  const abrirFind = () => {
+    if (!findbar || !findInput) return;
+    findbar.hidden = false;
+    findInput.focus();
+    findInput.select();
+  };
+
+  const buscarEnPagina = (adelante = true) => {
+    if (!findInput) return;
+    const texto = findInput.value.trim();
+    if (!texto) {
+      cerrarFind();
+      return;
+    }
+    try {
+      findRequest = vista.findInPage(texto, { forward: adelante, findNext: true });
+    } catch {
+      // el webview puede no estar listo todavía
+    }
+  };
 
   const mostrarUrl = () => {
     if (!entrada) return;
@@ -4337,6 +4401,38 @@ function conectarNavegador() {
     if (!texto) return;
     navegadorCargar?.(/^[a-z][a-z0-9+.-]*:\/\//i.test(texto) ? texto : `https://${texto}`);
     vista.focus();
+  });
+
+  document.getElementById('aux-browser-find')?.addEventListener('click', abrirFind);
+  document.getElementById('aux-browser-find-close')?.addEventListener('click', cerrarFind);
+  findInput?.addEventListener('input', () => buscarEnPagina(true));
+  findInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      buscarEnPagina(!event.shiftKey);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      cerrarFind();
+    }
+  });
+  vista.addEventListener('found-in-page', (event) => {
+    if (!findStatus) return;
+    const { matches = 0, activeMatchOrdinal = 0 } = event.result ?? {};
+    findStatus.textContent = matches > 0 ? `${activeMatchOrdinal}/${matches}` : '0/0';
+  });
+  vista.addEventListener('before-input-event', (event) => {
+    const input = event.input ?? {};
+    if ((input.control || input.meta) && String(input.key).toLowerCase() === 'f') {
+      event.preventDefault();
+      abrirFind();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'f') return;
+    const panel = document.getElementById('aux-view-browser');
+    if (!panel || panel.hidden) return;
+    event.preventDefault();
+    abrirFind();
   });
 
   const botonDescargas = document.getElementById('aux-browser-downloads');
@@ -4617,8 +4713,92 @@ function monacoLanguage(filePath) {
     yml: 'yaml',
     yaml: 'yaml',
     sql: 'sql',
+    r: 'r',
+    rmd: 'markdown',
   };
   return map[ext] ?? 'plaintext';
+}
+
+/** Monaco no incluye R: registro mínimo para resaltarlo. */
+function registrarLenguajeR(monaco) {
+  if (!monaco?.languages || monaco.languages.getLanguages().some((l) => l.id === 'r')) return;
+  monaco.languages.register({ id: 'r' });
+  monaco.languages.setMonarchTokensProvider('r', {
+    tokenizer: {
+      root: [
+        [/#.*$/, 'comment'],
+        [/[a-zA-Z_.][\w.]*/, {
+          cases: {
+            '@keywords': 'keyword',
+            '@default': 'identifier',
+          },
+        }],
+        [/"(?:[^"\\]|\\.)*"/, 'string'],
+        [/'(?:[^'\\]|\\.)*'/, 'string'],
+        [/\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b/, 'number'],
+        [/[{}()\[\]]/, '@brackets'],
+        [/[<>!=]=?|&&|\|\||<-|->|%[^%]+%/, 'operator'],
+      ],
+    },
+    keywords: ['if', 'else', 'repeat', 'while', 'function', 'for', 'in', 'next', 'break', 'TRUE', 'FALSE', 'NULL', 'Inf', 'NaN', 'NA'],
+  });
+  monaco.languages.setLanguageConfiguration('r', {
+    comments: { lineComment: '#' },
+    brackets: [['{', '}'], ['[', ']'], ['(', ')']],
+    autoClosingPairs: [
+      { open: '{', close: '}' }, { open: '[', close: ']' }, { open: '(', close: ')' },
+      { open: '"', close: '"' }, { open: "'", close: "'" },
+    ],
+  });
+}
+
+/** Tema Monaco de Nord; se registra una sola vez al cargar el editor. */
+function registrarTemaNord(monaco) {
+  if (!monaco?.editor?.defineTheme || monaco.editor.getTheme?.() === 'agent-nord') return;
+  monaco.editor.defineTheme('agent-nord', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: '616e88', fontStyle: 'italic' },
+      { token: 'string', foreground: 'a3be8c' },
+      { token: 'number', foreground: 'b48ead' },
+      { token: 'keyword', foreground: '81a1c1' },
+      { token: 'type.identifier', foreground: '8fbcbb' },
+      { token: 'identifier', foreground: 'd8dee9' },
+      { token: 'delimiter', foreground: 'eceff4' },
+      { token: 'tag', foreground: '81a1c1' },
+      { token: 'attribute.name', foreground: '8fbcbb' },
+      { token: 'attribute.value', foreground: 'a3be8c' },
+    ],
+    colors: {
+      'editor.background': '#2e3440',
+      'editor.foreground': '#d8dee9',
+      'editorLineNumber.foreground': '#616e88',
+      'editorLineNumber.activeForeground': '#d8dee9',
+      'editor.selectionBackground': '#88c0d066',
+      'editor.lineHighlightBackground': '#3b4252',
+      'editorCursor.foreground': '#d8dee9',
+      'editorWidget.background': '#3b4252',
+      'editorWidget.border': '#4c566a',
+      'editorSuggestWidget.background': '#3b4252',
+      'editorSuggestWidget.border': '#4c566a',
+      'editorSuggestWidget.selectedBackground': '#434c5e',
+      'editorHoverWidget.background': '#3b4252',
+      'editorHoverWidget.border': '#4c566a',
+      'editorError.foreground': '#bf616a',
+      'editorWarning.foreground': '#ebcb8b',
+      'scrollbarSlider.background': '#4c566a80',
+      'scrollbarSlider.hoverBackground': '#616e8899',
+    },
+  });
+}
+
+function temaMonaco() {
+  return ui.prefs?.theme !== 'Light' && ui.prefs?.darkPreset === 'Nord' ? 'agent-nord' : 'agent-dark';
+}
+
+function temaXterm() {
+  return ui.prefs?.theme !== 'Light' && ui.prefs?.darkPreset === 'Nord' ? TEMA_XTERM_NORD : TEMA_XTERM;
 }
 
 /** Crea el editor de un grupo (0 = izquierda, 1 = derecha). */
@@ -4630,12 +4810,14 @@ function ensureMonaco(group = 0) {
     console.error('Monaco no está disponible');
     return null;
   }
+  registrarLenguajeR(monacoApi);
+  registrarTemaNord(monacoApi);
 
   const contenedor = document.getElementById(group === 0 ? 'editor-monaco' : 'editor-monaco-2');
   if (!contenedor) return null;
 
   const instancia = monacoApi.editor.create(contenedor, {
-    theme: 'agent-dark',
+    theme: temaMonaco(),
     automaticLayout: true,
     fontSize: 12,
     lineHeight: 19,
@@ -4744,8 +4926,82 @@ function toggleSplit(force) {
   monacoApi?.editor.remeasureFonts?.();
 }
 
+const EXTENSIONES_DE_MEDIO = new Set(['.pdf', '.mp3', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.flac', '.webm']);
+
+function esMedio(path) {
+  return EXTENSIONES_DE_MEDIO.has(String(path).toLowerCase().slice(String(path).lastIndexOf('.')));
+}
+
+function ocultarMedio() {
+  const view = $('media-view');
+  if (view) view.hidden = true;
+}
+
+function mostrarMedio(tab) {
+  const view = $('media-view');
+  if (!view) return;
+  view.replaceChildren();
+  if (tab.mediaKind === 'pdf') {
+    const marco = document.createElement('iframe');
+    marco.title = basename(tab.path);
+    marco.src = tab.mediaUrl;
+    view.append(marco);
+  } else {
+    const audio = document.createElement('audio');
+    audio.controls = true;
+    audio.autoplay = false;
+    audio.src = tab.mediaUrl;
+    view.append(audio);
+  }
+  view.hidden = false;
+  const monaco = $('editor-monaco');
+  if (monaco) monaco.style.display = 'none';
+}
+
+/** Abre audio o PDF en el panel auxiliar sin pasar por Monaco. */
+async function openMedia(path) {
+  toggleEditorPane(true);
+  const abierta = ui.tabs.find((tab) => tab.path === path);
+  if (abierta) {
+    activateTab(path);
+    return;
+  }
+
+  let resultado;
+  try {
+    resultado = await window.api.readFileDataUrl(path);
+  } catch (error) {
+    resultado = { ok: false, error: error?.message ?? String(error) };
+  }
+  if (!resultado?.ok) {
+    addNotice(`No se pudo abrir ${path}: ${resultado?.error ?? 'error'}`, 'error');
+    return;
+  }
+
+  const extension = path.toLowerCase().slice(path.lastIndexOf('.'));
+  const tab = {
+    path,
+    kind: 'media',
+    mediaKind: extension === '.pdf' ? 'pdf' : 'audio',
+    mediaUrl: resultado.url,
+    model: null,
+    original: '',
+    language: extension === '.pdf' ? 'PDF' : 'Audio',
+    group: ui.split ? ui.activeGroup : 0,
+    viewState: null,
+    lsp: '',
+    diagnostics: [],
+  };
+  ui.tabs.push(tab);
+  activateTab(path);
+}
+
 /** Abre un fichero en el editor. */
 async function openInEditor(path, linea, columna) {
+  if (esMedio(path)) {
+    await openMedia(path);
+    return;
+  }
   toggleEditorPane(true);
   const editor = ensureMonaco();
   if (!editor) {
@@ -5207,6 +5463,22 @@ function activateTab(path) {
   if (!tab) return;
 
   const group = ui.split ? (tab.group ?? 0) : 0;
+  if (tab.kind === 'media') {
+    ui.activeGroup = group;
+    ui.activeTab = path;
+    ui.editorPath = path;
+    ui.editorOriginal = '';
+    els.editorPath.textContent = path;
+    els.editorLsp.textContent = tab.language;
+    els.editorState.textContent = '';
+    ui.diagnostics = [];
+    renderDiagnostics();
+    mostrarMedio(tab);
+    renderEditorTabs();
+    return;
+  }
+
+  ocultarMedio();
   const editor = ensureMonaco(group);
   if (!editor) return;
 
@@ -5241,7 +5513,7 @@ function closeTab(path) {
   if (index < 0) return;
 
   const [cerrada] = ui.tabs.splice(index, 1);
-  cerrada.model.dispose();
+  cerrada.model?.dispose();
 
   if (ui.activeTab === path) {
     const vecina = ui.tabs[index] ?? ui.tabs[index - 1] ?? null;
@@ -5262,13 +5534,14 @@ function closeTab(path) {
 
 /** Cierra todas las pestañas y oculta el panel. */
 function closeEditor() {
-  for (const tab of ui.tabs) tab.model.dispose();
+  for (const tab of ui.tabs) tab.model?.dispose();
   ui.tabs = [];
   ui.activeTab = null;
   ui.editorPath = null;
   ui.editorOriginal = '';
   for (const editor of ui.editors) editor?.setModel(null);
   els.editorPane.hidden = true;
+  ocultarMedio();
   renderEditorTabs();
 }
 
@@ -5282,6 +5555,7 @@ function renderEditorTabs() {
   // Sin pestañas: vista de nueva pestaña, como su panel auxiliar.
   if (ui.tabs.length === 0) {
     newtab?.removeAttribute('hidden');
+    ocultarMedio();
     if (monaco) monaco.style.display = 'none';
     if (status) status.style.display = 'none';
     els.editorTabs.append(makeNewTabButton());
@@ -5290,7 +5564,15 @@ function renderEditorTabs() {
   }
 
   newtab?.setAttribute('hidden', '');
-  if (monaco) monaco.style.display = '';
+  const tabActiva = ui.tabs.find((tab) => tab.path === ui.activeTab);
+  const media = $('media-view');
+  if (tabActiva?.kind === 'media') {
+    if (monaco) monaco.style.display = 'none';
+    if (media) media.hidden = false;
+  } else {
+    if (monaco) monaco.style.display = '';
+    if (media) media.hidden = true;
+  }
   if (status) status.style.display = '';
 
   for (const tab of ui.tabs) {
@@ -5369,6 +5651,8 @@ function updateEditorState() {
 function scheduleLspChange() {
   if (!ui.editorPath || !monacoEditor) return;
 
+  const tab = ui.tabs.find((t) => t.path === ui.activeTab);
+  if (tab?.kind === 'remote') return;
   const language = monacoLanguage(ui.editorPath);
   if (['javascript', 'typescript', 'json', 'css', 'html'].includes(language)) return;
 
@@ -5383,10 +5667,18 @@ async function saveEditor() {
   if (!ui.editorPath || !monacoEditor) return;
 
   try {
-    await window.api.writeFile(ui.editorPath, monacoEditor.getValue());
+    const tab = ui.tabs.find((t) => t.path === ui.activeTab);
+    if (tab?.kind === 'remote') {
+      const guardado = await window.api.sshWrite({
+        path: tab.remotePath,
+        content: monacoEditor.getValue(),
+      });
+      if (!guardado?.ok) throw new Error(guardado?.error ?? 'no se pudo guardar');
+    } else {
+      await window.api.writeFile(ui.editorPath, monacoEditor.getValue());
+    }
 
     // El original vive en la pestaña: así el estado «sin guardar» es por fichero.
-    const tab = ui.tabs.find((t) => t.path === ui.activeTab);
     if (tab) tab.original = monacoEditor.getValue();
     ui.editorOriginal = monacoEditor.getValue();
     updateEditorState();
@@ -5776,6 +6068,69 @@ async function refreshGitLog() {
   }
 }
 
+/** Pull requests del remoto; solo lectura. */
+let pullRequestsCache = { at: 0, result: null };
+
+async function refreshPullRequests(force = false) {
+  const container = $('github-pulls');
+  if (!container) return;
+  if (!force && pullRequestsCache.result && Date.now() - pullRequestsCache.at < 60_000) {
+    renderPullRequests(pullRequestsCache.result);
+    return;
+  }
+
+  container.replaceChildren(rowText('Cargando pull requests…'));
+  let result;
+  try {
+    result = await window.api.githubPulls();
+  } catch (error) {
+    result = { ok: false, error: error?.message ?? String(error) };
+  }
+  pullRequestsCache = { at: Date.now(), result };
+  renderPullRequests(result);
+}
+
+function renderPullRequests(result) {
+  const container = $('github-pulls');
+  if (!container) return;
+  container.replaceChildren();
+  if (!result?.ok) {
+    container.append(rowText(result?.error ?? 'No se pudieron cargar los pull requests'));
+    return;
+  }
+  if (!Array.isArray(result.pulls) || result.pulls.length === 0) {
+    container.append(rowText(`Sin pull requests en ${result.repo}`));
+    return;
+  }
+
+  for (const pr of result.pulls) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'git-commit-row pr-row';
+    row.title = `#${pr.number} · ${pr.author} · ${pr.head} → ${pr.base}`;
+
+    const numero = document.createElement('span');
+    numero.className = 'git-commit-row__hash';
+    numero.textContent = `#${pr.number}`;
+    const titulo = document.createElement('span');
+    titulo.className = 'git-commit-row__subject';
+    titulo.textContent = `${pr.draft ? 'Draft · ' : ''}${pr.title}`;
+    const estado = document.createElement('span');
+    estado.className = 'pr-row__state';
+    estado.textContent = pr.state;
+    row.append(numero, titulo, estado);
+    row.addEventListener('click', () => {
+      window.api
+        .openBrowser(pr.url)
+        .then((result) => {
+          if (result?.ok === false) window.api.openExternal(pr.url);
+        })
+        .catch(() => window.api.openExternal(pr.url));
+    });
+    container.append(row);
+  }
+}
+
 /** Cambia de rama. */
 async function checkoutBranch(branch) {
   const result = await window.api.gitCheckout(branch);
@@ -6011,8 +6366,32 @@ const TEMA_XTERM = {
   brightWhite: '#ffffff',
 };
 
+/** Tema de xterm para Nord. */
+const TEMA_XTERM_NORD = {
+  background: '#2e3440',
+  foreground: '#d8dee9',
+  cursor: '#d8dee9',
+  selectionBackground: '#88c0d066',
+  black: '#3b4252',
+  red: '#bf616a',
+  green: '#a3be8c',
+  yellow: '#ebcb8b',
+  blue: '#81a1c1',
+  magenta: '#b48ead',
+  cyan: '#88c0d0',
+  white: '#e5e9f0',
+  brightBlack: '#4c566a',
+  brightRed: '#d08770',
+  brightGreen: '#b9d4a8',
+  brightYellow: '#f0d9a0',
+  brightBlue: '#8fbcbb',
+  brightMagenta: '#cba6c9',
+  brightCyan: '#9fd8e6',
+  brightWhite: '#eceff4',
+};
+
 /** Crea una terminal nueva con su propio xterm y su pestaña. */
-function crearTerminal(idSugerido) {
+function crearTerminal(idSugerido, opciones = {}) {
   if (!window.XtermApp) return null;
 
   contadorTerminales += 1;
@@ -6035,7 +6414,7 @@ function crearTerminal(idSugerido) {
     cursorBlink: true,
     convertEol: true,
     scrollback: 5000,
-    theme: TEMA_XTERM,
+    theme: temaXterm(),
   });
 
   const fit = new FitAddon();
@@ -6048,7 +6427,14 @@ function crearTerminal(idSugerido) {
   });
 
   // `id` es la clave del mapa y del PTY; `nombre` solo se muestra.
-  const entrada = { id, xterm: term, fit, contenedor, nombre: id };
+  const entrada = {
+    id,
+    xterm: term,
+    fit,
+    contenedor,
+    nombre: opciones.nombre ?? id,
+    kind: opciones.kind ?? 'local',
+  };
 
   /*
    * La referencia al observer se guarda en la entrada: un `ResizeObserver` sin
@@ -6340,19 +6726,149 @@ async function nuevaTerminal() {
   activarTerminal(entrada.id);
 }
 
+/** Pinta la carpeta remota configurada y permite navegar por SFTP. */
+async function renderRemoteFiles(remotePath) {
+  const lista = $('remote-list');
+  const estado = $('remote-status');
+  const input = $('remote-path');
+  if (!lista) return;
+
+  const cfg = ui.prefs?.ssh ?? {};
+  const ruta = String(remotePath || input?.value || cfg.remotePath || '/').trim() || '/';
+  if (input) input.value = ruta;
+  if (estado) estado.textContent = 'Conectando…';
+  lista.replaceChildren();
+
+  let resultado;
+  try {
+    resultado = await window.api.sshList(ruta);
+  } catch (error) {
+    resultado = { ok: false, error: error?.message ?? String(error) };
+  }
+
+  if (!resultado?.ok) {
+    if (estado) estado.textContent = resultado?.error ?? 'Error de SSH';
+    return;
+  }
+
+  if (estado) estado.textContent = `${cfg.user ?? ''}@${cfg.host ?? ''}:${ruta}`;
+  const entradas = [...(resultado.entries ?? [])].sort(
+    (a, b) => Number(b.directory) - Number(a.directory) || a.name.localeCompare(b.name),
+  );
+  if (entradas.length === 0) {
+    lista.append(rowText('Carpeta vacía'));
+    return;
+  }
+
+  for (const entrada of entradas) {
+    const fila = document.createElement('button');
+    fila.type = 'button';
+    fila.className = 'remote-entry';
+    const icono = document.createElement('span');
+    icono.className = 'remote-entry__icon';
+    icono.textContent = entrada.directory ? '▸' : '·';
+    const nombre = document.createElement('span');
+    nombre.className = 'remote-entry__name';
+    nombre.textContent = entrada.name;
+    const tam = document.createElement('span');
+    tam.className = 'remote-entry__size';
+    tam.textContent = entrada.directory ? '' : `${Math.max(1, Math.round(entrada.size / 1024))} KB`;
+    fila.append(icono, nombre, tam);
+    fila.addEventListener('click', () => {
+      if (entrada.directory) void renderRemoteFiles(entrada.path);
+      else void openRemoteFile(entrada.path);
+    });
+    lista.append(fila);
+  }
+}
+
+/** Abre un fichero remoto en una pestaña normal de Monaco. */
+async function openRemoteFile(remotePath) {
+  const cfg = ui.prefs?.ssh ?? {};
+  const display = `ssh://${cfg.user ?? ''}@${cfg.host ?? ''}${remotePath}`;
+  const existente = ui.tabs.find((tab) => tab.path === display);
+  if (existente) {
+    activateTab(display);
+    return;
+  }
+
+  let resultado;
+  try {
+    resultado = await window.api.sshRead(remotePath);
+  } catch (error) {
+    resultado = { ok: false, error: error?.message ?? String(error) };
+  }
+  if (!resultado?.ok) {
+    addNotice(`No se pudo leer ${remotePath}: ${resultado?.error ?? 'error'}`, 'error');
+    return;
+  }
+
+  toggleEditorPane(true);
+  const editor = ensureMonaco();
+  if (!editor) return;
+  const language = monacoLanguage(remotePath);
+  const uri = monacoApi.Uri.parse(`inmemory://ssh/${encodeURIComponent(remotePath)}`);
+  const anterior = monacoApi.editor.getModel(uri);
+  if (anterior) anterior.dispose();
+  const model = monacoApi.editor.createModel(resultado.content, language, uri);
+  ui.tabs.push({
+    path: display,
+    kind: 'remote',
+    remotePath,
+    model,
+    original: resultado.content,
+    language,
+    viewState: null,
+    lsp: null,
+    group: ui.split ? ui.activeGroup : 0,
+  });
+  activateTab(display);
+}
+
+/** Abre una terminal SSH con la configuración de Ajustes. */
+async function abrirTerminalSsh() {
+  const ssh = ui.prefs?.ssh ?? {};
+  if (!String(ssh.host ?? '').trim() || !String(ssh.user ?? '').trim()) {
+    addNotice('Configura host y usuario SSH en Ajustes > Application.', 'error');
+    window.SettingsUI.open('application');
+    return;
+  }
+
+  const panel = els.auxPanel;
+  if (!panel) return;
+  panel.hidden = false;
+  document.querySelector('.body')?.classList.add('is-terminal-open');
+  $('toggle-terminal')?.setAttribute('aria-pressed', 'true');
+  seleccionarVistaAux('terminal');
+
+  const id = `ssh-${Date.now().toString(36)}`;
+  const entrada = crearTerminal(id, {
+    kind: 'ssh',
+    nombre: `ssh ${ssh.user}@${ssh.host}`,
+  });
+  if (!entrada) return;
+  const pty = await ensurePty(id);
+  if (!pty) {
+    addNotice('No se pudo abrir SSH. Revisa host, clave y servidor.', 'error');
+    cerrarTerminal(id);
+    return;
+  }
+  activarTerminal(id);
+}
+
 /** Arranca el PTY de una terminal si está disponible. */
 async function ensurePty(id) {
   try {
     const status = await window.api.terminalPtyStatus();
     if (!status.available) return null;
 
-    const arrancado = await window.api.terminalStartPty({ id });
+    const entrada = terminales.get(id);
+    const arrancado = await window.api.terminalStartPty({ id, kind: entrada?.kind ?? 'local' });
     if (!arrancado || !arrancado.ok) return null;
 
     // Antigravity nombra la pestaña con la shell, no con un índice.
     const shell = arrancado.shell ? String(arrancado.shell).split(/[\\/]/).pop() : null;
-    const entrada = terminales.get(id);
-    if (shell && entrada) {
+    if (shell && entrada && entrada.kind !== 'ssh') {
       entrada.nombre = shell;
       pintarPestanasTerminal();
     }
@@ -6496,6 +7012,7 @@ function seleccionarVistaAux(nombre) {
 
   if (nombre === 'review') void renderAuxReview();
   if (nombre === 'open-file') renderAuxOpenFile();
+  if (nombre === 'remote') void renderRemoteFiles();
   if (nombre === 'browser') abrirNavegadorLateral();
 }
 
@@ -6676,6 +7193,80 @@ function hideCommandPalette() {
   ui.commandIndex = 0;
 }
 
+/**
+ * `/btw`: pregunta lateral en un panel sobre el composer. No añade mensajes al
+ * hilo, no usa herramientas y no persiste. Varias preguntas se apilan.
+ */
+let panelBtw = null;
+
+function abrirPanelBtw() {
+  if (panelBtw) {
+    panelBtw.panel.hidden = false;
+    return panelBtw;
+  }
+
+  const panel = document.createElement('section');
+  panel.className = 'btw-panel';
+  panel.setAttribute('role', 'region');
+  panel.setAttribute('aria-label', 'Pregunta lateral');
+
+  const cabecera = document.createElement('div');
+  cabecera.className = 'btw-panel__header';
+  const titulo = document.createElement('span');
+  titulo.className = 'btw-panel__title';
+  titulo.textContent = 'Pregunta lateral';
+  const cerrar = document.createElement('button');
+  cerrar.type = 'button';
+  cerrar.className = 'btw-panel__close';
+  cerrar.setAttribute('aria-label', 'Cerrar pregunta lateral');
+  cerrar.textContent = '✕';
+  cerrar.addEventListener('click', () => { panel.hidden = true; });
+  cabecera.append(titulo, cerrar);
+
+  const lista = document.createElement('div');
+  lista.className = 'btw-panel__list';
+  panel.append(cabecera, lista);
+  els.form.parentElement.prepend(panel);
+
+  panelBtw = { panel, lista };
+  return panelBtw;
+}
+
+function preguntarLateral(pregunta) {
+  const { panel, lista } = abrirPanelBtw();
+  panel.hidden = false;
+
+  const entrada = document.createElement('article');
+  entrada.className = 'btw-entry';
+  const q = document.createElement('div');
+  q.className = 'btw-entry__question';
+  q.textContent = pregunta;
+  const a = document.createElement('div');
+  a.className = 'btw-entry__answer';
+  a.textContent = 'Pensando…';
+  entrada.append(q, a);
+  lista.append(entrada);
+  lista.scrollTop = lista.scrollHeight;
+
+  window.api.askSide({ text: pregunta })
+    .then((resultado) => {
+      if (!resultado?.ok) {
+        a.classList.add('is-error');
+        a.textContent = `Error: ${resultado?.error ?? 'sin respuesta'}`;
+        return;
+      }
+      a.classList.remove('is-error');
+      a.innerHTML = window.Markdown?.render(resultado.text ?? '') || '';
+    })
+    .catch((error) => {
+      a.classList.add('is-error');
+      a.textContent = `Error: ${error?.message ?? error}`;
+    })
+    .finally(() => {
+      lista.scrollTop = lista.scrollHeight;
+    });
+}
+
 /** Ejecuta un comando del composer. */
 function runCommand(cmd) {
   hideCommandPalette();
@@ -6719,6 +7310,30 @@ function runCommand(cmd) {
       break;
     }
 
+    case 'ssh': {
+      abrirTerminalSsh();
+      break;
+    }
+
+    case 'remote': {
+      abrirPanelLateral('remote');
+      if (rest.length > 0) {
+        const input = $('remote-path');
+        if (input) input.value = rest;
+        void renderRemoteFiles(rest);
+      }
+      break;
+    }
+
+    case 'btw': {
+      if (rest.length === 0) {
+        addNotice('Uso: /btw <pregunta>', 'info');
+        break;
+      }
+      preguntarLateral(rest);
+      break;
+    }
+
     case 'stop':
       stopAgent();
       break;
@@ -6744,6 +7359,12 @@ async function stopAgent() {
 
 /** Encola un mensaje o interrumpe la ejecución, según la preferencia. */
 async function submitOrQueue() {
+  // Los comandos con argumentos se ejecutan aunque la paleta ya esté cerrada.
+  const comandoDirecto = /^\/(btw|ssh|remote)(?:\s|$)/i.exec(els.input.value.trim());
+  if (comandoDirecto) {
+    runCommand({ id: comandoDirecto[1] });
+    return undefined;
+  }
   // Con un plan pendiente, el mensaje es la revisión: va directo al turno.
   if (ui.planCard) return send();
   if (!ui.busy) return send();
@@ -6771,6 +7392,14 @@ async function submitOrQueue() {
 async function boot() {
   initSearchPanel();
   initQuickFixes();
+
+  let updateNotified = false;
+  window.api.onUpdateEvent?.((estado) => {
+    if (estado?.status === 'available' && !updateNotified) {
+      updateNotified = true;
+      addNotice(`Actualización disponible: ${estado.availableVersion ?? 'nueva versión'}.`, 'info');
+    }
+  });
 
   window.api.onLspDiagnostics?.(({ uri, diagnostics }) => {
     const normalizarUri = (valor) =>
@@ -6803,9 +7432,10 @@ async function boot() {
     ui.providerId = state.providerId ?? null;
     ui.model = state.model ?? null;
     ui.userName = state.userName ?? '';
+    ui.remoteWorkspace = state.remote ?? null;
 
     if (ui.project) {
-      const nombre = nombreProyecto(ui.project);
+      const nombre = state.remote?.label || nombreProyecto(ui.project);
       els.projectName.textContent = nombre;
       if (els.projectPill) els.projectPill.textContent = nombre;
       actualizarEtiquetaProyecto(nombre);
@@ -6882,6 +7512,8 @@ async function boot() {
     reloadProviders: () => loadProviders(true),
     refreshProviders: () => loadProviders(true),
     onPrefChange: (_key, _value, all) => applyPrefs(all),
+    openSshTerminal: () => void abrirTerminalSsh(),
+    openRemoteProject: (resultado) => void abrirProyectoRemoto(resultado),
     exportActiveConversation: () => exportConversation(),
     openSearch: () => toggleSearch(true),
     getTools: () => ui.tools,
@@ -7015,6 +7647,10 @@ async function boot() {
     }
   });
 
+  $('remote-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void renderRemoteFiles($('remote-path')?.value);
+  });
   // --- Botones de la barra lateral -----------------------------------------
   els.btnNew?.addEventListener('click', newConversation);
   // Panel de overview: cada fila muestra su vista.

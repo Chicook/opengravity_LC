@@ -47,6 +47,7 @@
     sounds: false,
     volume: 100,
     remoteControl: false,
+    ssh: { host: '', port: 22, user: '', remotePath: '/', keyPath: '', hostFingerprint: '' },
     uiLanguage: 'auto',
   };
 
@@ -55,6 +56,9 @@
 
   /** Preferencias actuales. */
   let prefs = { ...DEFAULTS };
+
+  /** Último estado del actualizador enviado por el proceso principal. */
+  let updateState = null;
 
   /** Sección activa. */
   let active = 'general';
@@ -784,11 +788,23 @@
   function renderAppearance() {
     const colors = prefs.themeColors ?? {};
 
-    const colorInput = (key, fallback) => {
+    /** Valor efectivo de un token, en hex, para el selector de color. */
+    const tokenHex = (variable, fallback) => {
+      const sondeo = document.createElement('span');
+      sondeo.style.color = getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
+      document.body.append(sondeo);
+      const rgb = getComputedStyle(sondeo).color;
+      sondeo.remove();
+      const match = /^rgb\((\d+),?\s+(\d+),?\s+(\d+)\)$/.exec(rgb);
+      if (!match) return fallback;
+      return `#${[1, 2, 3].map((i) => Number(match[i]).toString(16).padStart(2, '0')).join('')}`;
+    };
+
+    const colorInput = (key, variable, fallback) => {
       const input = document.createElement('input');
       input.type = 'color';
       input.className = 'color-input';
-      input.value = colors[key] ?? fallback;
+      input.value = colors[key] ?? tokenHex(variable, fallback);
       input.addEventListener('input', () => {
         const next = { ...(prefs.themeColors ?? {}), [key]: input.value };
         setPref('themeColors', next);
@@ -815,7 +831,7 @@
             control: makeSegmented({
               options: ['Dark', 'Light'],
               value: prefs.theme ?? 'Dark',
-              onChange: (value) => setPref('theme', value),
+              onChange: (value) => { setPref('theme', value); render(); },
             }),
           }),
           makeRow({
@@ -824,7 +840,7 @@
             control: makeSegmented({
               options: ['Default', 'Strong'],
               value: prefs.themeContrast,
-              onChange: (value) => setPref('themeContrast', value),
+              onChange: (value) => { setPref('themeContrast', value); render(); },
             }),
           }),
         ],
@@ -837,15 +853,15 @@
             label: 'Preset',
             desc: 'Combinación predefinida.',
             control: makeSelect({
-              options: ['Default Dark'],
+              options: ['Default Dark', 'Nord'],
               value: prefs.darkPreset,
-              onChange: (value) => setPref('darkPreset', value),
+              onChange: (value) => { setPref('darkPreset', value); render(); },
               wide: true,
             }),
           }),
-          makeRow({ label: 'Background', desc: 'Fondo del lienzo.', control: colorInput('background', '#101010') }),
-          makeRow({ label: 'Foreground', desc: 'Color del texto.', control: colorInput('foreground', '#cccccc') }),
-          makeRow({ label: 'Accent', desc: 'Color de acento y foco.', control: colorInput('accent', '#007acc') }),
+          makeRow({ label: 'Background', desc: 'Fondo del lienzo.', control: colorInput('background', '--background', '#101010') }),
+          makeRow({ label: 'Foreground', desc: 'Color del texto.', control: colorInput('foreground', '--foreground', '#cccccc') }),
+          makeRow({ label: 'Accent', desc: 'Color de acento y foco.', control: colorInput('accent', '--primary', '#007acc') }),
           makeRow({ label: 'Restablecer colores', desc: 'Vuelve a la paleta por defecto.', control: resetBtn }),
         ],
       }),
@@ -1301,6 +1317,144 @@
           }),
           makeRow({ label: 'Ruta actual', desc: null, control: pathRow }),
         ],
+      }),
+      makeSection({
+        title: 'SSH Remote',
+        desc: 'Terminal y ficheros de un host SSH. La clave se usa solo para autenticar; no se guarda ningún secreto. El modo directo requiere WinFsp + SSHFS-Win.',
+        rows: (() => {
+          const ssh = { ...(DEFAULTS.ssh ?? {}), ...(prefs.ssh ?? {}) };
+          const actualizar = (clave, valor) => setPref('ssh', { ...ssh, [clave]: valor });
+          return [
+            makeRow({ label: 'Host', desc: 'Nombre o IP del servidor.', control: makeInput({ value: ssh.host, placeholder: '127.0.0.1', onCommit: (value) => actualizar('host', value.trim()) }) }),
+            makeRow({ label: 'Port', desc: 'Puerto SSH.', control: makeInput({ value: String(ssh.port), placeholder: '22', onCommit: (value) => actualizar('port', Number(value) || 22) }) }),
+            makeRow({ label: 'User', desc: 'Usuario remoto.', control: makeInput({ value: ssh.user, placeholder: 'root', onCommit: (value) => actualizar('user', value.trim()) }) }),
+            makeRow({ label: 'Remote path', desc: 'Carpeta remota que se abre al conectar.', control: makeInput({ value: ssh.remotePath, placeholder: '/root', onCommit: (value) => actualizar('remotePath', value.trim() || '/') }) }),
+            makeRow({ label: 'Private key', desc: 'Ruta local a la clave privada; vacío usa ssh-agent.', control: makeInput({ value: ssh.keyPath, placeholder: 'C:/Users/tu/.ssh/id_ed25519', onCommit: (value) => actualizar('keyPath', value.trim()) }) }),
+            makeRow({ label: 'Host fingerprint', desc: 'SHA-256 opcional para SFTP/terminal; SSHFS usa known_hosts.', control: makeInput({ value: ssh.hostFingerprint ?? '', placeholder: 'SHA256:…', onCommit: (value) => actualizar('hostFingerprint', value.trim()) }) }),
+            makeRow({
+              label: 'Probar conexión',
+              desc: 'Abre una sesión SFTP y lista la carpeta remota.',
+              control: makeButton({
+                label: 'Probar',
+                onClick: async () => {
+                  const resultado = await window.api.sshTest();
+                  bridge?.addNotice?.(
+                    resultado.ok
+                      ? `SSH: ${resultado.user}@${resultado.host}:${resultado.port} · ${resultado.entries} entradas`
+                      : `SSH: ${resultado.error}`,
+                    resultado.ok ? 'ok' : 'error',
+                  );
+                },
+              }),
+            }),
+            makeRow({
+              label: 'Terminal remota',
+              desc: 'Abre una shell interactiva en el host configurado.',
+              control: makeButton({
+                label: 'Abrir',
+                onClick: () => {
+                  window.SettingsUI.close();
+                  bridge?.openSshTerminal?.();
+                },
+              }),
+            }),
+            makeRow({
+              label: 'Proyecto espejo',
+              desc: 'Fallback: descarga el proyecto en un espejo local y lo sincroniza.',
+              control: makeButton({
+                label: 'Abrir proyecto',
+                onClick: async () => {
+                  const resultado = await window.api.sshOpenProject();
+                  if (!resultado?.ok) {
+                    bridge?.addNotice?.(`SSH: ${resultado?.error ?? 'no se pudo abrir'}`, 'error');
+                    return;
+                  }
+                  window.SettingsUI.close();
+                  bridge?.openRemoteProject?.(resultado);
+                },
+              }),
+            }),
+            makeRow({
+              label: 'Proyecto directo',
+              desc: 'Modo directo: monta la carpeta remota como unidad. Requiere WinFsp + SSHFS-Win.',
+              control: makeButton({
+                label: 'Montar',
+                onClick: async () => {
+                  const resultado = await window.api.sshMountProject();
+                  if (!resultado?.ok) {
+                    bridge?.addNotice?.(`SSH directo: ${resultado?.error ?? 'no se pudo montar'}`, 'error');
+                    return;
+                  }
+                  window.SettingsUI.close();
+                  bridge?.openRemoteProject?.(resultado);
+                },
+              }),
+            }),
+          ];
+        })(),
+      }),
+      makeSection({
+        title: 'Updates',
+        desc:
+          'Descarga e instala nuevas versiones publicadas en GitHub. Sin telemetría; ' +
+          'la app solo consulta releases de Opengravity.',
+        rows: (() => {
+          const u = updateState ?? { status: 'idle', currentVersion: state.version ?? '' };
+          const etiquetas = {
+            idle: 'Ready',
+            checking: 'Checking for updates…',
+            'up-to-date': 'Up to date',
+            available: 'Update available',
+            downloading: `Downloading… ${u.progress ?? 0}%`,
+            verifying: 'Verifying checksum…',
+            downloaded: 'Ready to restart',
+            error: 'Update error',
+            portable: 'Portable build',
+            development: 'Development build',
+            unsupported: 'Updates are Windows-only',
+          };
+          const estado = etiquetas[u.status] ?? u.status;
+          let detalle = `Current version: ${u.currentVersion ?? state.version ?? '—'}`;
+          if (u.availableVersion) detalle += ` · Available: ${u.availableVersion}`;
+          if (u.status === 'error' && u.error) detalle += ` · ${u.error}`;
+          if (u.status === 'portable') detalle = 'This portable build cannot self-update. Download the new release.';
+
+          let control;
+          if (u.status === 'available') {
+            control = makeButton({
+              label: 'Download',
+              onClick: () => void window.api.downloadUpdate?.(),
+            });
+          } else if (u.status === 'downloaded') {
+            control = makeButton({
+              label: 'Restart and update',
+              onClick: () => void window.api.installUpdate?.(),
+            });
+          } else if (u.status === 'portable' || u.status === 'development' || u.status === 'unsupported') {
+            control = makeButton({
+              label: 'Open release',
+              onClick: () => void window.api.openUpdateRelease?.(),
+            });
+          } else {
+            control = makeButton({
+              label: 'Check for updates',
+              onClick: () => void window.api.checkUpdates?.(),
+            });
+          }
+
+          return [
+            makeRow({
+              label: 'Version',
+              desc: detalle,
+              control: el('span', 'count-badge', estado),
+            }),
+            makeRow({
+              label: 'Update',
+              desc: u.releaseName ? `${u.releaseName}` : 'Stable channel from GitHub Releases.',
+              control,
+            }),
+          ];
+        })(),
       }),
       makeSection({
         title: 'Remote Control',
@@ -2257,6 +2411,13 @@
     document.querySelector('.app')?.setAttribute('inert', '');
     void cargarProyectos();
     window.api
+      .updatesState?.()
+      .then((estado) => {
+        updateState = estado;
+        if (active === 'application' && !els.modal.hasAttribute('hidden')) render();
+      })
+      .catch(() => {});
+    window.api
       .getDownloadDir()
       .then((resultado) => {
         downloadDir = resultado?.path ?? '';
@@ -2276,6 +2437,9 @@
       .catch(() => {});
     els.modal.removeAttribute('hidden');
     render();
+    // Al abrir, la sección empieza arriba; el scroll de la vez anterior dejaba
+    // el contenido cortado bajo la cabecera.
+    els.body.scrollTop = 0;
 
     // Foco dentro del diálogo: con Tab no se recorre la interfaz tapada.
     const primero = els.modal.querySelector('.settings__nav-item.is-active, button, [href], input');
@@ -2301,6 +2465,11 @@
 
   function init(options) {
     bridge = options;
+
+    window.api.onUpdateEvent?.((estado) => {
+      updateState = estado;
+      if (active === 'application' && !els.modal.hasAttribute('hidden')) render();
+    });
 
     for (const btn of els.nav.querySelectorAll('[data-section]')) {
       btn.addEventListener('click', () => selectSection(btn.dataset.section));

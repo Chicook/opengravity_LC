@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; media-src 'self' data: blob:; frame-src 'self' data:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Opengravity</title>
@@ -383,6 +383,10 @@
 
                 </div>
 
+                <h3 class="overview-section__title">Pull Requests</h3>
+
+                <div class="git-log" id="github-pulls"></div>
+
                 <h3 class="overview-section__title">History</h3>
 
                 <div class="git-log" id="git-log"></div>
@@ -520,6 +524,7 @@
                     <div class="editor__monaco" id="editor-monaco-2"></div>
                   </div>
                 </div>
+                <div class="media-view" id="media-view" hidden></div>
                 <div class="newtab" id="newtab-view">
                   <input
                     class="newtab__search"
@@ -600,6 +605,10 @@
                 <span class="aux__item-icon" data-icon="files"></span>
                 <span class="aux__item-label">Open File</span>
               </button>
+              <button type="button" class="aux__item" data-aux-view="remote">
+                <span class="aux__item-icon" data-icon="files"></span>
+                <span class="aux__item-label">Remote SSH</span>
+              </button>
               <button type="button" class="aux__item" data-aux-view="terminal">
                 <span class="aux__item-icon" data-icon="terminal"></span>
                 <span class="aux__item-label">Terminal</span>
@@ -646,6 +655,17 @@
           <div class="aux__view aux__view--list" id="aux-view-open-file" hidden>
             <div class="aux__empty">Ningún fichero abierto.</div>
           </div>
+          <!-- Vista Remote SSH: navegador SFTP mínimo. -->
+          <div class="aux__view aux__view--list" id="aux-view-remote" hidden>
+            <div class="remote-browser">
+              <form class="remote-browser__form" id="remote-form">
+                <input class="text-input remote-browser__path" id="remote-path" placeholder="/ruta/remota" spellcheck="false" />
+                <button class="btn btn--sm" type="submit">Ir</button>
+              </form>
+              <div class="remote-browser__status" id="remote-status"></div>
+              <div class="remote-browser__list" id="remote-list"></div>
+            </div>
+          </div>
           <!-- Vista Browser: barra de 40 px (atrás, adelante, recargar y URL)
                sobre el navegador integrado, como su `builtin-browser-pane`. -->
           <div class="aux__view aux__view--browser" id="aux-view-browser" hidden>
@@ -663,6 +683,9 @@
                 <button type="button" class="aux-browser__nav" id="aux-browser-downloads" aria-label="Downloads" title="Downloads">
                   <span data-icon="archive"></span>
                 </button>
+                <button type="button" class="aux-browser__nav" id="aux-browser-find" aria-label="Find in page" title="Find in page (Ctrl+F)">
+                  <span data-icon="search"></span>
+                </button>
                 <form class="aux-browser__urlbar" id="aux-browser-form">
                   <label class="aux-browser__pill">
                     <span class="aux-browser__lock" data-icon="lock"></span>
@@ -677,6 +700,11 @@
                 </form>
               </div>
               <div class="aux-browser__downloads" id="aux-browser-downloads-panel" hidden></div>
+              <div class="aux-browser__find" id="aux-browser-findbar" hidden>
+                <input type="text" id="aux-browser-find-input" class="aux-browser__find-input" placeholder="Find in page" aria-label="Find in page" autocomplete="off" spellcheck="false" />
+                <span class="aux-browser__find-status" id="aux-browser-find-status" aria-live="polite"></span>
+                <button type="button" class="aux-browser__find-close" id="aux-browser-find-close" aria-label="Close find">×</button>
+              </div>
               <webview
                 class="aux-browser__view"
                 id="aux-browser-view"

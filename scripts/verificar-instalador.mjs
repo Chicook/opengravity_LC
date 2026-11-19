@@ -3,13 +3,14 @@
 // Uso: node scripts/verificar-instalador.mjs
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { listCdpTargets, CdpClient } from '../dist/editor/cdp.js';
 
 const raiz = path.resolve(import.meta.dirname, '..');
-const instalador = path.join(raiz, 'release', 'Opengravity Setup 0.1.0.exe');
+const version = JSON.parse(readFileSync(path.join(raiz, 'package.json'), 'utf8')).version;
+const instalador = path.join(raiz, 'release', `Opengravity-Setup-${version}.exe`);
 const puerto = process.env.OPENGRAVITY_INSTALLER_PORT ?? '9226';
 const marca = `OPENGRAVITY_CLOSE_MARKER_${Date.now()}`;
 const destino = mkdtempSync(path.join(os.tmpdir(), 'opengravity-instalado-'));
