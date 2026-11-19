@@ -4264,6 +4264,58 @@ button {
     rgba(0, 0, 0, 0.25) 0 2px 8px -2px;
 }
 
+.composer__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 6px 0;
+  flex-shrink: 0;
+}
+
+.composer-attachment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  height: 30px;
+  padding: 2px 4px 2px 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 12px;
+}
+
+.composer-attachment img {
+  width: 24px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.composer-attachment__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-attachment__remove {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+
+.composer-attachment__remove:hover {
+  background-color: var(--muted);
+  color: var(--foreground);
+}
+
 .composer__card {
   display: flex;
   flex-direction: column;

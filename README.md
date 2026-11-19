@@ -175,6 +175,8 @@ There is no telemetry.
 #### Editor
 
 - **Monaco** with its own dark theme and per-language highlighting
+- **Composer attachments**: paste or drop images and files; they appear as
+  removable chips and travel with the message.
 - **Remote SSH**: direct project mount through WinFsp + SSHFS-Win (Settings ›
   Application › SSH Remote). Files, terminal, commands and tests go to the host;
   LSP and the index still run locally against the mounted drive. The mirror
@@ -538,6 +540,8 @@ El portable no se autoactualiza: enlaza a la nueva release. Sin telemetría.
 - **Monaco** con tema oscuro propio y resaltado por lenguaje
 - **LSP**: completado, diagnósticos, ir a definición, renombrar, formatear
   (TypeScript/JavaScript incluido en el proyecto; python/go/rust configurables)
+- **Adjuntos en el composer**: pega o arrastra imágenes y ficheros; aparecen como
+  chips removibles y viajan con el mensaje.
 - **SSH remoto**: montaje directo con WinFsp + SSHFS-Win desde Ajustes ›
   Application › SSH Remote. Ficheros, terminal, comandos y tests van al host;
   LSP e índice siguen siendo locales sobre la unidad montada. El proyecto espejo

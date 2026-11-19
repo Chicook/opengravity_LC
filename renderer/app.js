@@ -141,6 +141,7 @@ const ui = {
   remote: { running: false, url: null },
   /** Texto acumulado del mensaje en curso, para re-renderizar el markdown. */
   streamingText: '',
+  attachments: [],
   /** Indica si se ejecutaron herramientas antes del siguiente trozo de texto en el mismo turno. */
   huboHerramientasEnTurno: false,
   /** Grupo colapsable "Worked for" de la ejecución en curso. */
@@ -3768,6 +3769,98 @@ function finishToolGroup() {
 // Envío
 // ---------------------------------------------------------------------------
 
+/** Adjuntos pegados o arrastrados al composer. */
+const MAX_ADJUNTO = 10 * 1024 * 1024;
+
+function tamanoLegible(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function renderAttachments() {
+  const host = $('composer-attachments');
+  if (!host) return;
+  host.replaceChildren();
+  host.hidden = ui.attachments.length === 0;
+  for (const adjunto of ui.attachments) {
+    const chip = document.createElement('div');
+    chip.className = 'composer-attachment';
+    if (adjunto.mime?.startsWith('image/')) {
+      const preview = document.createElement('img');
+      preview.src = adjunto.dataUrl;
+      preview.alt = adjunto.name;
+      chip.append(preview);
+    }
+    const texto = document.createElement('span');
+    texto.className = 'composer-attachment__name';
+    texto.textContent = adjunto.name;
+    texto.title = `${adjunto.name} · ${tamanoLegible(adjunto.size)}`;
+    const quitar = document.createElement('button');
+    quitar.type = 'button';
+    quitar.className = 'composer-attachment__remove';
+    quitar.setAttribute('aria-label', `Quitar ${adjunto.name}`);
+    quitar.textContent = '×';
+    quitar.addEventListener('click', () => {
+      ui.attachments = ui.attachments.filter((item) => item.id !== adjunto.id);
+      renderAttachments();
+      updateSendState();
+    });
+    chip.append(texto, quitar);
+    host.append(chip);
+  }
+}
+
+function leerArchivo(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error ?? new Error('no se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function agregarArchivos(files) {
+  for (const file of [...files]) {
+    if (file.size > MAX_ADJUNTO) {
+      addNotice(`${file.name || 'Archivo'}: máximo 10 MB.`, 'error');
+      continue;
+    }
+    try {
+      const dataUrl = await leerArchivo(file);
+      ui.attachments.push({
+        id: `adj-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        name: file.name || 'archivo',
+        mime: file.type || 'application/octet-stream',
+        size: file.size,
+        dataUrl,
+      });
+    } catch (error) {
+      addNotice(`No se pudo adjuntar ${file.name || 'archivo'}: ${error?.message ?? error}`, 'error');
+    }
+  }
+  renderAttachments();
+  updateSendState();
+}
+
+function manejarPegado(event) {
+  const items = [...(event.clipboardData?.items ?? [])];
+  const files = items
+    .filter((item) => item.kind === 'file')
+    .map((item) => item.getAsFile())
+    .filter(Boolean);
+  if (files.length === 0) return;
+  event.preventDefault();
+  void agregarArchivos(files);
+}
+
+function manejarDrop(event) {
+  const files = [...(event.dataTransfer?.files ?? [])];
+  if (files.length === 0) return;
+  event.preventDefault();
+  void agregarArchivos(files);
+}
+
 /** ¿Se puede empezar un turno ahora? Con un plan pendiente, sí: es la revisión. */
 function puedeEnviar() {
   return !ui.busy || Boolean(ui.planCard);
@@ -3775,22 +3868,25 @@ function puedeEnviar() {
 
 async function send() {
   const text = els.input.value.trim();
-  if (text.length === 0 || !puedeEnviar()) return;
+  const adjuntos = ui.attachments.slice();
+  if ((text.length === 0 && adjuntos.length === 0) || !puedeEnviar()) return;
 
   els.input.value = '';
+  ui.attachments = [];
+  renderAttachments();
   autoGrow();
   updateSendState();
 
-  await sendText(text);
+  await sendText(text, adjuntos);
 }
 
 /**
  * Envía un texto ya decidido. No lee ni escribe el composer: así la cola no
  * pisa lo que el usuario está escribiendo.
  */
-async function sendText(texto) {
+async function sendText(texto, adjuntos = []) {
   const text = String(texto ?? '').trim();
-  if (text.length === 0 || !puedeEnviar()) return false;
+  if ((text.length === 0 && adjuntos.length === 0) || !puedeEnviar()) return false;
 
   if (els.threadEmpty) els.threadEmpty.remove();
 
@@ -3798,12 +3894,19 @@ async function sendText(texto) {
   hideMentionPalette();
 
   const mentions = collectMentions(text);
-  addUserMessage(text);
+  const etiquetaAdjuntos = adjuntos.map((adjunto) => adjunto.name).join(', ');
+  addUserMessage(text || etiquetaAdjuntos);
   if (ui.planCard) ui.planCard.rechazar(text);
 
   const result = await window.api.sendPrompt({
     text,
     mentions,
+    attachments: adjuntos.map((adjunto) => ({
+      name: adjunto.name,
+      mime: adjunto.mime,
+      dataUrl: adjunto.dataUrl,
+      size: adjunto.size,
+    })),
     effort: ui.effort,
     preset: ui.prefs.permissionPreset ?? 'Turbo',
     // Solo cuenta si el modelo actual lo admite; el proceso principal lo valida otra vez.
@@ -4030,7 +4133,7 @@ function updateSendState() {
     return;
   }
 
-  const ready = els.input.value.trim().length > 0;
+  const ready = els.input.value.trim().length > 0 || ui.attachments.length > 0;
   els.send.disabled = !ready;
   els.send.classList.toggle('is-ready', ready);
 }
@@ -4694,6 +4797,24 @@ function collectMentions(text) {
 /** Instancia de Monaco y del editor. */
 let monacoEditor = null;
 let monacoApi = null;
+let cargandoMonaco = null;
+
+/** Carga Monaco solo cuando aparece el primer editor o la primera división. */
+function cargarMonaco() {
+  if (window.MonacoApp?.monaco) return Promise.resolve(window.MonacoApp.monaco);
+  if (cargandoMonaco) return cargandoMonaco;
+  cargandoMonaco = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'monaco/monaco.js';
+    script.onload = () => {
+      if (window.MonacoApp?.monaco) resolve(window.MonacoApp.monaco);
+      else reject(new Error('Monaco cargó sin API'));
+    };
+    script.onerror = () => reject(new Error('No se pudo cargar Monaco'));
+    document.head.append(script);
+  });
+  return cargandoMonaco;
+}
 
 /** Lenguaje de Monaco según la extensión. */
 function monacoLanguage(filePath) {
@@ -4894,11 +5015,12 @@ function ensureMonaco(group = 0) {
 }
 
 /** Activa o desactiva la vista dividida. */
-function toggleSplit(force) {
+async function toggleSplit(force) {
   const abrir = force ?? !ui.split;
   if (abrir === ui.split) return;
 
   ui.split = abrir;
+  await cargarMonaco();
   const grupo1 = document.getElementById('editor-group-1');
   if (grupo1) grupo1.hidden = !abrir;
 
@@ -5006,6 +5128,7 @@ async function openInEditor(path, linea, columna) {
     await openMedia(path);
     return;
   }
+  await cargarMonaco();
   toggleEditorPane(true);
   const editor = ensureMonaco();
   if (!editor) {
@@ -6843,6 +6966,7 @@ async function openRemoteFile(remotePath) {
     return;
   }
 
+  await cargarMonaco();
   toggleEditorPane(true);
   const editor = ensureMonaco();
   if (!editor) return;
@@ -7485,7 +7609,7 @@ async function boot() {
     ui.activeConversation = state.sessionId ?? null;
   }
 
-  await loadProviders();
+  void loadProviders();
   await refreshConversations();
 
   // Restaura preferencias: barra lateral, contraste, sonido, cola…
@@ -7600,6 +7724,13 @@ async function boot() {
     if (window.SettingsUI.isOpen()) window.SettingsUI.close();
     else if (!els.sidebarSearch.hasAttribute('hidden')) toggleSearch(false);
   });
+
+  els.input.addEventListener('paste', manejarPegado);
+  const composerCard = els.input.closest('.composer__card');
+  composerCard?.addEventListener('dragover', (event) => {
+    if (event.dataTransfer?.types?.includes('Files')) event.preventDefault();
+  });
+  composerCard?.addEventListener('drop', manejarDrop);
 
   els.form.addEventListener('submit', (event) => {
     event.preventDefault();

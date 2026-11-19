@@ -101,32 +101,41 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-/** Motor cargado una sola vez. */
+/** Motor cargado una sola vez, también bajo llamadas concurrentes. */
 let engine = null;
+let enginePromise = null;
 
 async function getEngine() {
   if (engine) return engine;
+  if (enginePromise) return enginePromise;
 
-  const [loop, storeModule, registry, toolRegistry, fsTools] = await Promise.all([
-    import('../dist/agent/loop.js'),
-    import('../dist/persistence/jsonl-store.js'),
-    import('../dist/providers/registry.js'),
-    import('../dist/tools/registry.js'),
-    import('../dist/tools/fs.js'),
-  ]);
+  enginePromise = (async () => {
+    const [loop, storeModule, registry, toolRegistry, fsTools] = await Promise.all([
+      import('../dist/agent/loop.js'),
+      import('../dist/persistence/jsonl-store.js'),
+      import('../dist/providers/registry.js'),
+      import('../dist/tools/registry.js'),
+      import('../dist/tools/fs.js'),
+    ]);
 
-  engine = {
-    runAgent: loop.runAgent,
-    JsonlSessionStore: storeModule.JsonlSessionStore,
-    createProvider: registry.createProvider,
-    detectAvailableProviders: registry.detectAvailableProviders,
-    soportaPensamiento: registry.soportaPensamiento,
-    PROVIDER_CATALOG: registry.PROVIDER_CATALOG,
-    ToolRegistry: toolRegistry.ToolRegistry,
-    fileSystemTools: fsTools.fileSystemTools,
-  };
+    engine = {
+      runAgent: loop.runAgent,
+      JsonlSessionStore: storeModule.JsonlSessionStore,
+      createProvider: registry.createProvider,
+      detectAvailableProviders: registry.detectAvailableProviders,
+      soportaPensamiento: registry.soportaPensamiento,
+      PROVIDER_CATALOG: registry.PROVIDER_CATALOG,
+      ToolRegistry: toolRegistry.ToolRegistry,
+      fileSystemTools: fsTools.fileSystemTools,
+    };
+    return engine;
+  })();
 
-  return engine;
+  try {
+    return await enginePromise;
+  } finally {
+    enginePromise = null;
+  }
 }
 
 /** Ejecuta un comando en el host remoto para el modo directo. */
@@ -3061,13 +3070,9 @@ ipcMain.handle('window:titlebar', async () => {
 
 /** Estado inicial que necesita la UI para pintarse. */
 ipcMain.handle('app:state', async () => {
-  // El mismo catálogo cacheado que usan los ajustes: una sola detección.
-  let catalogo = [];
-  try {
-    catalogo = await listarProveedores(false);
-  } catch {
-    catalogo = [];
-  }
+  // No esperar a descubrir 22 proveedores para pintar la ventana. La UI pide
+  // el catálogo en segundo plano con providers:list.
+  const catalogo = catalogoProveedores.valor ?? [];
 
   const providers = catalogo.filter((entry) => entry.available).map((entry) => entry.id);
   const actual = catalogo.find((entry) => entry.id === state.providerId);
@@ -4774,6 +4779,46 @@ ipcMain.handle('chat:send', async (event, payload) => {
 
   const text = typeof payload === 'string' ? payload : String(payload?.text ?? '');
   const mentions = Array.isArray(payload?.mentions) ? payload.mentions.slice(0, 20) : [];
+  const attachments = Array.isArray(payload?.attachments) ? payload.attachments.slice(0, 20) : [];
+
+  const images = [];
+  const attachmentBlocks = [];
+  for (const attachment of attachments) {
+    if (!attachment || typeof attachment !== 'object') continue;
+    const nombre = String(attachment.name ?? 'archivo').slice(0, 160);
+    const mime = String(attachment.mime ?? 'application/octet-stream');
+    const dataUrl = String(attachment.dataUrl ?? '');
+    const match = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(dataUrl);
+    if (!match) {
+      attachmentBlocks.push(`### ${nombre}\n(adjunto inválido)`);
+      continue;
+    }
+    const buffer = Buffer.from(match[3], match[2] ? 'base64' : 'utf8');
+    if (buffer.length > 10 * 1024 * 1024) {
+      attachmentBlocks.push(`### ${nombre}\n(adjunto demasiado grande, máx. 10 MB)`);
+      continue;
+    }
+    if (mime.startsWith('image/')) {
+      if (buffer.length > 8 * 1024 * 1024) {
+        attachmentBlocks.push(`### ${nombre}\n(imagen demasiado grande, máx. 8 MB)`);
+        continue;
+      }
+      images.push({ mimeType: mime, data: buffer.toString('base64') });
+      attachmentBlocks.push(`### ${nombre}\n(imagen adjunta)`);
+      continue;
+    }
+    const esTexto =
+      mime.startsWith('text/') ||
+      /json|xml|csv|yaml|javascript|typescript|markdown|x-sh|sql/i.test(mime) ||
+      /\.(txt|md|js|ts|tsx|jsx|json|css|html|py|go|rs|java|c|cpp|h|hpp|sh|yml|yaml|toml|xml|csv|log)$/i.test(nombre);
+    if (esTexto) {
+      const content = buffer.toString('utf8');
+      const bounded = content.length > 40000 ? `${content.slice(0, 40000)}\n[truncado]` : content;
+      attachmentBlocks.push('### ' + nombre + '\n```\n' + bounded + '\n```');
+    } else {
+      attachmentBlocks.push(`### ${nombre}\n(adjunto ${mime}, ${buffer.length} bytes)`);
+    }
+  }
 
   // El botón de pensamiento decide si el nivel de esfuerzo llega al proveedor.
   const effort =
@@ -4783,9 +4828,10 @@ ipcMain.handle('chat:send', async (event, payload) => {
   }
 
   let input = text.trim();
-  if (input.length === 0) {
+  if (input.length === 0 && images.length === 0 && attachmentBlocks.length === 0) {
     return { ok: false, error: 'mensaje vacío' };
   }
+  if (input.length === 0) input = 'Analiza los archivos adjuntos.';
 
   // Un aviso pendiente con cancelOn "any" se cancela en cuanto el usuario escribe:
   // para eso estaba, para no avisar de algo que ya se está hablando.
@@ -4797,7 +4843,6 @@ ipcMain.handle('chat:send', async (event, payload) => {
 
   // Adjunta el contenido de los ficheros mencionados con @.
   // Las imágenes no se leen como texto: van como partes binarias al modelo.
-  const images = [];
   if (mentions.length > 0) {
     const blocks = [];
     for (const relative of mentions) {
@@ -4828,6 +4873,10 @@ ipcMain.handle('chat:send', async (event, payload) => {
       }
     }
     input = `${input}\n\nFicheros adjuntos:\n\n${blocks.join('\n\n')}`;
+  }
+
+  if (attachmentBlocks.length > 0) {
+    input = `${input}\n\nArchivos adjuntos:\n\n${attachmentBlocks.join('\n\n')}`;
   }
 
   if (!(await esDirectorio(state.cwd))) {
@@ -6907,13 +6956,6 @@ ipcMain.handle('chat:send', async (event, payload) => {
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(async () => {
-  // Precarga el motor para que el primer turno no pague el coste de import().
-  try {
-    await getEngine();
-  } catch (error) {
-    console.error('No se pudo cargar el motor:', error);
-  }
-
   await loadSettings();
 
   // Fixture de los verificadores: proyecto desechable sin tocar Ajustes.
@@ -6925,22 +6967,6 @@ app.whenReady().then(async () => {
     state.project = proyectoTemporal;
     registrarRaiz(state.cwd);
     registrarProyecto(state.cwd);
-  }
-
-  /*
-   * Reparación única: sesiones guardadas con el contenido como objeto
-   * ({ texto, encontrados }) se quedaban en «[object Object]» al reabrir.
-   */
-  try {
-    const store = await getStore();
-    if (typeof store.repararContenidoObjeto === 'function') {
-      const arreglo = await store.repararContenidoObjeto();
-      if (arreglo.mensajes > 0) {
-        console.log();
-      }
-    }
-  } catch (error) {
-    console.error('[sesiones] no se pudo reparar el contenido:', error);
   }
 
   /*
@@ -6995,13 +7021,6 @@ app.whenReady().then(async () => {
   applyRetention().catch(() => {});
   setInterval(() => applyRetention().catch(() => {}), 6 * 60 * 60 * 1000).unref?.();
 
-  // Cache de embeddings del índice.
-  try {
-    await codeIndex.loadEmbeddings(embeddingsPath());
-  } catch {
-    // sin cache previa
-  }
-
   // Sirve el renderer bajo app:// para habilitar workers.
   protocol.handle('app', async (request) => {
     /* Contención: resolverRutaApp resuelve la ruta contra la raíz de la app y
@@ -7017,6 +7036,33 @@ app.whenReady().then(async () => {
   });
 
   createWindow();
+
+  // El motor, la reparación de sesiones y los embeddings no retrasan la ventana.
+  void getEngine().catch((error) => {
+    console.error('No se pudo cargar el motor:', error);
+  });
+
+  try {
+    await codeIndex.loadEmbeddings(embeddingsPath());
+  } catch {
+    // sin cache previa
+  }
+
+  /*
+   * Reparación única: sesiones guardadas con el contenido como objeto
+   * ({ texto, encontrados }) se quedaban en «[object Object]» al reabrir.
+   */
+  try {
+    const store = await getStore();
+    if (typeof store.repararContenidoObjeto === 'function') {
+      const arreglo = await store.repararContenidoObjeto();
+      if (arreglo.mensajes > 0) {
+        console.log();
+      }
+    }
+  } catch (error) {
+    console.error('[sesiones] no se pudo reparar el contenido:', error);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
