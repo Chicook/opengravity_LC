@@ -6903,6 +6903,17 @@ app.whenReady().then(async () => {
 
   await loadSettings();
 
+  // Fixture de los verificadores: proyecto desechable sin tocar Ajustes.
+  const testProjectIndex = process.argv.indexOf('--opengravity-test-new-project');
+  if (testProjectIndex >= 0 && process.argv[testProjectIndex + 1]) {
+    const proyectoTemporal = path.resolve(process.argv[testProjectIndex + 1]);
+    await fsp.mkdir(proyectoTemporal, { recursive: true });
+    state.cwd = proyectoTemporal;
+    state.project = proyectoTemporal;
+    registrarRaiz(state.cwd);
+    registrarProyecto(state.cwd);
+  }
+
   /*
    * Reparación única: sesiones guardadas con el contenido como objeto
    * ({ texto, encontrados }) se quedaban en «[object Object]» al reabrir.
