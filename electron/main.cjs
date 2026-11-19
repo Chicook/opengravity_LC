@@ -2949,10 +2949,19 @@ async function aplicarBarraDeTitulo() {
         const estilo = getComputedStyle(document.querySelector('.sidebar') || document.body);
         const raiz = getComputedStyle(document.documentElement);
         const aHex = (valor) => {
-          const m = String(valor).match(/rgba?\(([^)]+)\)/);
-          if (!m) return null;
-          const [r, g, b] = m[1].split(',').map((n) => Math.round(Number(n)));
-          return '#' + [r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('');
+          const texto = String(valor).trim();
+          if (/^#[0-9a-f]{6}$/i.test(texto)) return texto;
+          const rgb = texto.match(/rgba?\(([^)]+)\)/);
+          if (rgb) {
+            const [r, g, b] = rgb[1].split(/[ ,/]+/).map((n) => Math.round(Number(n)));
+            return '#' + [r, g, b].map((n) => Number(n).toString(16).padStart(2, '0')).join('');
+          }
+          const srgb = texto.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/i);
+          if (srgb) {
+            const [r, g, b] = srgb.slice(1, 4).map((n) => Math.round(Number(n) * 255));
+            return '#' + [r, g, b].map((n) => Number(n).toString(16).padStart(2, '0')).join('');
+          }
+          return null;
         };
         return [aHex(estilo.backgroundColor), aHex(raiz.color)];
       })()`,
@@ -3045,6 +3054,12 @@ function createWindow() {
 // ---------------------------------------------------------------------------
 // IPC
 // ---------------------------------------------------------------------------
+
+/** Sincroniza los botones nativos con el tema ya aplicado en el renderer. */
+ipcMain.handle('window:titlebar', async () => {
+  await aplicarBarraDeTitulo();
+  return { ok: true };
+});
 
 /** Estado inicial que necesita la UI para pintarse. */
 ipcMain.handle('app:state', async () => {

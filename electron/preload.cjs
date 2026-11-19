@@ -12,6 +12,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   /** Estado inicial: workspace, proveedores, modelos, sesión. */
   getState: () => ipcRenderer.invoke('app:state'),
+  refreshTitlebar: () => ipcRenderer.invoke('window:titlebar'),
 
   /** Catálogo completo de proveedores con sus modelos. */
   listProviders: () => ipcRenderer.invoke('providers:list'),

@@ -4237,6 +4237,10 @@ function applyPrefs(prefs) {
     terminal.xterm.options.theme = temaXterm();
   }
 
+  // La barra nativa se pinta después de aplicar los tokens, también al
+  // arrancar con un tema guardado.
+  requestAnimationFrame(() => { void window.api.refreshTitlebar?.(); });
+
   if (window.I18n) {
     if (ui.prefs.uiLanguage === 'Español') ui.prefs.uiLanguage = 'es';
     if (ui.prefs.uiLanguage === 'English') ui.prefs.uiLanguage = 'en';
