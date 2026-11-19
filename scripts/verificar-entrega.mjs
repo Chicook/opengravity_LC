@@ -172,6 +172,39 @@ if (sumas.length > 0) {
   for (const linea of sumas) console.log('       ' + linea);
 }
 
+// latest.yml es el índice que consume electron-updater. Si no coincide con
+// el instalador real, el updater descarga o verifica mal.
+const latestPath = 'release/latest.yml';
+if (!existsSync(latestPath)) {
+  apuntar(problemas, 'no existe release/latest.yml: electron-updater no tiene feed');
+} else {
+  const latest = readFileSync(latestPath, 'utf8');
+  const version = /^version:\s*(\S+)/m.exec(latest)?.[1] ?? null;
+  const url = /^\s*-\s*url:\s*(\S+)/m.exec(latest)?.[1] ?? null;
+  const sha512 = /sha512:\s*(\S+)/.exec(latest)?.[1] ?? null;
+  const size = Number(/size:\s*(\d+)/.exec(latest)?.[1] ?? 0);
+  const archivo = url ? join('release', url) : '';
+  if (version !== paquete.version) {
+    apuntar(problemas, `latest.yml es de ${version ?? '?'} y package.json es ${paquete.version}`);
+  } else if (!archivo || !existsSync(archivo)) {
+    apuntar(problemas, `latest.yml apunta a un instalador inexistente: ${url ?? '?'}`);
+  } else {
+    const bytes = readFileSync(archivo);
+    const realSha = createHash('sha512').update(bytes).digest('base64');
+    if (realSha !== sha512) apuntar(problemas, 'latest.yml: sha512 no coincide con el instalador');
+    else if (bytes.length !== size) apuntar(problemas, 'latest.yml: size no coincide con el instalador');
+    else apuntar(bien, 'latest.yml coincide con el instalador');
+  }
+  const instalador = `Opengravity-Setup-${paquete.version}.exe`;
+  const linea = sumas.find((linea) => linea.endsWith(`  ${instalador}`));
+  if (!linea) apuntar(problemas, 'SHA256SUMS.txt no contiene el instalador');
+  else {
+    const esperado = createHash('sha256').update(readFileSync(join('release', instalador))).digest('hex');
+    if (linea.slice(0, 64) !== esperado) apuntar(problemas, 'SHA256SUMS.txt no coincide con el instalador');
+    else apuntar(bien, 'SHA256SUMS.txt coincide con el instalador');
+  }
+}
+
 // El motor compilado, no solo el TypeScript.
 for (const obligatorio of ['dist/index.js', 'dist/agent/loop.js']) {
   if (existsSync(obligatorio)) apuntar(bien, 'compilado: ' + obligatorio);
