@@ -4343,6 +4343,7 @@ function applyPrefs(prefs) {
   // La barra nativa se pinta después de aplicar los tokens, también al
   // arrancar con un tema guardado.
   requestAnimationFrame(() => { void window.api.refreshTitlebar?.(); });
+  setTimeout(() => { void window.api.refreshTitlebar?.(); }, 350);
 
   if (window.I18n) {
     if (ui.prefs.uiLanguage === 'Español') ui.prefs.uiLanguage = 'es';

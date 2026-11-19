@@ -3040,6 +3040,8 @@ function createWindow() {
     mainWindow.show();
     mainWindow.focus();
     void aplicarBarraDeTitulo();
+    setTimeout(() => void aplicarBarraDeTitulo(), 600);
+    mainWindow.on('focus', () => void aplicarBarraDeTitulo());
     updater.configurar({
       onState: (estado) => {
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('updates:event', estado);
