@@ -2949,29 +2949,27 @@ async function aplicarBarraDeTitulo() {
         const estilo = getComputedStyle(document.querySelector('.sidebar') || document.body);
         const raiz = getComputedStyle(document.documentElement);
         const aHex = (valor) => {
-          const texto = String(valor).trim();
-          if (/^#[0-9a-f]{6}$/i.test(texto)) return texto;
-          const rgb = texto.match(/rgba?\(([^)]+)\)/);
-          if (rgb) {
-            const [r, g, b] = rgb[1].split(/[ ,/]+/).map((n) => Math.round(Number(n)));
-            return '#' + [r, g, b].map((n) => Number(n).toString(16).padStart(2, '0')).join('');
-          }
-          const srgb = texto.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/i);
-          if (srgb) {
-            const [r, g, b] = srgb.slice(1, 4).map((n) => Math.round(Number(n) * 255));
-            return '#' + [r, g, b].map((n) => Number(n).toString(16).padStart(2, '0')).join('');
-          }
-          return null;
+          const canvas = document.createElement('canvas');
+          canvas.width = 1;
+          canvas.height = 1;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = valor;
+          ctx.fillRect(0, 0, 1, 1);
+          const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+          if (a === 0) return null;
+          return '#' + [r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('');
         };
         return [aHex(estilo.backgroundColor), aHex(raiz.color)];
       })()`,
     );
     if (fondo && simbolo) {
       mainWindow.setTitleBarOverlay({ color: fondo, symbolColor: simbolo, height: 35 });
+      return { fondo, simbolo };
     }
   } catch {
     // si el renderer aún no está listo se queda el color por defecto
   }
+  return null;
 }
 
 function createWindow() {
@@ -3057,8 +3055,8 @@ function createWindow() {
 
 /** Sincroniza los botones nativos con el tema ya aplicado en el renderer. */
 ipcMain.handle('window:titlebar', async () => {
-  await aplicarBarraDeTitulo();
-  return { ok: true };
+  const colores = await aplicarBarraDeTitulo();
+  return { ok: true, ...(colores ?? {}) };
 });
 
 /** Estado inicial que necesita la UI para pintarse. */
