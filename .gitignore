@@ -5,8 +5,6 @@ release/
 *.tsbuildinfo
 
 # Entorno
-.env
-.env.local
 
 # Logs
 *.log
@@ -29,3 +27,4 @@ renderer/katex/
 
 # Worktrees aislados de los subagentes
 .worktrees/
+config.bat
