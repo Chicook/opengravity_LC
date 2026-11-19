@@ -2636,7 +2636,7 @@ function selectOverviewView(name) {
 
   // La fila Terminal abre la terminal real.
   if (name === 'terminal') toggleTerminal(true);
-  if (name === 'review') void refreshPullRequests();
+  if (name === 'review') { void refreshPullRequests(); void refreshWorkflows(); }
 }
 
 /** Marca el área principal como vacía para centrar el composer. */
@@ -2745,7 +2745,7 @@ function renderOverview() {
   void refreshGit();
   void refreshGitLog();
   void refreshIndexStatus();
-  if (ui.overviewView === 'review') void refreshPullRequests();
+  if (ui.overviewView === 'review') { void refreshPullRequests(); void refreshWorkflows(); }
   renderFileTree();
 
   const pluginsBody = $('overview-plugins');
@@ -6126,6 +6126,42 @@ function renderPullRequests(result) {
           if (result?.ok === false) window.api.openExternal(pr.url);
         })
         .catch(() => window.api.openExternal(pr.url));
+    });
+    container.append(row);
+  }
+}
+
+/** Lista y ejecuta workflows del proyecto desde Overview. */
+async function refreshWorkflows() {
+  const container = $('workflows-list');
+  if (!container) return;
+  container.replaceChildren();
+  let result;
+  try { result = await window.api.workflowsList(); } catch (error) { result = { ok: false, error: error?.message ?? String(error) }; }
+  if (!result?.ok) { container.append(rowText(result?.error ?? 'No se pudieron listar los workflows')); return; }
+  if (!result.workflows || result.workflows.length === 0) { container.append(rowText('Sin workflows en este proyecto')); return; }
+  for (const workflow of result.workflows) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'git-commit-row pr-row';
+    row.title = workflow.name;
+    const name = document.createElement('span');
+    name.className = 'git-commit-row__subject';
+    name.textContent = workflow.name;
+    const run = document.createElement('span');
+    run.className = 'pr-row__state';
+    run.textContent = 'run';
+    row.append(name, run);
+    row.addEventListener('click', async () => {
+      row.disabled = true;
+      run.textContent = 'running';
+      const output = await window.api.workflowsRun(workflow.name);
+      row.disabled = false;
+      run.textContent = output?.ok ? 'done' : 'error';
+      addNotice(
+        output?.ok ? `Workflow ${workflow.name}: ${String(output.content ?? '').slice(0, 600)}` : `Workflow ${workflow.name}: ${output?.error ?? output?.content ?? 'error'}`,
+        output?.ok ? 'ok' : 'error',
+      );
     });
     container.append(row);
   }

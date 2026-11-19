@@ -279,6 +279,8 @@ contextBridge.exposeInMainWorld('api', {
   gitFetch: () => ipcRenderer.invoke('git:fetch'),
   gitTracking: () => ipcRenderer.invoke('git:tracking'),
   githubPulls: () => ipcRenderer.invoke('github:pulls'),
+  workflowsList: () => ipcRenderer.invoke('workflows:list'),
+  workflowsRun: (name) => ipcRenderer.invoke('workflows:run', name),
   gitResolve: (filePath, side) => ipcRenderer.invoke('git:resolve', filePath, side),
   gitAbortMerge: () => ipcRenderer.invoke('git:abort-merge'),
 

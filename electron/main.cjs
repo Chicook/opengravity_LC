@@ -1641,6 +1641,39 @@ ipcMain.handle('git:tracking', async () => {
 /**
  * Pull requests del repositorio remoto. Solo lectura.
  */
+/** Lista los workflows del proyecto. */
+ipcMain.handle('workflows:list', async () => {
+  const carpeta = path.join(state.cwd, '.opengravity', 'workflows');
+  try {
+    const ficheros = await fsp.readdir(carpeta);
+    const salida = [];
+    for (const fichero of ficheros.filter((f) => /\.(py|mjs|js)$/.test(f)).sort()) {
+      const base = fichero.replace(/\.(py|mjs|js)$/, '');
+      let descripcion = '';
+      try {
+        const meta = JSON.parse(await fsp.readFile(path.join(carpeta, `${base}.workflow.json`), 'utf8'));
+        descripcion = typeof meta.description === 'string' ? meta.description : '';
+      } catch {}
+      salida.push({ name: base, description: descripcion });
+    }
+    return { ok: true, workflows: salida };
+  } catch {
+    return { ok: true, workflows: [] };
+  }
+});
+
+/** Ejecuta un workflow sin argumentos desde la UI. */
+ipcMain.handle('workflows:run', async (_event, nombre) => {
+  try {
+    const ejecutar = makeRunCommandTool(() => state.cwd, () => state.prefs);
+    const tool = makeRunWorkflowTool(() => state.cwd, (a, c) => ejecutar.execute(a, c));
+    const resultado = await tool.execute({ name: String(nombre ?? '') }, { cwd: state.cwd });
+    return { ok: !resultado.isError, content: resultado.content };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
 ipcMain.handle('github:pulls', async () => {
   const remote = await runGit(['remote', 'get-url', 'origin']);
   if (!remote.ok) return { ok: false, error: 'este proyecto no tiene remoto origin' };
@@ -1653,7 +1686,8 @@ ipcMain.handle('github:pulls', async () => {
     'User-Agent': 'Opengravity',
     'X-GitHub-Api-Version': '2022-11-28',
   };
-  if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  const token = state.prefs.apiKeys?.github || process.env.GITHUB_TOKEN;
+  if (token) headers.Authorization = `Bearer ${token}`;
   try {
     const response = await fetch(
       `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=all&sort=updated&direction=desc&per_page=20`,

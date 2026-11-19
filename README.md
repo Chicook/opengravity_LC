@@ -179,6 +179,9 @@ There is no telemetry.
   Application › SSH Remote). Files, terminal, commands and tests go to the host;
   LSP and the index still run locally against the mounted drive. The mirror
   project is a fallback for systems without SSHFS-Win.
+- GitHub pull requests are read-only in Overview → Review; a token for private
+  repositories is stored encrypted from Settings. Workflows from
+  `.opengravity/workflows/` are listed and can be run from the same panel.
 - **LSP**: completion, diagnostics, go-to-definition, rename, format
   (TypeScript/JavaScript bundled with the project; python/go/rust configurable)
 - **Project selector**: recent projects, This Computer with search, New Project
@@ -539,6 +542,9 @@ El portable no se autoactualiza: enlaza a la nueva release. Sin telemetría.
   Application › SSH Remote. Ficheros, terminal, comandos y tests van al host;
   LSP e índice siguen siendo locales sobre la unidad montada. El proyecto espejo
   queda como fallback para sistemas sin SSHFS-Win.
+- Los pull requests de GitHub se consultan en Overview → Review; el token para
+  repos privados se guarda cifrado desde Ajustes. Los workflows de
+  `.opengravity/workflows/` se listan y ejecutan desde ese panel.
 - **Selector de proyecto**: recientes, This Computer con búsqueda, New Project
   y No Project; la conversación guarda su proyecto aparte del workspace.
 - Pestañas, estado de guardado, `Ctrl+S`

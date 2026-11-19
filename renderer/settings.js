@@ -1394,6 +1394,30 @@
         })(),
       }),
       makeSection({
+        title: 'GitHub',
+        desc: 'Token opcional para pull requests de repositorios privados.',
+        rows: (() => {
+          const token = (prefs.apiKeys ?? {}).github ?? '';
+          return [
+            makeRow({
+              label: 'Token',
+              desc: token ? 'Guardado cifrado en este equipo.' : 'Sin token: solo repos públicos.',
+              control: makeInput({
+                value: token,
+                placeholder: 'ghp_…',
+                type: 'password',
+                onCommit: (value) => {
+                  const all = { ...(prefs.apiKeys ?? {}) };
+                  if (value.length > 0) all.github = value;
+                  else delete all.github;
+                  void setPref('apiKeys', all);
+                },
+              }),
+            }),
+          ];
+        })(),
+      }),
+      makeSection({
         title: 'Updates',
         desc:
           'Descarga e instala nuevas versiones publicadas en GitHub. Sin telemetría; ' +

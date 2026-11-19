@@ -17,7 +17,8 @@ All notable changes to Opengravity are documented here.
 - Settings opens at the top instead of keeping the previous scroll position.
 - Nord surfaces: composer, segmented controls and editor tabs no longer keep the dark palette.
 - `/btw` side questions in a floating panel, without touching the thread or tools.
-- Read-only GitHub pull request list in Overview → Review (public repos; `GITHUB_TOKEN` for private).
+- Read-only GitHub pull request list in Overview → Review, with encrypted token in Settings.
+- Workflow list and run buttons in Overview → Review.
 - Audio and PDF viewer in the editor pane (up to 50 MB).
 - Dynamic workflows validate `workflow.json` args schemas and honor `WorkflowWaitMillis`.
 - SSH remote: terminal, SFTP file browser, remote editor save and optional host fingerprint pinning.
